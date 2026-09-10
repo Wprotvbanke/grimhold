@@ -1,0 +1,486 @@
+import {
+  BLOCK_DRAIN,
+  BLOCK_SPEED_SCALE,
+  DODGE_SPEED_SCALE,
+  EXPERIENCE_PER_KILL,
+  MOBS,
+  SPAWN_POINT,
+  SPELLS,
+  gainExperience,
+  step,
+  type CombatEvent,
+  type LifeMessage,
+  type LootMessage,
+  type SkillId,
+  type SkillUpMessage,
+  type SpellId,
+} from '@grimhold/shared';
+import {
+  applyDodgeImpulse,
+  resolveCone,
+  resolveMelee,
+  resolveSelfSpell,
+  FIST_DAMAGE,
+  type CombatOutcome,
+} from './combat.js';
+import { speedMultiplier, tickCombatant, type Combatant } from './combatant.js';
+import { decideMob, killMob, tickRespawn, type Mob, type MobTarget } from './mob.js';
+import { applyDamage } from './combatant.js';
+import { createProjectile, stepProjectile } from './projectile.js';
+import type { Player, World } from './world.js';
+
+/**
+ * Один тик мира: движение, бой, ИИ, снаряды, смерть.
+ *
+ * Все исходящие сообщения собираются в Outbox и рассылаются вызывающим кодом —
+ * так игровая логика ничего не знает о сокетах и её можно гонять в тестах.
+ */
+
+export interface Outbox {
+  /**
+   * Событие боя и место, рядом с которым его слышно.
+   * Инстанс обязателен: без него события подземелья ушли бы в открытый мир.
+   */
+  combat: { event: CombatEvent; near: { x: number; z: number }; instanceId: string }[];
+  skillUps: { playerId: string; message: SkillUpMessage }[];
+  life: { playerId: string; message: LifeMessage }[];
+  loot: { playerId: string; message: LootMessage }[];
+  /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
+  criticalSaves: Player[];
+}
+
+export function emptyOutbox(): Outbox {
+  return { combat: [], skillUps: [], life: [], loot: [], criticalSaves: [] };
+}
+
+/** Сколько секунд лежать до возможности воскреснуть. */
+const DEATH_DELAY = 3;
+
+export function tickWorld(world: World, dt: number, outbox: Outbox): void {
+  world.tick++;
+  world.stepNpcs(dt);
+
+  tickPlayers(world, dt, outbox);
+  tickMobs(world, dt, outbox);
+  tickProjectiles(world, dt, outbox);
+  recordHistory(world);
+}
+
+// ---------- игроки ----------
+
+function tickPlayers(world: World, dt: number, outbox: Outbox): void {
+  for (const player of world.players.values()) {
+    const combat = player.combat;
+
+    // Мёртвый не двигается и не действует, только отсчитывает время до подъёма.
+    if (!combat.alive) {
+      player.deadFor += dt;
+      player.pendingInputs.length = 0;
+      continue;
+    }
+
+    const before = combat.action?.phase;
+    const { enteredActive } = tickCombatant(combat, dt, player.maxima);
+
+    // Блок ест стамину, пока поднят щит.
+    if (combat.blocking) {
+      combat.vitals.stamina -= BLOCK_DRAIN * dt;
+      combat.sinceStaminaUse = 0;
+      if (combat.vitals.stamina <= 0) {
+        combat.vitals.stamina = 0;
+        combat.blocking = false;
+      }
+    }
+
+    applyMovement(world, player, dt);
+
+    // Фаза удара наступила — единственный момент, когда проверяется попадание.
+    if (enteredActive && combat.action && !combat.action.resolved) {
+      combat.action.resolved = true;
+      const kind = combat.action.kind;
+
+      if (kind === 'attack' || kind === 'heavy') {
+        const skill = skillForWeapon(player);
+        const outcome = resolveMelee(
+          combat,
+          kind,
+          world.combatantsIn(player.instanceId),
+          world.history,
+          world.tick,
+          player.pendingViewTick ?? world.tick,
+          { id: skill, level: player.skills[skill].level },
+          FIST_DAMAGE,
+        );
+        collectOutcome(world, outcome, outbox);
+      }
+
+      if (kind === 'dodge') {
+        applyDodgeImpulse(combat);
+      }
+
+      if (kind === 'cast' && combat.action.spellId) {
+        castSpell(world, player, combat.action.spellId as SpellId, outbox);
+      }
+    }
+
+    void before;
+  }
+}
+
+/** Прогоняет накопленный ввод через общий шаг симуляции. */
+function applyMovement(world: World, player: Player, dt: number): void {
+  void dt;
+  const combat = player.combat;
+
+  // Скорость зависит от состояния: щит замедляет, рывок разгоняет, стужа тормозит.
+  let scale = speedMultiplier(combat);
+  if (combat.blocking) scale *= BLOCK_SPEED_SCALE;
+
+  if (combat.action?.kind === 'dodge') {
+    // Ускорение только в фазе рывка, не в замахе и не в восстановлении.
+    if (combat.action.phase === 'active') scale *= DODGE_SPEED_SCALE;
+  } else if (combat.action) {
+    // Замах и восстановление сковывают: бить на бегу нельзя.
+    scale *= 0.35;
+  }
+
+  const baseScale = player.state.speedScale;
+  for (const input of player.pendingInputs) {
+    const colliders = world.collidersAt(player.instanceId, player.state.pos.x, player.state.pos.z);
+    player.state = step(
+      { ...player.state, speedScale: baseScale * scale },
+      input,
+      colliders,
+    );
+    player.state.speedScale = baseScale;
+    player.lastProcessedSeq = input.seq;
+    player.pitch = input.pitch;
+  }
+  player.pendingInputs.length = 0;
+
+  // Единственное место, где боевая позиция синхронизируется с движением.
+  combat.pos = player.state.pos;
+  combat.yaw = player.state.yaw;
+  player.dirty = true;
+}
+
+/**
+ * Применение заклинания в момент, когда каст дошёл до конца.
+ * Снаряд не бьёт мгновенно: он вылетает телом и летит, поэтому от «Уголька»
+ * можно отойти, а «Разряд» наказывает за неподвижность.
+ */
+function castSpell(world: World, caster: Player, spellId: SpellId, outbox: Outbox): void {
+  const spell = SPELLS[spellId];
+  // Перезарядка отсчитывается от момента применения, а не от начала чтения.
+  caster.spellCooldowns[spellId] = world.elapsed + spell.cooldown;
+  const skillLevel = caster.skills[spell.skill].level;
+
+  if (spell.shape === 'projectile') {
+    world.projectiles.push(
+      createProjectile(world.nextEntityId('x'), caster.combat, spellId, caster.pitch, skillLevel),
+    );
+    return;
+  }
+
+  const outcome =
+    spell.shape === 'cone'
+      ? resolveCone(caster.combat, spellId, world.combatantsIn(caster.instanceId), skillLevel)
+      : resolveSelfSpell(caster.combat, spellId, skillLevel, caster.maxima.health);
+
+  collectOutcome(world, outcome, outbox);
+}
+
+// ---------- мобы ----------
+
+function tickMobs(world: World, dt: number, outbox: Outbox): void {
+  for (const [instanceId, list] of world.mobs) {
+    const players = [...world.players.values()].filter((p) => p.instanceId === instanceId);
+
+    for (const mob of list) {
+      // Мёртвые отсчитывают воскрешение всегда: иначе мир бы не восстанавливался,
+      // пока игроки в другом конце карты.
+      if (!mob.alive) {
+        tickRespawn(mob, dt);
+        continue;
+      }
+
+      // Живые вдали от всех не думают: считать ИИ для пустых чанков незачем.
+      if (!world.isMobActive(mob, players)) continue;
+
+      tickCombatant(mob, dt, {
+        health: mob.profile.health,
+        mana: 0,
+        stamina: 100,
+      });
+
+      const targets: MobTarget[] = players.map((player) => ({
+        id: player.id,
+        pos: player.state.pos,
+        alive: player.combat.alive,
+      }));
+
+      const decision = decideMob(mob, targets, dt);
+      world.stepMob(mob, decision.input, dt);
+
+      if (!decision.strike) continue;
+
+      const target = players.find((player) => player.id === mob.targetId);
+      if (!target || !target.combat.alive) continue;
+
+      // Моб бьёт по текущей позиции: он не «видит прошлое», отматывать нечего.
+      const distance = Math.hypot(
+        target.state.pos.x - mob.pos.x,
+        target.state.pos.z - mob.pos.z,
+      );
+      if (distance > mob.profile.attackRange + target.combat.radius) {
+        // Игрок успел отойти за время замаха — это и есть награда за реакцию.
+        outbox.combat.push({ event: missOf(mob), near: mob.pos, instanceId });
+        continue;
+      }
+
+      const result = applyDamage(target.combat, mob.profile.damage, {
+        blockReduction: 0.75,
+        staminaOnBlock: 18,
+      });
+
+      outbox.combat.push({
+        event: {
+          t: 'combat',
+          kind: result.dodged ? 'dodged' : result.blocked ? 'blocked' : 'hit',
+          attackerId: mob.id,
+          attackerName: mob.name,
+          targetId: target.id,
+          targetName: target.name,
+          amount: result.applied,
+          backstab: false,
+          x: target.state.pos.x,
+          y: target.state.pos.y + target.combat.height * 0.7,
+          z: target.state.pos.z,
+        },
+        near: target.state.pos,
+        instanceId,
+      });
+
+      if (result.blocked) grantExperience(world, target.id, 'block', 4, outbox);
+      if (result.dodged) grantExperience(world, target.id, 'evasion', 4, outbox);
+      if (result.killed) handlePlayerDeath(world, target, mob.name, outbox);
+    }
+  }
+}
+
+// ---------- снаряды ----------
+
+function tickProjectiles(world: World, dt: number, outbox: Outbox): void {
+  for (let i = world.projectiles.length - 1; i >= 0; i--) {
+    const projectile = world.projectiles[i]!;
+    const colliders = world.collidersAt(projectile.instanceId, projectile.pos.x, projectile.pos.z);
+    const hit = stepProjectile(
+      projectile,
+      dt,
+      world.combatantsIn(projectile.instanceId),
+      colliders,
+    );
+
+    if (hit) {
+      outbox.combat.push({
+        event: hit.event,
+        near: projectile.pos,
+        instanceId: projectile.instanceId,
+      });
+
+      if (hit.victim) {
+        const spell = SPELLS[projectile.spellId];
+        grantExperience(world, projectile.ownerId, spell.skill, 3, outbox);
+
+        if (hit.killed) {
+          handleDeath(world, hit.victim, projectile.ownerId, projectile.ownerName, outbox);
+        }
+      }
+
+      world.projectiles.splice(i, 1);
+      continue;
+    }
+
+    if (projectile.lifetime <= 0) world.projectiles.splice(i, 1);
+  }
+}
+
+// ---------- смерть ----------
+
+/** Инстанс, в котором произошло событие: берём у любого из участников. */
+function instanceOfEvent(world: World, event: CombatEvent): string {
+  const attacker = world.playerByCombatantId(event.attackerId);
+  if (attacker) return attacker.instanceId;
+  const target = world.playerByCombatantId(event.targetId);
+  if (target) return target.instanceId;
+  return 'overworld';
+}
+
+function collectOutcome(world: World, outcome: CombatOutcome, outbox: Outbox): void {
+  for (const event of outcome.events) {
+    outbox.combat.push({
+      event,
+      near: { x: event.x, z: event.z },
+      instanceId: instanceOfEvent(world, event),
+    });
+  }
+  for (const gain of outcome.experience) {
+    grantExperience(world, gain.combatantId, gain.skill, gain.amount, outbox);
+  }
+  for (const death of outcome.deaths) {
+    handleDeath(world, death.victim, death.killer.id, death.killer.name, outbox);
+  }
+}
+
+function handleDeath(
+  world: World,
+  victim: Combatant,
+  killerId: string,
+  killerName: string,
+  outbox: Outbox,
+): void {
+  const player = world.playerByCombatantId(victim.id);
+  if (player) {
+    handlePlayerDeath(world, player, killerName, outbox);
+    return;
+  }
+
+  const mob = world.mobByCombatantId(victim.instanceId, victim.id);
+  if (!mob) return;
+
+  killMob(mob);
+  grantExperience(world, killerId, skillOfKiller(world, killerId), EXPERIENCE_PER_KILL, outbox);
+
+  const killer = world.playerByCombatantId(killerId);
+  if (killer) {
+    const items = rollLoot(mob);
+    if (items.length > 0) {
+      outbox.loot.push({
+        playerId: killer.id,
+        message: { t: 'loot', from: mob.name, items },
+      });
+    }
+  }
+}
+
+/**
+ * Смерть в открытом мире вещей не отнимает — по замыслу полная ставка только
+ * в подземельях. Здесь наказание — время и путь обратно.
+ */
+function handlePlayerDeath(
+  world: World,
+  player: Player,
+  killerName: string,
+  outbox: Outbox,
+): void {
+  void world;
+  player.combat.alive = false;
+  player.combat.action = null;
+  player.combat.blocking = false;
+  player.deadFor = 0;
+  player.dirty = true;
+
+  outbox.life.push({
+    playerId: player.id,
+    message: { t: 'life', event: 'died', killerName },
+  });
+  // Смерть — критичное событие: пишем немедленно, а не пакетом.
+  outbox.criticalSaves.push(player);
+}
+
+/** Можно ли уже воскреснуть. */
+export function canRespawn(player: Player): boolean {
+  return !player.combat.alive && player.deadFor >= DEATH_DELAY;
+}
+
+export function respawnPlayer(player: Player): LifeMessage {
+  player.combat.alive = true;
+  player.combat.vitals.health = player.maxima.health;
+  player.combat.vitals.stamina = player.maxima.stamina;
+  player.combat.vitals.mana = player.maxima.mana;
+  player.combat.invulnerable = 2;
+  player.combat.wardRemaining = 0;
+  player.combat.slowRemaining = 0;
+  player.deadFor = 0;
+
+  player.state.pos = { ...SPAWN_POINT };
+  player.state.vel = { x: 0, y: 0, z: 0 };
+  player.combat.pos = player.state.pos;
+  player.dirty = true;
+
+  return { t: 'life', event: 'respawned', spawn: SPAWN_POINT };
+}
+
+// ---------- навыки и лут ----------
+
+function grantExperience(
+  world: World,
+  combatantId: string,
+  skill: SkillId,
+  amount: number,
+  outbox: Outbox,
+): void {
+  const player = world.playerByCombatantId(combatantId);
+  if (!player) return;
+
+  const result = gainExperience(player.skills[skill], amount);
+  player.skills[skill] = result.progress;
+  if (result.levelsGained > 0) {
+    player.dirty = true;
+    outbox.skillUps.push({
+      playerId: player.id,
+      message: { t: 'skillUp', skill, level: result.progress.level },
+    });
+  }
+}
+
+function skillForWeapon(player: Player): SkillId {
+  // Инвентаря ещё нет: класс задаёт, какой навык тренируется кулаками.
+  if (player.characterClass === 'mage') return 'evocation';
+  if (player.characterClass === 'ranger') return 'archery';
+  return 'blade';
+}
+
+function skillOfKiller(world: World, killerId: string): SkillId {
+  const player = world.playerByCombatantId(killerId);
+  return player ? skillForWeapon(player) : 'blade';
+}
+
+function rollLoot(mob: Mob): { itemId: string; name: string; count: number }[] {
+  const items: { itemId: string; name: string; count: number }[] = [];
+  for (const entry of MOBS[mob.mobId].loot) {
+    if (Math.random() > entry.chance) continue;
+    const count = entry.min + Math.floor(Math.random() * (entry.max - entry.min + 1));
+    items.push({ itemId: entry.itemId, name: entry.name, count });
+  }
+  return items;
+}
+
+function missOf(mob: Mob): CombatEvent {
+  return {
+    t: 'combat',
+    kind: 'miss',
+    attackerId: mob.id,
+    attackerName: mob.name,
+    targetId: '',
+    targetName: '',
+    amount: 0,
+    backstab: false,
+    x: mob.pos.x,
+    y: mob.pos.y,
+    z: mob.pos.z,
+  };
+}
+
+// ---------- история для лагкомпенсации ----------
+
+function recordHistory(world: World): void {
+  for (const player of world.players.values()) {
+    world.history.record(player.id, world.tick, player.state.pos, player.state.yaw);
+  }
+  for (const list of world.mobs.values()) {
+    for (const mob of list) {
+      if (mob.alive) world.history.record(mob.id, world.tick, mob.pos, mob.yaw);
+    }
+  }
+}

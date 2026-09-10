@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.vite/

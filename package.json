@@ -1,0 +1,35 @@
+{
+  "name": "grimhold",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Dark fantasy web MMORPG with extraction dungeons",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev -w @grimhold/server",
+    "dev:client": "npm run dev -w @grimhold/client",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p packages/shared && tsc --noEmit -p packages/server && tsc --noEmit -p packages/client",
+    "e2e": "tsx scripts/e2e.ts",
+    "netcode": "tsx scripts/netcode-check.ts",
+    "gate": "tsx scripts/gate-check.ts",
+    "check": "npm run test && npm run typecheck",
+    "seed": "tsx scripts/seed-account.ts",
+    "combat": "tsx scripts/combat-check.ts",
+    "roster": "tsx scripts/roster.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "concurrently": "^10.0.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

@@ -1,0 +1,237 @@
+import {
+  CLASSES,
+  RACES,
+  type CharacterClass,
+  type CharacterSummary,
+  type ChatBroadcast,
+  type Race,
+} from '@grimhold/shared';
+
+/**
+ * Экраны вне игры и чат. Здесь только DOM: никакой игровой логики,
+ * никаких решений — всё, что важно, решает сервер.
+ */
+
+const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+
+export interface UiHandlers {
+  onLogin(username: string, password: string): void;
+  onRegister(username: string, password: string): void;
+  onCreateCharacter(name: string, race: Race, characterClass: CharacterClass): void;
+  onEnterWorld(characterId: string): void;
+  onChatSend(channel: 'local' | 'global', text: string): void;
+}
+
+export class Ui {
+  private readonly authScreen = el<HTMLDivElement>('authScreen');
+  private readonly charScreen = el<HTMLDivElement>('charScreen');
+  private readonly pauseHint = el<HTMLDivElement>('pauseHint');
+  private readonly chatLog = el<HTMLDivElement>('chatLog');
+  private readonly chatInput = el<HTMLInputElement>('chatInput');
+
+  /** Пока открыт чат, ввод не должен уходить в движение. */
+  chatFocused = false;
+
+  constructor(private readonly handlers: UiHandlers) {
+    this.fillSelects();
+    this.wireAuth();
+    this.wireCharacters();
+    this.wireChat();
+  }
+
+  // ---------- экраны ----------
+
+  showAuth(error?: string): void {
+    this.authScreen.hidden = false;
+    this.charScreen.hidden = true;
+    el<HTMLParagraphElement>('authError').textContent = error ?? '';
+  }
+
+  showCharacters(username: string, characters: CharacterSummary[], max: number): void {
+    this.authScreen.hidden = true;
+    this.charScreen.hidden = false;
+    el<HTMLParagraphElement>('charError').textContent = '';
+    el<HTMLParagraphElement>('charSubtitle').textContent = `${username} · ${characters.length} из ${max}`;
+
+    const list = el<HTMLDivElement>('charList');
+    list.replaceChildren();
+
+    for (const character of characters) {
+      const row = document.createElement('div');
+      row.className = 'char';
+
+      const left = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = character.name;
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent =
+        `${RACES[character.race].name} · ${CLASSES[character.characterClass].name}` +
+        ` · в игре ${formatPlaytime(character.playtimeSeconds)}`;
+      left.append(name, meta);
+
+      const enter = document.createElement('button');
+      enter.textContent = 'Войти';
+      enter.style.width = 'auto';
+      enter.style.marginTop = '0';
+
+      row.append(left, enter);
+
+      const enterWorld = () => this.handlers.onEnterWorld(character.id);
+      row.addEventListener('click', enterWorld);
+      enter.addEventListener('click', (event) => {
+        event.stopPropagation();
+        enterWorld();
+      });
+
+      list.append(row);
+    }
+
+    el<HTMLDivElement>('createBlock').hidden = characters.length >= max;
+  }
+
+  showCharacterError(message: string): void {
+    if (this.charScreen.hidden) {
+      this.showAuth(message);
+      return;
+    }
+    el<HTMLParagraphElement>('charError').textContent = message;
+  }
+
+  enterGame(): void {
+    this.authScreen.hidden = true;
+    this.charScreen.hidden = true;
+  }
+
+  setPaused(paused: boolean): void {
+    this.pauseHint.hidden = !paused;
+  }
+
+  get inMenus(): boolean {
+    return !this.authScreen.hidden || !this.charScreen.hidden;
+  }
+
+  // ---------- чат ----------
+
+  appendChat(message: ChatBroadcast): void {
+    const line = document.createElement('div');
+    line.className = `ch-${message.channel}`;
+
+    if (message.channel === 'system') {
+      line.textContent = message.text;
+    } else {
+      const from = document.createElement('span');
+      from.className = 'ch-from';
+      from.textContent =
+        message.channel === 'global' ? `[общий] ${message.from}: ` : `${message.from}: `;
+      line.append(from, document.createTextNode(message.text));
+    }
+
+    this.chatLog.append(line);
+    while (this.chatLog.childElementCount > 60) this.chatLog.firstElementChild?.remove();
+    this.chatLog.scrollTop = this.chatLog.scrollHeight;
+  }
+
+  system(text: string): void {
+    this.appendChat({ t: 'chatMessage', channel: 'system', from: '', text });
+  }
+
+  /** Enter открывает локальный чат, Shift+Enter — общий. */
+  openChat(channel: 'local' | 'global'): void {
+    this.chatFocused = true;
+    this.chatInput.hidden = false;
+    this.chatInput.dataset.channel = channel;
+    this.chatInput.placeholder = channel === 'global' ? 'Общий канал…' : 'Сказать рядом…';
+    this.chatInput.focus();
+  }
+
+  closeChat(): void {
+    this.chatFocused = false;
+    this.chatInput.hidden = true;
+    this.chatInput.value = '';
+    this.chatInput.blur();
+  }
+
+  // ---------- проводка ----------
+
+  private fillSelects(): void {
+    const raceSelect = el<HTMLSelectElement>('newRace');
+    for (const race of Object.values(RACES)) {
+      const option = document.createElement('option');
+      option.value = race.id;
+      option.textContent = race.name;
+      raceSelect.append(option);
+    }
+
+    const classSelect = el<HTMLSelectElement>('newClass');
+    for (const profile of Object.values(CLASSES)) {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      classSelect.append(option);
+    }
+
+    const hint = el<HTMLParagraphElement>('raceHint');
+    const updateHint = () => {
+      const race = RACES[raceSelect.value as Race];
+      const profile = CLASSES[classSelect.value as CharacterClass];
+      hint.textContent = `${race.name}: крафтит ${race.craft}. ${profile.description}.`;
+    };
+    raceSelect.addEventListener('change', updateHint);
+    classSelect.addEventListener('change', updateHint);
+    updateHint();
+  }
+
+  private wireAuth(): void {
+    const user = el<HTMLInputElement>('authUser');
+    const pass = el<HTMLInputElement>('authPass');
+
+    el<HTMLButtonElement>('loginBtn').addEventListener('click', () =>
+      this.handlers.onLogin(user.value.trim(), pass.value),
+    );
+    el<HTMLButtonElement>('registerBtn').addEventListener('click', () =>
+      this.handlers.onRegister(user.value.trim(), pass.value),
+    );
+    pass.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') this.handlers.onLogin(user.value.trim(), pass.value);
+    });
+  }
+
+  private wireCharacters(): void {
+    el<HTMLButtonElement>('createBtn').addEventListener('click', () => {
+      this.handlers.onCreateCharacter(
+        el<HTMLInputElement>('newName').value.trim(),
+        el<HTMLSelectElement>('newRace').value as Race,
+        el<HTMLSelectElement>('newClass').value as CharacterClass,
+      );
+    });
+    el<HTMLButtonElement>('logoutBtn').addEventListener('click', () => location.reload());
+  }
+
+  private wireChat(): void {
+    this.chatInput.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+
+      if (event.key === 'Escape') {
+        this.closeChat();
+        return;
+      }
+      if (event.key !== 'Enter') return;
+
+      const text = this.chatInput.value.trim();
+      if (text) {
+        const channel = (this.chatInput.dataset.channel ?? 'local') as 'local' | 'global';
+        this.handlers.onChatSend(channel, text);
+      }
+      this.closeChat();
+    });
+  }
+}
+
+function formatPlaytime(seconds: number): string {
+  if (seconds < 60) return `${seconds} с`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} мин`;
+  return `${Math.floor(minutes / 60)} ч ${minutes % 60} мин`;
+}
