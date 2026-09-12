@@ -18,6 +18,8 @@ function makeCombatant(overrides: Partial<Combatant> = {}): Combatant {
   return {
     id: 'c1',
     kind: 'player',
+    karma: 0,
+    purpleFor: 0,
     name: 'Цель',
     instanceId: 'overworld',
     pos: { x: 0, y: 0, z: 0 },

@@ -37,6 +37,8 @@ export interface CharacterRecord {
   inventory: Grid;
   equipment: Equipment;
   knownRecipes: RecipeId[];
+  karma: number;
+  purpleFor: number;
   hotbar: Hotbar;
 }
 
@@ -53,6 +55,8 @@ export interface CharacterSave {
   equipment: Equipment;
   knownRecipes: RecipeId[];
   hotbar: Hotbar;
+  karma: number;
+  purpleFor: number;
 }
 
 export interface Storage {

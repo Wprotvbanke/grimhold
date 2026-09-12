@@ -3,6 +3,7 @@ import type { Race } from './races.js';
 import type { CharacterClass } from './classes.js';
 import type { ActionKind, ActionPhase } from './combat.js';
 import type { MobId } from './mobs.js';
+import type { PvpFlag } from './pvp.js';
 import type { SpellId } from './spells.js';
 import type { Equipment, Grid, Hotbar } from './inventory.js';
 import type { EquipSlot } from './items.js';
@@ -20,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -375,6 +376,13 @@ export interface EntitySnapshot {
   /** Что сущность делает — по этому клиент выбирает анимацию. */
   action?: ActionKind;
   phase?: ActionPhase;
+  /**
+   * Цвет ника: мирный, полез в драку или убийца.
+   *
+   * Шлётся только игрокам — зверью флаги ни к чему. По нему видно, кого
+   * можно бить без последствий, и решение это принимается на глаз, за секунду.
+   */
+  flag?: PvpFlag;
 }
 
 /** Карточка персонажа для экрана выбора. */
@@ -580,6 +588,9 @@ export interface SelfState {
   invulnerable: number;
   /** Сколько ещё горит «Светоч», секунды. */
   light: number;
+  /** Свой флаг и карма: игрок должен видеть, во что он себя вогнал. */
+  flag: PvpFlag;
+  karma: number;
 }
 
 /** Летящий снаряд заклинания. От него можно отойти, поэтому он в снапшоте. */

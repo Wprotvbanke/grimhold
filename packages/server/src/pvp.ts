@@ -1,4 +1,11 @@
-import { isSafe } from '@grimhold/shared';
+import {
+  KARMA_PER_KILL,
+  KARMA_PER_MOB,
+  PURPLE_SECONDS,
+  flagOf,
+  isSafe,
+  type PvpFlag,
+} from '@grimhold/shared';
 import type { Combatant } from './combatant.js';
 
 /**
@@ -46,4 +53,49 @@ export function mayAttack(attacker: Combatant, target: Combatant): Verdict {
 /** Стоит ли боец в безопасной зоне. Короткая обёртка для читаемости. */
 export function inSafeZone(combatant: Combatant): boolean {
   return isSafe(combatant.pos.x, combatant.pos.z);
+}
+
+/** Какого цвета боец прямо сейчас. У зверья всегда белый — им флаги ни к чему. */
+export function flagFor(combatant: Combatant): PvpFlag {
+  return flagOf(combatant.karma, combatant.purpleFor);
+}
+
+/**
+ * Игрок поднял руку на игрока.
+ *
+ * Фиолетовым становится **только нападающий на мирного**. Ответ мирного
+ * фиолетовым его не делает: иначе защищаться было бы так же наказуемо, как
+ * нападать, и первый удар решал бы всё.
+ *
+ * Нападение на фиолетового или красного не красит: они уже вне мира.
+ */
+export function markAggressor(attacker: Combatant, target: Combatant): void {
+  if (attacker.kind !== 'player' || target.kind !== 'player') return;
+  if (flagFor(target) !== 'white') return;
+
+  attacker.purpleFor = PURPLE_SECONDS;
+}
+
+/**
+ * Игрок убил игрока.
+ *
+ * Карма приходит только за мирного. Убил фиолетового или красного — ты его
+ * не трогал первым, и отвечать не за что.
+ */
+export function punishKill(killer: Combatant, victim: Combatant): void {
+  if (killer.kind !== 'player' || victim.kind !== 'player') return;
+  if (flagFor(victim) !== 'white') return;
+
+  killer.karma += KARMA_PER_KILL;
+}
+
+/**
+ * Карма сходит со временем, а делом — быстрее.
+ *
+ * Мирная жизнь снимает её сама, убитый зверь ускоряет: замаливать делом
+ * должно быть выгоднее, чем просто пересидеть.
+ */
+export function forgiveForMob(killer: Combatant): void {
+  if (killer.kind !== 'player') return;
+  killer.karma = Math.max(0, killer.karma - KARMA_PER_MOB);
 }

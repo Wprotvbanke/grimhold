@@ -59,6 +59,8 @@ const SCHEMA = `
     inventory        TEXT NOT NULL DEFAULT '',
     equipment        TEXT NOT NULL DEFAULT '',
     known_recipes    TEXT NOT NULL DEFAULT '',
+    karma            REAL NOT NULL DEFAULT 0,
+    purple_for       REAL NOT NULL DEFAULT 0,
     hotbar           TEXT NOT NULL DEFAULT ''
   );
 
@@ -82,6 +84,10 @@ const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: 'characters', column: 'inventory', definition: "TEXT NOT NULL DEFAULT ''" },
   { table: 'characters', column: 'equipment', definition: "TEXT NOT NULL DEFAULT ''" },
   { table: 'characters', column: 'known_recipes', definition: "TEXT NOT NULL DEFAULT ''" },
+  // Карма и фиолетовый переживают перезаход: иначе выйти и зайти означало бы
+  // смыть с себя убийство, и весь флаг ничего бы не стоил.
+  { table: 'characters', column: 'karma', definition: 'REAL NOT NULL DEFAULT 0' },
+  { table: 'characters', column: 'purple_for', definition: 'REAL NOT NULL DEFAULT 0' },
   { table: 'characters', column: 'hotbar', definition: "TEXT NOT NULL DEFAULT ''" },
 ];
 
@@ -125,6 +131,8 @@ interface CharacterRow {
   inventory: string;
   equipment: string;
   known_recipes: string;
+  karma: number;
+  purple_for: number;
   hotbar: string;
 }
 
@@ -228,6 +236,8 @@ export class SqliteStorage implements Storage {
       equipment: {},
       knownRecipes: [],
       hotbar: createHotbar(),
+      karma: 0,
+      purpleFor: 0,
     };
 
     this.db
@@ -271,7 +281,8 @@ export class SqliteStorage implements Storage {
     const statement = this.db.prepare(
       `UPDATE characters
           SET x = ?, y = ?, z = ?, yaw = ?, last_seen_at = ?, playtime_seconds = ?,
-              inventory = ?, equipment = ?, known_recipes = ?, hotbar = ?
+              inventory = ?, equipment = ?, known_recipes = ?, hotbar = ?,
+              karma = ?, purple_for = ?
         WHERE id = ?`,
     );
 
@@ -289,6 +300,8 @@ export class SqliteStorage implements Storage {
           JSON.stringify(save.equipment),
           JSON.stringify(save.knownRecipes),
           JSON.stringify(save.hotbar),
+          save.karma,
+          save.purpleFor,
           save.id,
         );
       }
@@ -351,6 +364,8 @@ function toCharacter(row: CharacterRow): CharacterRecord {
     inventory: sanitizeGrid(parseJson(row.inventory), BACKPACK_WIDTH, BACKPACK_HEIGHT),
     equipment: sanitizeEquipment(parseJson(row.equipment)),
     knownRecipes: sanitizeRecipes(parseJson(row.known_recipes)),
+    karma: Math.max(0, row.karma ?? 0),
+    purpleFor: Math.max(0, row.purple_for ?? 0),
     hotbar: sanitizeHotbar(parseJson(row.hotbar)),
   };
 }

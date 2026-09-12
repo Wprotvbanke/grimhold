@@ -9,7 +9,7 @@ import {
   type Vec3,
 } from '@grimhold/shared';
 import { applyDamage, type Combatant } from './combatant.js';
-import { mayAttack } from './pvp.js';
+import { markAggressor, mayAttack, punishKill } from './pvp.js';
 
 /**
  * Снаряды заклинаний.
@@ -148,9 +148,12 @@ function checkImpact(
     if (owner && !mayAttack(owner, target).ok) continue;
     if (!owner && (!target.alive || target.instanceId !== projectile.instanceId)) continue;
 
+    if (owner) markAggressor(owner, target);
+
     const spell = SPELLS[projectile.spellId];
     const raw = spellDamage(projectile.casterAttributes, spell.power, projectile.skillLevel);
     const result = applyDamage(target, raw, { blockReduction: 0.4, staminaOnBlock: 10 });
+    if (result.killed && owner) punishKill(owner, target);
 
     return {
       event: {

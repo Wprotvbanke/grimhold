@@ -100,6 +100,8 @@ export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: stri
   return {
     id,
     kind: 'mob',
+    karma: 0,
+    purpleFor: 0,
     name: profile.name,
     instanceId,
     mobId,

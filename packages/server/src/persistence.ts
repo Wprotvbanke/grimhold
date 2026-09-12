@@ -88,6 +88,8 @@ export class Persistence {
       inventory: player.inventory,
       equipment: player.equipment,
       knownRecipes: player.knownRecipes,
+      karma: player.combat.karma,
+      purpleFor: player.combat.purpleFor,
       hotbar: player.hotbar,
     };
   }

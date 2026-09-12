@@ -50,6 +50,7 @@ import { speedMultiplier, type Combatant } from './combatant.js';
 import { PositionHistory } from './history.js';
 import { createMob, isCorpseVisible, type Mob } from './mob.js';
 import { createNpc, npcIntent, type Npc } from './npc.js';
+import { flagFor } from './pvp.js';
 import type { Projectile } from './projectile.js';
 
 /**
@@ -205,6 +206,8 @@ export class World {
     bank?: Grid;
     equipment?: Equipment;
     knownRecipes?: RecipeId[];
+    karma?: number;
+    purpleFor?: number;
     hotbar?: Hotbar;
   }): Player {
     const profile = RACES[character.race];
@@ -260,6 +263,8 @@ export class World {
       combat: {
         id,
         kind: 'player',
+        karma: character.karma ?? 0,
+        purpleFor: character.purpleFor ?? 0,
         name: character.name,
         instanceId: character.instanceId,
         pos: { x: character.x, y: character.y, z: character.z },
@@ -466,6 +471,8 @@ export class World {
       phase: combat.action?.phase,
       invulnerable: round(combat.invulnerable),
       light: round(combat.lightRemaining),
+      flag: flagFor(combat),
+      karma: Math.round(combat.karma),
     };
   }
 
@@ -494,6 +501,7 @@ export class World {
         alive: player.combat.alive,
         action: player.combat.action?.kind,
         phase: player.combat.action?.phase,
+        flag: flagFor(player.combat),
       });
     }
 

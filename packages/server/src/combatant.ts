@@ -27,6 +27,12 @@ export interface Combatant {
    * игроками они есть, между игроком и мобом их нет и не будет.
    */
   kind: 'player' | 'mob';
+  /**
+   * Карма и остаток фиолетового. Живут на бойце, а не на игроке, потому что
+   * читает их расчёт удара — а он видит только бойцов. У зверья всегда нули.
+   */
+  karma: number;
+  purpleFor: number;
   instanceId: string;
   pos: Vec3;
   yaw: number;

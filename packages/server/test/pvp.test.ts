@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { TOWN_SIZE, attributesFor, fullVitals } from '@grimhold/shared';
-import { mayAttack } from '../src/pvp.js';
+import {
+  KARMA_PER_KILL,
+  KARMA_PER_MOB,
+  PURPLE_SECONDS,
+  TOWN_SIZE,
+  attributesFor,
+  fullVitals,
+} from '@grimhold/shared';
+import { flagFor, forgiveForMob, markAggressor, mayAttack, punishKill } from '../src/pvp.js';
 import { resolveMelee } from '../src/combat.js';
 import { PositionHistory } from '../src/history.js';
 import type { Combatant } from '../src/combatant.js';
@@ -20,6 +27,8 @@ function makeCombatant(overrides: Partial<Combatant> = {}): Combatant {
   return {
     id: 'c1',
     kind: 'player',
+    karma: 0,
+    purpleFor: 0,
     name: 'Кто-то',
     instanceId: 'overworld',
     pos: { x: 0, y: 0, z: 0 },
@@ -120,5 +129,75 @@ describe('удар в безопасной зоне', () => {
 
     expect(target.vitals.health).toBeLessThan(fullVitals(target.attributes).health);
     expect(outcome.refusals).toHaveLength(0);
+  });
+});
+
+describe('флаги', () => {
+  function pair() {
+    const attacker = makeCombatant({ id: 'a', name: 'Буян', pos: { x: 0, y: 0, z: OUTSIDE } });
+    const target = makeCombatant({ id: 'b', name: 'Мирный', pos: { x: 1, y: 0, z: OUTSIDE } });
+    return { attacker, target };
+  }
+
+  it('поднял руку на мирного — стал фиолетовым', () => {
+    const { attacker, target } = pair();
+    expect(flagFor(attacker)).toBe('white');
+
+    markAggressor(attacker, target);
+    expect(flagFor(attacker)).toBe('purple');
+    expect(attacker.purpleFor).toBe(PURPLE_SECONDS);
+  });
+
+  it('ответ мирного его не красит', () => {
+    // Иначе защищаться было бы так же наказуемо, как нападать, и первый удар
+    // решал бы всё.
+    const { attacker, target } = pair();
+    markAggressor(attacker, target);
+
+    markAggressor(target, attacker);
+    expect(flagFor(target)).toBe('white');
+  });
+
+  it('убил мирного — покраснел', () => {
+    const { attacker, target } = pair();
+
+    punishKill(attacker, target);
+    expect(attacker.karma).toBe(KARMA_PER_KILL);
+    expect(flagFor(attacker)).toBe('red');
+  });
+
+  it('за фиолетового кармы нет', () => {
+    const { attacker, target } = pair();
+    target.purpleFor = PURPLE_SECONDS;
+
+    punishKill(attacker, target);
+    expect(attacker.karma).toBe(0);
+    expect(flagFor(attacker)).toBe('white');
+  });
+
+  it('зверьё кармой не считается', () => {
+    const { attacker } = pair();
+    const beast = makeCombatant({ id: 'm', kind: 'mob', pos: { x: 1, y: 0, z: OUTSIDE } });
+
+    markAggressor(attacker, beast);
+    punishKill(attacker, beast);
+    expect(flagFor(attacker)).toBe('white');
+  });
+
+  it('убитый зверь замаливает часть кармы', () => {
+    const { attacker } = pair();
+    attacker.karma = KARMA_PER_KILL;
+
+    forgiveForMob(attacker);
+    expect(attacker.karma).toBe(KARMA_PER_KILL - KARMA_PER_MOB);
+  });
+
+  it('карма не уходит в минус', () => {
+    const { attacker } = pair();
+    attacker.karma = 2;
+
+    forgiveForMob(attacker);
+    expect(attacker.karma).toBe(0);
+    expect(flagFor(attacker)).toBe('white');
   });
 });

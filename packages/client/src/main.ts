@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   BANK,
+  FLAG_COLORS,
   DASH_WEIGHT_LIMIT,
   DAY_START,
   INTERP_DELAY_MS,
@@ -900,6 +901,9 @@ function updateNametags(): void {
     }
 
     avatar.tag.textContent = nameFor(avatar.entity);
+    // Цвет ника говорит, кого можно бить без последствий. Решение это
+    // принимается на глаз и за секунду, поэтому оно в имени, а не в меню.
+    avatar.tag.style.color = FLAG_COLORS[avatar.entity.flag ?? 'white'];
     avatar.tag.style.display = 'block';
     avatar.tag.style.left = `${((projected.x + 1) / 2) * innerWidth}px`;
     avatar.tag.style.top = `${((1 - projected.y) / 2) * innerHeight}px`;

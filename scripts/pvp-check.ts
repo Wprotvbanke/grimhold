@@ -185,7 +185,30 @@ async function main(): Promise<void> {
     check(healthOf(victim) < health, 'удар прошёл', `${health} → ${healthOf(victim)}`);
   }
 
+  console.log('\n4. Флаг меняется и виден обоим');
+  const raised = bully.latestSnapshot?.self;
+  check(raised?.flag === 'purple', 'напавший стал фиолетовым', String(raised?.flag));
+  check(victim.latestSnapshot?.self.flag === 'white', 'оборонявшийся остался белым');
+
+  // Флаг чужого приходит в снапшоте — по нему клиент красит ник.
+  const seen = victim.latestSnapshot?.entities.find((entity) => entity.id === bully.playerId);
+  check(seen?.flag === 'purple', 'и это видно второму игроку', String(seen?.flag));
+
+  console.log('\n5. Флаг переживает перезаход');
+  const name = `Буян${stamp}`;
   bully.close();
+  await sleep(700);
+
+  const again = new TestClient({ username: name });
+  await again.ready;
+  await sleep(700);
+  check(
+    again.latestSnapshot?.self.flag === 'purple',
+    'вышел и зашёл — всё ещё фиолетовый',
+    String(again.latestSnapshot?.self.flag),
+  );
+
+  again.close();
   victim.close();
   await sleep(200);
 

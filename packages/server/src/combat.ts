@@ -23,7 +23,7 @@ import {
   type Vec3,
 } from '@grimhold/shared';
 import { applyDamage, spendMana, spendStamina, type Combatant } from './combatant.js';
-import { mayAttack } from './pvp.js';
+import { markAggressor, mayAttack, punishKill } from './pvp.js';
 import { PositionHistory } from './history.js';
 
 /**
@@ -160,6 +160,10 @@ export function resolveMelee(
     let raw = meleeDamage(attacker.attributes, weaponDamage, skill.level, profile.damageScale);
     if (backstab) raw *= BACKSTAB_MULTIPLIER;
 
+    // Поднял руку на мирного — стал фиолетовым. Считается по флагу **до**
+    // удара: иначе убитый успел бы стать не-мирным сам по себе.
+    markAggressor(attacker, hit.target);
+
     const result = applyDamage(hit.target, raw, {
       blockReduction: kind === 'heavy' ? BLOCK_REDUCTION_VS_HEAVY : BLOCK_REDUCTION,
       staminaOnBlock: BLOCK_STAMINA_HIT,
@@ -190,6 +194,7 @@ export function resolveMelee(
       outcome.experience.push({ combatantId: hit.target.id, skill: 'evasion', amount: EXPERIENCE_PER_DEFENCE });
     }
     if (result.killed) {
+      punishKill(attacker, hit.target);
       outcome.deaths.push({ victim: hit.target, killer: attacker });
     }
   }
@@ -209,9 +214,18 @@ export function resolveCone(
   const arc = spell.arc ?? Math.PI / 4;
 
   for (const target of targets) {
-    if (target === caster || !target.alive) continue;
-    if (target.instanceId !== caster.instanceId) continue;
+    // Стужа подчиняется тем же правилам, что меч и снаряд: иначе в городе
+    // нельзя было бы ударить, но можно было бы заморозить.
+    const verdict = mayAttack(caster, target);
+    if (!verdict.ok) {
+      if (verdict.reason && inAttackCone(caster.pos, caster.yaw, target.pos, spell.range, arc, target.radius)) {
+        outcome.refusals.push({ attackerId: caster.id, reason: verdict.reason });
+      }
+      continue;
+    }
     if (!inAttackCone(caster.pos, caster.yaw, target.pos, spell.range, arc, target.radius)) continue;
+
+    markAggressor(caster, target);
 
     const raw = spellDamage(caster.attributes, spell.power, skillLevel);
     const result = applyDamage(target, raw, {
@@ -242,7 +256,10 @@ export function resolveCone(
     if (!result.dodged) {
       outcome.experience.push({ combatantId: caster.id, skill: spell.skill, amount: EXPERIENCE_PER_HIT });
     }
-    if (result.killed) outcome.deaths.push({ victim: target, killer: caster });
+    if (result.killed) {
+      punishKill(caster, target);
+      outcome.deaths.push({ victim: target, killer: caster });
+    }
   }
 
   return outcome;

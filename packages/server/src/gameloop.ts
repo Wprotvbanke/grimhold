@@ -7,14 +7,19 @@ import {
   SPELLS,
   SPRINT_DRAIN,
   addItem,
+  itemDef,
   gainExperience,
   movementSpeedFactor,
   isItemId,
+  KARMA_DECAY_PER_SECOND,
+  RED_DROP_CHANCE,
+  RED_SKILL_PENALTY,
   step,
   weaponDamageOf,
   weightSpeedFactor,
   type CombatEvent,
   type CraftingMessage,
+  type EquipSlot,
   type GatheringMessage,
   type LifeMessage,
   type LootMessage,
@@ -24,6 +29,7 @@ import {
   type SpellId,
 } from '@grimhold/shared';
 import { craftingMessage, finishCraft } from './commands/craft.js';
+import { flagFor, forgiveForMob } from './pvp.js';
 import { finishHarvest, gatheringMessage, outOfReach } from './commands/harvest.js';
 import {
   applyDodgeImpulse,
@@ -107,6 +113,11 @@ export function tickWorld(world: World, dt: number, outbox: Outbox): void {
 function tickPlayers(world: World, dt: number, outbox: Outbox): void {
   for (const player of world.players.values()) {
     const combat = player.combat;
+
+    // Карма сходит сама, фиолетовый гаснет по таймеру. И то и другое идёт
+    // и у мёртвого: отлежаться от флага нельзя, но и висеть он вечно не должен.
+    combat.karma = Math.max(0, combat.karma - KARMA_DECAY_PER_SECOND * dt);
+    combat.purpleFor = Math.max(0, combat.purpleFor - dt);
 
     // Добыча идёт, пока игрок стоит у ноды: отошёл — работа брошена.
     // Это и есть способ передумать, отдельной кнопки отмены не нужно.
@@ -501,6 +512,9 @@ function handleDeath(
   const killer = world.playerByCombatantId(killerId);
   if (!killer) return;
 
+  // Убитый зверь снимает часть кармы: замаливать делом быстрее, чем ждать.
+  forgiveForMob(killer.combat);
+
   const rolled = rollLoot(mob);
   if (rolled.length === 0) return;
 
@@ -531,6 +545,46 @@ function handleDeath(
  * Смерть в открытом мире вещей не отнимает — по замыслу полная ставка только
  * в подземельях. Здесь наказание — время и путь обратно.
  */
+/**
+ * Чем платит убийца.
+ *
+ * Красный при смерти **рискует** надетым и теряет часть наработанного опыта.
+ * Именно рискует: наказание должно пугать, а не превращать первую ошибку
+ * в конец персонажа. И не даром — иначе краснеть ничего не стоит.
+ *
+ * Роняется одна вещь из надетого, выбранная случайно: прощаться со шлемом
+ * обиднее, чем с любой вещью из рюкзака, и разница между «сходил в набег»
+ * и «сходил удачно» становится ощутимой.
+ */
+function punishRedDeath(player: Player, outbox: Outbox): void {
+  if (flagFor(player.combat) !== 'red') return;
+
+  for (const id of Object.keys(player.skills) as SkillId[]) {
+    const progress = player.skills[id];
+    progress.experience = Math.max(0, Math.round(progress.experience * (1 - RED_SKILL_PENALTY)));
+  }
+
+  if (Math.random() >= RED_DROP_CHANCE) return;
+
+  const worn = (Object.keys(player.equipment) as EquipSlot[]).filter(
+    (slot) => player.equipment[slot],
+  );
+  if (worn.length === 0) return;
+
+  const slot = worn[Math.floor(Math.random() * worn.length)]!;
+  const lost = player.equipment[slot];
+  const equipment = { ...player.equipment };
+  delete equipment[slot];
+  player.equipment = equipment;
+  refreshLoadout(player);
+
+  outbox.inventory.push(player);
+  outbox.itemErrors.push({
+    playerId: player.id,
+    message: `Ты потерял: ${lost ? itemDef(lost.defId).name : 'снаряжение'}`,
+  });
+}
+
 function handlePlayerDeath(
   world: World,
   player: Player,
@@ -543,6 +597,8 @@ function handlePlayerDeath(
   player.combat.blocking = false;
   player.deadFor = 0;
   player.dirty = true;
+
+  punishRedDeath(player, outbox);
 
   outbox.life.push({
     playerId: player.id,
