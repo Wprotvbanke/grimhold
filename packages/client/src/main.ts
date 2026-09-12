@@ -133,7 +133,8 @@ const inventoryUi = new InventoryUi({
   onEquip: (x, y) => connection.send({ t: 'equip', x, y }),
   onAssignHotbar: (index, itemId) => connection.send({ t: 'setHotbar', index, itemId }),
   onUseHotbar: (index) => useHotbar(index),
-  onUnequip: (slot) => connection.send({ t: 'unequip', slot }),
+  onUnequip: (slot, to) =>
+    connection.send({ t: 'unequip', slot, toX: to?.x, toY: to?.y, rotate: to?.rotate }),
   onUse: (x, y) => connection.send({ t: 'useItem', x, y }),
   onDrop: (x, y) => connection.send({ t: 'dropItem', x, y }),
   onCraft: (recipeId) => connection.send({ t: 'craft', recipeId }),

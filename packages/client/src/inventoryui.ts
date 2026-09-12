@@ -42,7 +42,7 @@ export interface InventoryHandlers {
   /** Нажата ячейка панели. */
   onUseHotbar(index: number): void;
   onEquip(x: number, y: number): void;
-  onUnequip(slot: EquipSlot): void;
+  onUnequip(slot: EquipSlot, to?: DropTarget): void;
   onUse(x: number, y: number): void;
   onDrop(x: number, y: number): void;
   /** Изготовить по рецепту. Хватает ли сырья — решит сервер. */
@@ -86,6 +86,8 @@ interface DragState {
   rotated: boolean;
   node: HTMLElement;
   from: GridKind;
+  /** Слот, из которого тянут надетое. `null` — тянут из сетки. */
+  slot: EquipSlot | null;
   /** Откуда начали тянуть — по этому отличают перенос от простого щелчка. */
   startX: number;
   startY: number;
@@ -116,10 +118,6 @@ export class InventoryUi {
   /** Идёт ли обмен. Правая кнопка кладёт на стол, если сундук закрыт. */
   private tradeOpen = false;
   private myLock = false;
-  /**
-   * Начатая работа. Полосу двигает клиент: сервер присылает длительность
-   * один раз, а гнать шкалу тиками — двадцать пакетов в секунду впустую.
-   */
   /** Раскладка казны: нужна подсветке, чтобы знать её размеры. */
   private bankGrid: Grid | null = null;
   /**
@@ -129,6 +127,10 @@ export class InventoryUi {
    * отпущена над той же клеткой, и браузер честно шлёт click.
    */
   private justDragged = false;
+  /**
+   * Начатая работа. Полосу двигает клиент: сервер присылает длительность
+   * один раз, а гнать шкалу тиками — двадцать пакетов в секунду впустую.
+   */
   private work: { name: string; duration: number; endsAt: number } | null = null;
   private workTimer = 0;
   private readonly slotNodes = new Map<EquipSlot, HTMLDivElement>();
@@ -149,8 +151,11 @@ export class InventoryUi {
     });
 
     this.discard.addEventListener('mouseup', () => {
-      // Выбросить можно только из рюкзака: содержимое казны не на руках.
-      if (this.drag?.from === 'backpack') this.handlers.onDrop(this.drag.item.x, this.drag.item.y);
+      // Выбросить можно только из рюкзака: содержимое казны не на руках,
+      // а надетое сперва снимают.
+      if (this.drag?.from === 'backpack' && !this.drag.slot) {
+        this.handlers.onDrop(this.drag.item.x, this.drag.item.y);
+      }
     });
   }
 
@@ -165,12 +170,26 @@ export class InventoryUi {
   show(): void {
     this.root.hidden = false;
     this.errorLine.textContent = '';
+    this.refreshHotbarMode();
   }
 
   hide(): void {
     this.root.hidden = true;
     this.cancelDrag();
+    this.refreshHotbarMode();
     this.handlers.onClose();
+  }
+
+  /**
+   * Панель переключается между «играю» и «разбираю вещи».
+   *
+   * Подсказки и поведение щелчка у неё разные по обе стороны рюкзака, а
+   * рисуется она при обновлении вещей — значит при открытии и закрытии её
+   * надо перерисовать, иначе подсказка будет врать до ближайшей находки.
+   */
+  private refreshHotbarMode(): void {
+    el<HTMLDivElement>('hotbar').classList.toggle('editing', this.open);
+    if (this.state) this.renderHotbar(this.state);
   }
 
   showError(message: string): void {
@@ -440,14 +459,18 @@ export class InventoryUi {
       const node = document.createElement('div');
       node.className = 'hot';
 
+      /**
+       * Щелчок значит разное по обе стороны рюкзака.
+       *
+       * Рюкзак закрыт — игра идёт, и щелчок применяет вещь. Рюкзак открыт —
+       * идёт разбор вещей, и щелчок **снимает назначение**. Иначе приглушённую
+       * ячейку с вещью, которой уже нет, нечем было убрать: правая кнопка тут
+       * не годится, браузер открывает по ней своё меню.
+       */
       node.addEventListener('click', () => {
-        if (!this.drag) this.handlers.onUseHotbar(index);
-      });
-
-      // Правая кнопка снимает назначение: иначе освободить ячейку нечем.
-      node.addEventListener('contextmenu', (event) => {
-        event.preventDefault();
-        this.handlers.onAssignHotbar(index, '');
+        if (this.drag) return;
+        if (this.open) this.handlers.onAssignHotbar(index, '');
+        else this.handlers.onUseHotbar(index);
       });
 
       node.addEventListener('mouseenter', () => {
@@ -498,7 +521,9 @@ export class InventoryUi {
         node.append(qty);
       }
 
-      const hint = 'Щелчок или клавиша ' + (index + 1) + ' — применить, правая кнопка — снять';
+      const hint = this.open
+        ? 'Щелчок — убрать с панели'
+        : 'Щелчок или клавиша ' + (index + 1) + ' — применить';
       node.title = [def.name, def.description, hint].filter(Boolean).join(' · ');
     }
   }
@@ -625,7 +650,7 @@ export class InventoryUi {
         bonus.className = 'slot-name';
         bonus.textContent = def.armor ? `броня ${def.armor}` : def.damage ? `урон ${def.damage}` : '';
         node.append(bonus);
-        node.title = 'Щелчок — снять';
+        node.title = 'Щелчок — снять, перетаскивание — в нужную клетку';
       } else {
         node.title = '';
       }
@@ -665,16 +690,30 @@ export class InventoryUi {
       node.dataset.slot = slot;
 
       node.addEventListener('click', () => {
+        // Конец перетаскивания браузер тоже считает щелчком — спрашиваем.
+        if (!this.takeClick()) return;
         if (this.state?.equipment[slot]) this.handlers.onUnequip(slot);
+      });
+
+      // Надетое можно вытащить мышью, как вещь из рюкзака: щелчок кладёт
+      // его на первое свободное место, перетаскивание — в выбранную клетку.
+      node.addEventListener('mousedown', (event) => {
+        const worn = this.state?.equipment[slot];
+        if (!worn) return;
+        event.preventDefault();
+        this.beginDrag(worn, node, event, 'backpack', slot);
       });
 
       // Слот — цель для перетаскивания: бросил сюда, значит надел.
       node.addEventListener('mouseup', () => {
-        // Надеть можно только своё: из казны вещь сперва вынимают.
-        if (this.drag?.from === 'backpack') this.handlers.onEquip(this.drag.item.x, this.drag.item.y);
+        // Надеть можно только своё: из казны вещь сперва вынимают, а
+        // надетое в другой слот не переставляют — слоты разного рода.
+        if (this.drag?.from === 'backpack' && !this.drag.slot) {
+          this.handlers.onEquip(this.drag.item.x, this.drag.item.y);
+        }
       });
       node.addEventListener('mouseenter', () => {
-        if (this.drag?.from === 'backpack') node.classList.add('hot');
+        if (this.drag?.from === 'backpack' && !this.drag.slot) node.classList.add('hot');
       });
       node.addEventListener('mouseleave', () => node.classList.remove('hot'));
 
@@ -690,6 +729,7 @@ export class InventoryUi {
     node: HTMLElement,
     event: MouseEvent,
     from: GridKind = 'backpack',
+    slot: EquipSlot | null = null,
   ): void {
     const def = itemDef(item.defId);
     this.justDragged = false;
@@ -698,6 +738,7 @@ export class InventoryUi {
       rotated: item.rotated,
       node,
       from,
+      slot,
       startX: event.clientX,
       startY: event.clientY,
       moved: false,
@@ -754,6 +795,14 @@ export class InventoryUi {
   private dropOn(drag: DragState, target: { grid: GridKind; x: number; y: number }): void {
     const rotate = drag.rotated !== drag.item.rotated;
     const to: DropTarget = { x: target.x, y: target.y, rotate };
+
+    // Надетое снимается в ту клетку, куда его притащили. В казну прямо
+    // из слота не кладут: сперва сними — иначе это два действия за одно
+    // движение, и на полпути между ними вещь негде держать.
+    if (drag.slot) {
+      if (target.grid === 'backpack') this.handlers.onUnequip(drag.slot, to);
+      return;
+    }
 
     if (drag.from === 'backpack' && target.grid === 'backpack') {
       this.handlers.onMove(drag.item.x, drag.item.y, target.x, target.y, rotate);

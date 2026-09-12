@@ -20,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -135,9 +135,18 @@ export const EquipSchema = z.object({
   y: z.number().int().min(0).max(63),
 });
 
+/**
+ * Снять надетое.
+ *
+ * Клетка назначения необязательна, как и у казны: щелчок по слоту её не знает
+ * и место ищет сервер, перетаскивание знает — вещь ложится именно туда.
+ */
 export const UnequipSchema = z.object({
   t: z.literal('unequip'),
   slot: SlotSchema,
+  toX: z.number().int().min(0).max(15).optional(),
+  toY: z.number().int().min(0).max(15).optional(),
+  rotate: z.boolean().optional(),
 });
 
 export const UseItemSchema = z.object({

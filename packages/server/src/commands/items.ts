@@ -5,10 +5,12 @@ import {
   addItem,
   itemAt,
   itemDef,
+  place,
   removeItem,
   type DropItemMessage,
   type EquipMessage,
   type MoveItemMessage,
+  type Grid,
   type ItemDef,
   type PlacedItem,
   type UnequipMessage,
@@ -91,10 +93,20 @@ export const handleUnequip: CommandHandler<UnequipMessage> = (ctx, payload) => {
   const item = player.equipment[payload.slot];
   if (!item) return refuse('Слот пуст');
 
-  const returned = addItem(player.inventory, item.defId, item.count);
-  if (returned.leftover > 0) return refuse('В рюкзаке нет места');
+  // Притащили мышью в конкретную клетку — кладём туда. Не влезло, или пришёл
+  // обычный щелчок по слоту — место ищет сервер.
+  let inventory: Grid | null = null;
+  if (payload.toX !== undefined && payload.toY !== undefined) {
+    const rotated = payload.rotate ?? false;
+    inventory = place(player.inventory, item.defId, item.count, payload.toX, payload.toY, rotated);
+  }
+  if (!inventory) {
+    const returned = addItem(player.inventory, item.defId, item.count);
+    if (returned.leftover > 0) return refuse('В рюкзаке нет места');
+    inventory = returned.grid;
+  }
 
-  player.inventory = returned.grid;
+  player.inventory = inventory;
   const equipment = { ...player.equipment };
   delete equipment[payload.slot];
   player.equipment = equipment;

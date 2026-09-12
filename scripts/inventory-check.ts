@@ -116,10 +116,21 @@ async function main(): Promise<void> {
   );
   check(find(client, 'knife') === null, 'надетое ушло из рюкзака');
 
-  client.send({ t: 'unequip', slot: 'mainHand' });
+  // Снять можно и в выбранную клетку: так это делает перетаскивание мышью
+  // из слота снаряжения в рюкзак.
+  // Дальний угол: нож 1x2, в 10x6 он туда встаёт целиком и место там свободно.
+  const corner = { x: 9, y: 4 };
+  client.send({ t: 'unequip', slot: 'mainHand', toX: corner.x, toY: corner.y, rotate: false });
   await sleep(400);
   check(client.inventory?.equipment.mainHand === undefined, 'нож снят');
-  check(find(client, 'knife') !== null, 'снятое вернулось в рюкзак');
+
+  const back = find(client, 'knife');
+  check(back !== null, 'снятое вернулось в рюкзак');
+  check(
+    back?.x === corner.x && back?.y === corner.y,
+    'и легло в указанную клетку',
+    `${back?.x},${back?.y}`,
+  );
 
   console.log('\n3. Панель горячих клавиш');
   // Нож уже сделан и лежит в рюкзаке — вешаем его на ячейку и выбрасываем.
