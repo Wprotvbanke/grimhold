@@ -366,11 +366,13 @@ function typingInto(target: EventTarget | null): boolean {
 }
 
 window.addEventListener('keydown', (event) => {
-  // Иначе «i» не набрать в имени персонажа: обработчик висит на окне и видит
-  // нажатия из полей ввода тоже.
+  // Иначе Tab не увести из поля в поле на экране входа: обработчик висит
+  // на окне и видит нажатия из полей ввода тоже.
   if (typingInto(event.target)) return;
 
-  if (event.code === 'KeyI') {
+  if (event.code === 'Tab') {
+    // Обязательно: иначе браузер уведёт фокус на свои элементы, и следующее
+    // нажатие уйдёт уже не игре.
     event.preventDefault();
     toggleInventory();
     return;
@@ -461,7 +463,7 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   combatUi.hideDeath();
   ui.system(`Добро пожаловать, ${character.name}.`);
   ui.system('ЛКМ — удар, СКМ — тяжёлый, ПКМ — блок, Shift — бег, C — рывок в сторону.');
-  ui.system('1…6 — панель, I — рюкзак. Вещи на панель кладутся перетаскиванием.');
+  ui.system('1…6 — панель, Tab — рюкзак. Вещи на панель кладутся перетаскиванием.');
   ui.setResumeHint(true);
 }
 

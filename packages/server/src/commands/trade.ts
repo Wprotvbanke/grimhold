@@ -16,6 +16,7 @@ import {
   type TradeWithdrawMessage,
 } from '@grimhold/shared';
 import { refreshLoadout, type Player, type Trade } from '../world.js';
+import { forgetMissing } from './hotbar.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
 /**
@@ -241,6 +242,9 @@ function settle(trade: Trade): GameEvent[] {
 
   trade.a.inventory = first;
   trade.b.inventory = second;
+  // Отданное с панели убирается: ячейка с чужой теперь вещью врёт.
+  for (const entry of trade.offerA) forgetMissing(trade.a, entry.itemId);
+  for (const entry of trade.offerB) forgetMissing(trade.b, entry.itemId);
   refreshLoadout(trade.a);
   refreshLoadout(trade.b);
   trade.a.dirty = true;

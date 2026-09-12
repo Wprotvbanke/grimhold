@@ -15,6 +15,7 @@ import {
   type UseItemMessage,
 } from '@grimhold/shared';
 import { refreshLoadout, type Player } from '../world.js';
+import { forgetMissing } from './hotbar.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
 /**
@@ -169,6 +170,8 @@ export const handleDropItem: CommandHandler<DropItemMessage> = (ctx, payload) =>
   if (!item) return refuse('Здесь ничего нет');
 
   player.inventory = removeItem(player.inventory, item);
+  // Выброшенное возвращать неоткуда: ячейка панели, если она была, врала бы.
+  forgetMissing(player, item.defId);
   refreshLoadout(player);
   return changed();
 };

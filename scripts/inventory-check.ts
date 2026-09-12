@@ -8,8 +8,9 @@
  *   2. лут с убитого моба попадает в рюкзак;
  *   3. вещи переживают перезаход;
  *   4. снаряжение надевается, даёт броню и урон, снимается обратно;
- *   5. сервер отказывает в невозможном переносе, а не делает вид, что всё вышло;
- *   6. расходник лечит и тратится.
+ *   5. выброшенное уходит и с панели горячих клавиш;
+ *   6. сервер отказывает в невозможном переносе, а не делает вид, что всё вышло;
+ *   7. расходник лечит и тратится.
  */
 import { INPUT_DT, TICK_RATE, itemAt, itemDef, type EntitySnapshot } from '@grimhold/shared';
 import { makeTool } from './fieldwork.js';
@@ -120,7 +121,23 @@ async function main(): Promise<void> {
   check(client.inventory?.equipment.mainHand === undefined, 'нож снят');
   check(find(client, 'knife') !== null, 'снятое вернулось в рюкзак');
 
-  console.log('\n3. Отказ в невозможном');
+  console.log('\n3. Панель горячих клавиш');
+  // Нож уже сделан и лежит в рюкзаке — вешаем его на ячейку и выбрасываем.
+  const onBar = find(client, 'knife')!;
+  client.send({ t: 'setHotbar', index: 0, itemId: 'knife' });
+  await sleep(300);
+  check(client.inventory?.hotbar[0] === 'knife', 'нож повешен на ячейку');
+
+  client.send({ t: 'dropItem', x: onBar.x, y: onBar.y });
+  await sleep(400);
+  check(find(client, 'knife') === null, 'нож выброшен');
+  check(
+    client.inventory?.hotbar[0] === null,
+    'выброшенное ушло и с панели',
+    String(client.inventory?.hotbar[0]),
+  );
+
+  console.log('\n4. Отказ в невозможном');
   client.errors.length = 0;
   client.send({ t: 'moveItem', fromX: 9, fromY: 5, toX: 0, toY: 0, rotate: false });
   await sleep(300);
@@ -136,7 +153,7 @@ async function main(): Promise<void> {
     'предмет не исчез при попытке уехать за край сетки',
   );
 
-  console.log('\n4. Перенос внутри рюкзака');
+  console.log('\n5. Перенос внутри рюкзака');
   const before = find(client, 'bandage')!;
   const target = { x: 8, y: 5 };
   client.send({
@@ -152,7 +169,7 @@ async function main(): Promise<void> {
   const moved = itemAt(client.inventory!.backpack, target.x, target.y);
   check(moved?.defId === 'bandage', 'бинт переехал в указанную клетку');
 
-  console.log('\n5. Использование расходника');
+  console.log('\n6. Использование расходника');
   // Сначала надо получить урон, иначе лечить нечего.
   for (let attempt = 0; attempt < 12; attempt++) {
     const self = client.latestSnapshot?.self;
@@ -203,7 +220,7 @@ async function main(): Promise<void> {
     check((find(client, 'bandage')?.count ?? 0) === countBefore - 1, 'бинт потрачен');
   }
 
-  console.log('\n6. Лут и перезаход');
+  console.log('\n7. Лут и перезаход');
   const lootBefore = client.inventory!.backpack.items.length;
   console.log(`  предметов в рюкзаке: ${lootBefore}`);
 

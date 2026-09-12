@@ -1,13 +1,16 @@
 import {
   SPELLS,
   beginAction,
+  countOf,
   findByDefId,
   isItemId,
   itemDef,
+  type ItemId,
   type SetHotbarMessage,
   type UseHotbarMessage,
 } from '@grimhold/shared';
 import { canAct, payForSpell } from '../combat.js';
+import type { Player } from '../world.js';
 import { handleEquip, handleUseItem } from './items.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
@@ -22,6 +25,29 @@ import type { CommandHandler, GameEvent } from './types.js';
 
 function refuse(reason: string): GameEvent[] {
   return [{ type: 'itemError', reason }];
+}
+
+/**
+ * Убирает вид предмета с панели, если его больше нигде нет.
+ *
+ * Зовётся там, где вещь ушла **по воле игрока**: выбросил, положил в казну,
+ * отдал в обмене. Ячейка, показывающая то, чего у тебя нет, просто врёт —
+ * и хуже всего это в бою, где на неё смотрят краем глаза.
+ *
+ * А вот когда вещь кончилась от использования, привязка остаётся: наберёшь
+ * новых бинтов — и ячейка снова заработает. Клиент такую приглушает.
+ */
+export function forgetMissing(player: Player, defId: ItemId): void {
+  if (countOf(player.inventory, defId) > 0) return;
+  if (Object.values(player.equipment).some((item) => item?.defId === defId)) return;
+
+  let cleared = false;
+  for (let index = 0; index < player.hotbar.length; index++) {
+    if (player.hotbar[index] !== defId) continue;
+    player.hotbar[index] = null;
+    cleared = true;
+  }
+  if (cleared) player.dirty = true;
 }
 
 export const handleSetHotbar: CommandHandler<SetHotbarMessage> = (ctx, payload) => {

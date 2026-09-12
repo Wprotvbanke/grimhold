@@ -13,6 +13,7 @@ import {
   type PlacedItem,
 } from '@grimhold/shared';
 import { refreshLoadout } from '../world.js';
+import { forgetMissing } from './hotbar.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
 /**
@@ -101,6 +102,9 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
     player.bank = rest;
     player.inventory = placed;
   }
+
+  // Ушло в казну — панель об этом знать обязана.
+  if (payload.dir === 'deposit') forgetMissing(player, item.defId);
 
   // Вес меняется в обе стороны: вынул из казны — понёс.
   refreshLoadout(player);
