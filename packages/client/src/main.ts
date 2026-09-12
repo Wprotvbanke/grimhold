@@ -135,6 +135,7 @@ const inventoryUi = new InventoryUi({
   onUnequip: (slot) => connection.send({ t: 'unequip', slot }),
   onUse: (x, y) => connection.send({ t: 'useItem', x, y }),
   onDrop: (x, y) => connection.send({ t: 'dropItem', x, y }),
+  onCraft: (recipeId) => connection.send({ t: 'craft', recipeId }),
   onClose: () => {
     controls.suspended = false;
     if (game && !combatUi.dead) ui.setResumeHint(!controls.locked);
@@ -373,6 +374,10 @@ function weightSpeedFactorFor(weight: number, capacity: number): number {
 function startGame(character: CharacterSummary, spawn: { x: number; y: number; z: number }): void {
   const profile = RACES[character.race];
   const body = { radius: profile.radius, height: profile.height };
+
+  // Раса решает, какие рецепты показывать: ремесло привязано к ней, а не
+  // к классу. Рюкзак об этом не знает — он приходит без персонажа.
+  inventoryUi.setRace(character.race);
 
   game?.hands.dispose();
 

@@ -5,6 +5,7 @@ import {
   addItem,
   findNode,
   itemDef,
+  toolOf,
   type HarvestMessage,
 } from '@grimhold/shared';
 import { refreshLoadout } from '../world.js';
@@ -55,9 +56,8 @@ export const handleHarvest: CommandHandler<HarvestMessage> = (ctx, payload) => {
    * дороге к жиле становится решением. Ради этого сетка предметов и заводилась.
    */
   if (profile.tool) {
-    const held = actor.equipment.mainHand ? itemDef(actor.equipment.mainHand.defId) : null;
-    const fits =
-      held?.toolKind === profile.tool && (held.toolTier ?? 0) >= profile.toolTier;
+    const held = toolOf(actor.equipment);
+    const fits = held?.kind === profile.tool && held.tier >= profile.toolTier;
     if (!fits) return refuse(`Нужен в руке: ${TOOL_NAMES[profile.tool] ?? profile.tool}`);
   }
 

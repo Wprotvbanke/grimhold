@@ -190,7 +190,9 @@
       #inventory[hidden] { display: none; }
 
       .inv-panel {
-        display: flex; gap: 18px; align-items: flex-start;
+        /* Колонок стало четыре — на узком экране они переносятся, а не режутся. */
+        display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap;
+        max-width: min(1180px, 96vw);
         background: var(--panel); border: 1px solid var(--line);
         border-radius: 6px; padding: 18px;
       }
@@ -226,6 +228,36 @@
       .inv-item.kind-armor { background: #252c33; border-color: #47535e; }
       .inv-item.kind-consumable { background: #2b3326; border-color: #4c5a44; }
       .inv-item.kind-scroll { background: #35302a; border-color: #6a5c42; }
+
+      /* Список рецептов: строка на изделие, под ней состав.
+         Красным подсвечено то, чего не хватает, — видно до нажатия. */
+      #craftList {
+        display: flex; flex-direction: column; gap: 6px;
+        max-height: 380px; overflow-y: auto; padding-right: 4px;
+      }
+      .recipe {
+        border: 1px solid var(--line); border-radius: 3px;
+        padding: 7px 9px; display: flex; flex-direction: column; gap: 3px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .recipe.ready { border-color: #4a5f3c; }
+      .recipe-head {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+      }
+      .recipe-name { font-size: 13px; }
+      .recipe button {
+        font-size: 11px; padding: 2px 9px; min-width: 0; width: auto;
+      }
+      /* Яркая кнопка, которая ничего не делает, — обман. Пока сырья нет,
+         это видно и по ней, а не только по красной строке состава. */
+      .recipe button:disabled {
+        background: transparent; color: var(--dim);
+        border-color: var(--line); cursor: default;
+      }
+      .recipe button:disabled:hover { background: transparent; }
+      .recipe-inputs { font-size: 11px; color: var(--dim); }
+      .recipe-inputs .lack { color: #c06a5c; }
+      .recipe-race { font-size: 10px; letter-spacing: 0.08em; color: var(--gold); }
 
       #dragGhost {
         position: fixed; z-index: 20; pointer-events: none; opacity: 0.85;
@@ -363,6 +395,15 @@
           <div class="weight-bar"><i id="weightFill"></i></div>
           <div class="stat-line" id="loadoutStats"></div>
           <p id="itemError"></p>
+        </div>
+
+        <div class="inv-col">
+          <div class="inv-title">Ремесло</div>
+          <div id="craftList"></div>
+          <p class="inv-hint" id="craftHint">
+            Простое делается где угодно и без рецепта. Остальное — по свиткам,
+            и только своей расой.
+          </p>
         </div>
 
         <div class="inv-col">

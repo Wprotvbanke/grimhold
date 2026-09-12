@@ -20,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -170,6 +170,17 @@ export const UseHotbarSchema = z.object({
 });
 
 /**
+ * Изготовить вещь по рецепту.
+ *
+ * Клиент шлёт только имя рецепта. Доступен ли он этой расе, изучен ли,
+ * хватает ли сырья и влезает ли результат — решает сервер.
+ */
+export const CraftSchema = z.object({
+  t: z.literal('craft'),
+  recipeId: z.string().max(48),
+});
+
+/**
  * Удар по ресурсной ноде.
  *
  * Клиент шлёт только имя ноды — намерение, а не результат. Что выпало, хватает
@@ -218,6 +229,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   SetHotbarSchema,
   UseHotbarSchema,
   HarvestSchema,
+  CraftSchema,
 ]);
 
 export type RegisterMessage = z.infer<typeof RegisterSchema>;
@@ -237,6 +249,7 @@ export type DropItemMessage = z.infer<typeof DropItemSchema>;
 export type SetHotbarMessage = z.infer<typeof SetHotbarSchema>;
 export type UseHotbarMessage = z.infer<typeof UseHotbarSchema>;
 export type HarvestMessage = z.infer<typeof HarvestSchema>;
+export type CraftMessage = z.infer<typeof CraftSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 // ---------- Сервер -> Клиент ----------

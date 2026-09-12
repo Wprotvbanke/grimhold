@@ -8,6 +8,8 @@
  */
 
 import { SPELLS, type SpellId } from './spells.js';
+// Только тип: ссылка нужна свиткам, а цикл при этом стирается при сборке.
+import type { RecipeId } from './recipes.js';
 
 export type ItemKind = 'resource' | 'consumable' | 'weapon' | 'armor' | 'tool' | 'scroll' | 'spell';
 
@@ -64,6 +66,14 @@ export interface ItemDef {
    * место наравне с зельями: маг тоже решает, что взять с собой.
    */
   spellId?: SpellId;
+  /**
+   * Какой рецепт открывает свиток.
+   *
+   * Свиток рецептурного яруса читается **только своей расой**: найденный
+   * чужой прочесть нельзя, зато можно продать. Отсюда и растёт торговля,
+   * ради которой расы разведены по ремёслам.
+   */
+  recipeId?: RecipeId;
   description?: string;
 }
 
@@ -80,6 +90,16 @@ export type ItemId =
   | 'crude_ingot'
   | 'grave_silver'
   | 'recipe_scrap'
+  // ---- свитки рецептурного яруса ----
+  | 'scroll_iron_sword'
+  | 'scroll_iron_helm'
+  | 'scroll_iron_cuirass'
+  | 'scroll_hunting_bow'
+  | 'scroll_leather_cap'
+  | 'scroll_leather_jerkin'
+  | 'scroll_health_potion'
+  | 'scroll_stamina_draught'
+  | 'scroll_stone_elixir'
   // ---- ресурсы из мира ----
   | 'log'
   | 'ore'
@@ -150,6 +170,36 @@ const ITEM_LIST: ItemDef[] = [
     tier: 2,
     description: 'Часть чертежа. Полные свитки ждут в подземельях.',
   },
+
+  // ---------- свитки рецептурного яруса ----------
+  //
+  // Падают в подземельях (веха 6); пока их роняет умертвие — самый злой
+  // обитатель диких земель. Читается свиток только своей расой, поэтому
+  // чужой — это товар, а не мусор.
+  ...(
+    [
+      ['scroll_iron_sword', 'Свиток: железный меч', 'iron_sword'],
+      ['scroll_iron_helm', 'Свиток: железный шлем', 'iron_helm'],
+      ['scroll_iron_cuirass', 'Свиток: железная кираса', 'iron_cuirass'],
+      ['scroll_hunting_bow', 'Свиток: охотничий лук', 'hunting_bow'],
+      ['scroll_leather_cap', 'Свиток: кожаная шапка', 'leather_cap'],
+      ['scroll_leather_jerkin', 'Свиток: кожаная куртка', 'leather_jerkin'],
+      ['scroll_health_potion', 'Свиток: зелье здоровья', 'health_potion'],
+      ['scroll_stamina_draught', 'Свиток: настой сил', 'stamina_draught'],
+      ['scroll_stone_elixir', 'Свиток: каменный эликсир', 'stone_elixir'],
+    ] as [ItemId, string, RecipeId][]
+  ).map(([id, name, recipeId]) => ({
+    id,
+    name,
+    kind: 'scroll' as const,
+    width: 1,
+    height: 2,
+    weight: 0.1,
+    stack: 1,
+    tier: 2,
+    recipeId,
+    description: 'Читается только своей расой. Чужой свиток — товар.',
+  })),
 
   // ---------- ресурсы из мира ----------
   { id: 'log', name: 'Бревно', kind: 'resource', width: 2, height: 2, weight: 5, stack: 5, tier: 0 },

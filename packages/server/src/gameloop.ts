@@ -88,6 +88,7 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
   for (const player of world.players.values()) {
     const combat = player.combat;
     player.harvestCooldown = Math.max(0, player.harvestCooldown - dt);
+    player.craftCooldown = Math.max(0, player.craftCooldown - dt);
 
     // Мёртвый не двигается и не действует, только отсчитывает время до подъёма.
     if (!combat.alive) {

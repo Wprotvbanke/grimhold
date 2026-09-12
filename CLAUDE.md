@@ -16,8 +16,8 @@ TypeScript и three.js. Meridian 59 как основа, PvP-флаги как �
 `packages/shared` (общий код), `packages/server`, `packages/client`, `scripts`.
 
 **Состояние:** вехи 1–3 закрыты (фундамент, мультиплеер с базой, бой и мобы).
-Идёт веха 4 — инвентарь и ремесло: этап 1 готов, дальше ресурсные ноды, ремесло,
-банк с обменом, интерфейс. Осталось четыре вехи из семи.
+Идёт веха 4 — инвентарь и ремесло: готовы сетка с весом, ресурсные ноды
+и ремесло; остались банк и обмен. Осталось четыре вехи из семи.
 
 Мир при этом уже одет: небо, смена дня и ночи, уличный огонь, лес и постройки
 города — см. разделы ниже.
@@ -34,7 +34,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 |---|---|
 | `npm run check` | тесты и типы всех пакетов и скриптов |
 | `npm test` · `npx vitest run <файл>` | юнит-тесты целиком или один файл |
-| `npm run e2e` · `combat` · `inventory` · `harvest` · `netcode` · `gate` | сквозные проверки |
+| `npm run e2e` · `combat` · `inventory` · `harvest` · `craft` · `netcode` · `gate` | сквозные проверки |
 | `npx tsx scripts/prepare-*.ts` | пересобрать ассеты — см. [docs/assets.md](docs/assets.md) |
 | `npx tsx scripts/screenshot.ts` | снимок игры браузером против запущенного `dev` |
 | `npm run roster` | сводка по населению мира |
@@ -69,6 +69,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/buildings.md](docs/buildings.md) | строишь здание, текстуры построек, таверна |
 | [docs/loot.md](docs/loot.md) | предметы, добыча с мобов, рюкзак, вес, экипировка |
 | [docs/nodes.md](docs/nodes.md) | ресурсные ноды: что где добывают и чем |
+| [docs/crafting.md](docs/crafting.md) | рецепты, изготовление, свитки и расовое ремесло |
 | [docs/nature.md](docs/nature.md) | деревья, кусты, трава, камни диких земель |
 | [docs/sun.md](docs/sun.md) | ход солнца, смена дня и ночи, палитра освещения |
 | [docs/sky.md](docs/sky.md) | небесный купол, облака, цвет неба |

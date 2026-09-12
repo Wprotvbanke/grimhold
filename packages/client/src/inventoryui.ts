@@ -2,6 +2,9 @@ import {
   DASH_WEIGHT_LIMIT,
   EQUIP_SLOTS,
   HOTBAR_SIZE,
+  recipesForRace,
+  type Race,
+  type RecipeId,
   SLOT_NAMES,
   countOf,
   itemDef,
@@ -39,6 +42,8 @@ export interface InventoryHandlers {
   onUnequip(slot: EquipSlot): void;
   onUse(x: number, y: number): void;
   onDrop(x: number, y: number): void;
+  /** Изготовить по рецепту. Хватает ли сырья — решит сервер. */
+  onCraft(recipeId: RecipeId): void;
   /** Закрытие рюкзака возвращает управление игрой. */
   onClose(): void;
 }
@@ -59,6 +64,8 @@ export class InventoryUi {
   private readonly errorLine = el<HTMLParagraphElement>('itemError');
 
   private state: InventoryMessage | null = null;
+  /** Раса персонажа: от неё зависит, какие рецепты вообще показывать. */
+  private race: Race | null = null;
   private drag: DragState | null = null;
   private readonly slotNodes = new Map<EquipSlot, HTMLDivElement>();
   private readonly hotbarNodes: HTMLDivElement[] = [];
@@ -108,6 +115,78 @@ export class InventoryUi {
     this.renderSlots(state.equipment);
     this.renderHotbar(state);
     this.renderWeight(state);
+    this.renderCrafting(state);
+  }
+
+  /**
+   * Раса приходит с персонажем, а не с рюкзаком, поэтому задаётся отдельно.
+   * Без неё нельзя решить, какие рецепты вообще показывать.
+   */
+  setRace(race: Race): void {
+    this.race = race;
+    if (this.state) this.renderCrafting(this.state);
+  }
+
+  /**
+   * Список рецептов.
+   *
+   * Показываем то же, что разрешит сервер (`recipesForRace`), и прямо в строке
+   * пишем, чего не хватает. Кнопка, которая гарантированно откажет, — худший
+   * вид интерфейса: человек жмёт и не понимает, почему ничего не вышло.
+   */
+  private renderCrafting(state: InventoryMessage): void {
+    const list = el<HTMLDivElement>('craftList');
+    list.replaceChildren();
+    if (!this.race) return;
+
+    for (const recipe of recipesForRace(this.race, state.knownRecipes)) {
+      const row = document.createElement('div');
+      row.className = 'recipe';
+
+      const head = document.createElement('div');
+      head.className = 'recipe-head';
+
+      const name = document.createElement('span');
+      name.className = 'recipe-name';
+      const output = itemDef(recipe.output.itemId);
+      name.textContent =
+        recipe.output.count > 1 ? `${output.name} ×${recipe.output.count}` : output.name;
+      head.append(name);
+
+      const button = document.createElement('button');
+      button.textContent = 'Сделать';
+      button.addEventListener('click', () => this.handlers.onCraft(recipe.id));
+      head.append(button);
+      row.append(head);
+
+      const inputs = document.createElement('div');
+      inputs.className = 'recipe-inputs';
+      let ready = true;
+
+      for (const [index, need] of recipe.inputs.entries()) {
+        const have = countOf(state.backpack, need.itemId);
+        const enough = have >= need.count;
+        if (!enough) ready = false;
+
+        const part = document.createElement('span');
+        if (!enough) part.className = 'lack';
+        part.textContent = `${itemDef(need.itemId).name} ${have}/${need.count}`;
+        if (index > 0) inputs.append(document.createTextNode(' · '));
+        inputs.append(part);
+      }
+
+      row.append(inputs);
+      if (recipe.race) {
+        const mark = document.createElement('div');
+        mark.className = 'recipe-race';
+        mark.textContent = 'по свитку';
+        row.append(mark);
+      }
+
+      button.disabled = !ready;
+      row.classList.toggle('ready', ready);
+      list.append(row);
+    }
   }
 
   /**

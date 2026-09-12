@@ -1,6 +1,7 @@
 import type { ClientMessage } from '@grimhold/shared';
 import { handleAction, handleBlock, handleCast } from './action.js';
 import { handleChat } from './chat.js';
+import { handleCraft } from './craft.js';
 import { handleHarvest } from './harvest.js';
 import { handleSetHotbar, handleUseHotbar } from './hotbar.js';
 import {
@@ -50,6 +51,8 @@ export function dispatch(ctx: CommandContext, message: ClientMessage): GameEvent
       return handleUseHotbar(ctx, message);
     case 'harvest':
       return handleHarvest(ctx, message);
+    case 'craft':
+      return handleCraft(ctx, message);
     default:
       return [];
   }

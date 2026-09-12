@@ -1,4 +1,6 @@
 import {
+  RACES,
+  RECIPES,
   addItem,
   canPlace,
   itemAt,
@@ -8,6 +10,7 @@ import {
   type DropItemMessage,
   type EquipMessage,
   type MoveItemMessage,
+  type ItemDef,
   type PlacedItem,
   type UnequipMessage,
   type UseItemMessage,
@@ -131,6 +134,30 @@ export const handleUnequip: CommandHandler<UnequipMessage> = (ctx, payload) => {
   return changed();
 };
 
+/**
+ * Чтение свитка рецептурного яруса.
+ *
+ * Свиток читается **только своей расой**. Найденный чужой прочесть нельзя —
+ * и это не досада, а причина торговать: дворфу нужен эльф, эльфу человек.
+ * Ради этого расы и разведены по ремёслам.
+ */
+function readScroll(player: Player, item: PlacedItem, def: ItemDef): GameEvent[] {
+  if (!def.recipeId) return refuse(`${def.name} ничего не открывает`);
+
+  const recipe = RECIPES[def.recipeId];
+  if (recipe.race && recipe.race !== player.race) {
+    return refuse(`${RACES[recipe.race].name} прочёл бы, а ты нет`);
+  }
+  if (player.knownRecipes.includes(def.recipeId)) {
+    return refuse('Этот рецепт ты уже знаешь');
+  }
+
+  player.knownRecipes = [...player.knownRecipes, def.recipeId];
+  consumeOne(player, item);
+  refreshLoadout(player);
+  return changed();
+}
+
 export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
   const player = ctx.actor;
   const combat = player.combat;
@@ -140,6 +167,10 @@ export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
   if (!item) return refuse('Здесь ничего нет');
 
   const def = itemDef(item.defId);
+
+  // Свиток не пьют, а читают: он открывает рецепт и на этом кончается.
+  if (def.kind === 'scroll') return readScroll(player, item, def);
+
   if (def.kind !== 'consumable') return refuse(`${def.name} так не используется`);
   if (!def.restoreHealth && !def.restoreStamina) {
     return refuse(`${def.name} сейчас бесполезен`);
