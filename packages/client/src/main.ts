@@ -277,13 +277,18 @@ const connection = new Connection(SERVER_URL, {
   },
   onTrade: (message) => {
     tradeOpen = message.stage === 'open' || message.stage === 'invited';
+    if (tradeOpen) openInventory();
     inventoryUi.setTrade(message);
     if (message.note) ui.system(message.note);
   },
   onBank: (message) => {
     bankOpen = message.open;
+    // Сундук открывают из мира: курсор надо вернуть до того, как рисовать
+    // казну, иначе панель видно, а взять из неё нечем.
+    if (message.open) openInventory();
     inventoryUi.setBank(message);
   },
+  onCrafting: (message) => inventoryUi.setCrafting(message),
   onItemError: (message) => inventoryUi.showError(message),
   onDisconnected: () => {
     if (game) ui.system('Связь потеряна, переподключаюсь…');
@@ -307,6 +312,22 @@ renderer.domElement.addEventListener('mousedown', () => {
 });
 
 /**
+ * Отпустить мышь и показать рюкзак.
+ *
+ * Отдельно от клавиши, потому что панель поднимается не только по `I`:
+ * казну и стол обмена открывают из мира, и без этого курсор оставался
+ * захваченным — панель видно, а взять вещь нечем.
+ */
+function openInventory(): void {
+  if (!game || combatUi.dead) return;
+  // Мышь нужна курсором, а не для обзора: отпускаем захват.
+  controls.suspended = true;
+  document.exitPointerLock();
+  ui.setResumeHint(false);
+  inventoryUi.show();
+}
+
+/**
  * Клавиша рюкзака — целиком здесь, и только здесь.
  *
  * Controls её не слышит: пока рюкзак открыт, захват мыши отпущен и боевой ввод
@@ -323,11 +344,7 @@ function toggleInventory(): void {
     return;
   }
 
-  // Мышь нужна курсором, а не для обзора: отпускаем захват.
-  controls.suspended = true;
-  document.exitPointerLock();
-  ui.setResumeHint(false);
-  inventoryUi.show();
+  openInventory();
 }
 
 /**

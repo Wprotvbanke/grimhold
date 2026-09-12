@@ -113,8 +113,13 @@ export interface Player {
   lastIntent: { forward: number; right: number; jump: boolean };
   /** Секунд до следующего удара по ресурсной ноде. */
   harvestCooldown: number;
-  /** Секунд до следующего изделия: пауза берётся из самого рецепта. */
-  craftCooldown: number;
+  /**
+   * Начатая работа, если игрок сейчас мастерит.
+   *
+   * Длительность лежит здесь же, а не берётся из рецепта на месте: полосу
+   * на клиенте надо чем-то заполнять, и обе величины должны прийти вместе.
+   */
+  crafting: { recipeId: RecipeId; duration: number; remaining: number } | null;
   /**
    * Игрок попросил воскресить, но срок лежания ещё не вышел.
    *
@@ -229,7 +234,7 @@ export class World {
       lastProcessedSeq: -1,
       lastIntent: { forward: 0, right: 0, jump: false },
       harvestCooldown: 0,
-      craftCooldown: 0,
+      crafting: null,
       wantsRespawn: false,
       dirty: true,
       attributes,

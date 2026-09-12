@@ -13,6 +13,7 @@ import {
   type Equipment,
   type Grid,
   type BankMessage,
+  type CraftingMessage,
   type TradeMessage,
   type InventoryMessage,
   type PlacedItem,
@@ -64,10 +65,14 @@ export interface InventoryHandlers {
   onClose(): void;
 }
 
+/** Откуда тянут вещь. От этого зависит, что значит «бросил сюда». */
+type GridKind = 'backpack' | 'bank';
+
 interface DragState {
   item: PlacedItem;
   rotated: boolean;
   node: HTMLElement;
+  from: GridKind;
 }
 
 export class InventoryUi {
@@ -94,6 +99,12 @@ export class InventoryUi {
   /** Идёт ли обмен. Правая кнопка кладёт на стол, если сундук закрыт. */
   private tradeOpen = false;
   private myLock = false;
+  /**
+   * Начатая работа. Полосу двигает клиент: сервер присылает длительность
+   * один раз, а гнать шкалу тиками — двадцать пакетов в секунду впустую.
+   */
+  private work: { name: string; duration: number; endsAt: number } | null = null;
+  private workTimer = 0;
   private readonly slotNodes = new Map<EquipSlot, HTMLDivElement>();
   private readonly hotbarNodes: HTMLDivElement[] = [];
 
@@ -112,7 +123,8 @@ export class InventoryUi {
     });
 
     this.discard.addEventListener('mouseup', () => {
-      if (this.drag) this.handlers.onDrop(this.drag.item.x, this.drag.item.y);
+      // Выбросить можно только из рюкзака: содержимое казны не на руках.
+      if (this.drag?.from === 'backpack') this.handlers.onDrop(this.drag.item.x, this.drag.item.y);
     });
   }
 
@@ -236,6 +248,51 @@ export class InventoryUi {
     this.fillTradeList(el<HTMLDivElement>('tradeTheirs'), message.theirs, false);
   }
 
+  /**
+   * Ход изготовления.
+   *
+   * Приходит дважды: в начале работы и в конце. Между ними полоса идёт сама
+   * по известной длительности — сервер остаётся хозяином конца, но не тратит
+   * на шкалу ни одного лишнего пакета.
+   */
+  setCrafting(message: CraftingMessage): void {
+    if (message.note) this.showError(message.note);
+
+    if (!message.recipeId) {
+      this.work = null;
+      this.stopWorkTimer();
+      el<HTMLDivElement>('craftBar').hidden = true;
+      if (this.state) this.renderCrafting(this.state);
+      return;
+    }
+
+    this.work = {
+      name: message.name,
+      duration: Math.max(0.1, message.duration),
+      endsAt: performance.now() + message.remaining * 1000,
+    };
+    el<HTMLDivElement>('craftBar').hidden = false;
+    el<HTMLSpanElement>('craftBarName').textContent = message.name;
+    if (this.state) this.renderCrafting(this.state);
+
+    this.stopWorkTimer();
+    const tick = () => {
+      if (!this.work) return;
+      const left = Math.max(0, (this.work.endsAt - performance.now()) / 1000);
+      const done = 1 - left / this.work.duration;
+      el<HTMLElement>('craftBarFill').style.transform = `scaleX(${Math.min(1, Math.max(0, done))})`;
+      el<HTMLSpanElement>('craftBarLeft').textContent = `${left.toFixed(1)} с`;
+      // Полоса дошла до конца — ждём слова сервера, он и уберёт её.
+      this.workTimer = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  private stopWorkTimer(): void {
+    if (this.workTimer) cancelAnimationFrame(this.workTimer);
+    this.workTimer = 0;
+  }
+
   private fillTradeList(list: HTMLDivElement, entries: TradeMessage['mine'], own: boolean): void {
     list.classList.toggle('own', own);
     list.replaceChildren();
@@ -255,10 +312,15 @@ export class InventoryUi {
   private renderBank(grid: Grid): void {
     this.bankCells.style.gridTemplateColumns = `repeat(${grid.width}, 42px)`;
     this.bankCells.replaceChildren();
-    for (let i = 0; i < grid.width * grid.height; i++) {
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      this.bankCells.append(cell);
+    for (let y = 0; y < grid.height; y++) {
+      for (let x = 0; x < grid.width; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.grid = 'bank';
+        cell.dataset.x = String(x);
+        cell.dataset.y = String(y);
+        this.bankCells.append(cell);
+      }
     }
 
     for (const node of this.bankWrap.querySelectorAll('.inv-item')) node.remove();
@@ -326,7 +388,8 @@ export class InventoryUi {
         row.append(mark);
       }
 
-      button.disabled = !ready;
+      // Пока идёт работа, взяться за вторую нельзя — и это видно по кнопкам.
+      button.disabled = !ready || this.work !== null;
       row.classList.toggle('ready', ready);
       list.append(row);
     }
@@ -416,6 +479,7 @@ export class InventoryUi {
       for (let x = 0; x < grid.width; x++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
+        cell.dataset.grid = 'backpack';
         cell.dataset.x = String(x);
         cell.dataset.y = String(y);
         this.cells.append(cell);
@@ -467,7 +531,7 @@ export class InventoryUi {
 
     node.addEventListener('mousedown', (event) => {
       event.preventDefault();
-      this.beginDrag(item, node, event);
+      this.beginDrag(item, node, event, 'backpack');
     });
 
     node.addEventListener('dblclick', (event) => {
@@ -550,10 +614,11 @@ export class InventoryUi {
 
       // Слот — цель для перетаскивания: бросил сюда, значит надел.
       node.addEventListener('mouseup', () => {
-        if (this.drag) this.handlers.onEquip(this.drag.item.x, this.drag.item.y);
+        // Надеть можно только своё: из казны вещь сперва вынимают.
+        if (this.drag?.from === 'backpack') this.handlers.onEquip(this.drag.item.x, this.drag.item.y);
       });
       node.addEventListener('mouseenter', () => {
-        if (this.drag) node.classList.add('hot');
+        if (this.drag?.from === 'backpack') node.classList.add('hot');
       });
       node.addEventListener('mouseleave', () => node.classList.remove('hot'));
 
@@ -564,9 +629,14 @@ export class InventoryUi {
 
   // ---------- перетаскивание ----------
 
-  private beginDrag(item: PlacedItem, node: HTMLElement, event: MouseEvent): void {
+  private beginDrag(
+    item: PlacedItem,
+    node: HTMLElement,
+    event: MouseEvent,
+    from: GridKind = 'backpack',
+  ): void {
     const def = itemDef(item.defId);
-    this.drag = { item, rotated: item.rotated, node };
+    this.drag = { item, rotated: item.rotated, node, from };
     node.classList.add('dragging');
 
     this.ghost.hidden = false;
@@ -588,10 +658,7 @@ export class InventoryUi {
       const drag = this.drag;
       // Отпустили мимо сетки — это могла быть цель-слот или корзина,
       // у них свои обработчики; здесь просто прекращаем перенос.
-      if (target) {
-        const rotate = drag.rotated !== drag.item.rotated;
-        this.handlers.onMove(drag.item.x, drag.item.y, target.x, target.y, rotate);
-      }
+      if (target) this.dropOn(drag, target);
       this.cancelDrag();
     });
 
@@ -605,6 +672,29 @@ export class InventoryUi {
       }
       if (event.code === 'Escape') this.cancelDrag();
     });
+  }
+
+  /**
+   * Что значит «бросил сюда».
+   *
+   * Внутри рюкзака это перекладывание с точностью до клетки, между рюкзаком
+   * и казной — перенос: раскладку в хранилище наводит сервер, и тащить вещь
+   * в конкретную клетку сундука было бы обещанием, которого он не держит.
+   */
+  private dropOn(drag: DragState, target: { grid: GridKind; x: number; y: number }): void {
+    if (drag.from === 'backpack' && target.grid === 'backpack') {
+      const rotate = drag.rotated !== drag.item.rotated;
+      this.handlers.onMove(drag.item.x, drag.item.y, target.x, target.y, rotate);
+      return;
+    }
+    if (drag.from === 'backpack' && target.grid === 'bank') {
+      this.handlers.onDeposit(drag.item.x, drag.item.y);
+      return;
+    }
+    if (drag.from === 'bank' && target.grid === 'backpack') {
+      this.handlers.onWithdraw(drag.item.x, drag.item.y);
+    }
+    // Из казны в казну — ничего: перекладывать там нечего.
   }
 
   private updateGhost(clientX: number, clientY: number): void {
@@ -622,12 +712,20 @@ export class InventoryUi {
 
   /** Подсветка клеток под предметом: зелёная — влезает, красная — нет. */
   private highlightTarget(event: MouseEvent): void {
-    for (const cell of this.cells.querySelectorAll('.cell')) {
-      cell.classList.remove('hot', 'bad');
-    }
+    this.clearCells();
 
     const target = this.cellUnder(event);
     if (!target || !this.drag || !this.state) return;
+
+    // Перенос между сетками кладёт вещь туда, где найдётся место, а не в
+    // клетку под курсором. Подсвечивать одну клетку значило бы обещать
+    // лишнее, поэтому светится вся принимающая сетка.
+    if (target.grid !== this.drag.from) {
+      const box = target.grid === 'bank' ? this.bankCells : this.cells;
+      for (const cell of box.querySelectorAll('.cell')) cell.classList.add('hot');
+      return;
+    }
+    if (target.grid === 'bank') return;
 
     const size = sizeOf(this.drag.item.defId, this.drag.rotated);
     const grid = this.state.backpack;
@@ -642,15 +740,25 @@ export class InventoryUi {
     }
   }
 
+  private clearCells(): void {
+    for (const box of [this.cells, this.bankCells]) {
+      for (const cell of box.querySelectorAll('.cell')) cell.classList.remove('hot', 'bad');
+    }
+  }
+
   private cellAt(x: number, y: number): HTMLElement | null {
     return this.cells.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
   }
 
-  private cellUnder(event: MouseEvent): { x: number; y: number } | null {
+  private cellUnder(event: MouseEvent): { grid: GridKind; x: number; y: number } | null {
     const node = document.elementFromPoint(event.clientX, event.clientY);
     const cell = node?.closest('.cell') as HTMLElement | null;
     if (!cell) return null;
-    return { x: Number(cell.dataset.x), y: Number(cell.dataset.y) };
+    return {
+      grid: (cell.dataset.grid ?? 'backpack') as GridKind,
+      x: Number(cell.dataset.x),
+      y: Number(cell.dataset.y),
+    };
   }
 
   private cancelDrag(): void {
@@ -658,10 +766,7 @@ export class InventoryUi {
     this.drag = null;
     this.ghost.hidden = true;
     this.discard.classList.remove('hot');
-
-    for (const cell of this.cells.querySelectorAll('.cell')) {
-      cell.classList.remove('hot', 'bad');
-    }
+    this.clearCells();
     for (const node of this.slotNodes.values()) node.classList.remove('hot');
     for (const node of this.hotbarNodes) node.classList.remove('hot-target');
   }

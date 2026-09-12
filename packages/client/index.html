@@ -229,6 +229,24 @@
       .inv-item.kind-consumable { background: #2b3326; border-color: #4c5a44; }
       .inv-item.kind-scroll { background: #35302a; border-color: #6a5c42; }
 
+      /* Полоса работы: видно, что именно делается и сколько осталось.
+         Раньше изделие появлялось сразу, а пауза шла молча — со стороны это
+         выглядело как подвисшая кнопка. */
+      #craftBar[hidden] { display: none; }
+      .craft-bar-head {
+        display: flex; justify-content: space-between; gap: 8px;
+        font-size: 11px; color: var(--gold); margin-bottom: 3px;
+      }
+      .craft-bar-head span:last-child { color: var(--dim); font-variant-numeric: tabular-nums; }
+      .craft-bar {
+        height: 8px; border-radius: 2px; overflow: hidden;
+        background: rgba(6, 6, 8, 0.8); border: 1px solid #2b2721;
+      }
+      .craft-bar > i {
+        display: block; height: 100%; width: 100%; transform-origin: left center;
+        background: linear-gradient(90deg, #7a5a2a, #e0913f);
+      }
+
       /* Список рецептов: строка на изделие, под ней состав.
          Красным подсвечено то, чего не хватает, — видно до нажатия. */
       #craftList {
@@ -434,8 +452,9 @@
             <div class="grid-cells" id="bankCells"></div>
           </div>
           <p class="inv-hint">
-            Щелчок по вещи в казне — забрать, правая кнопка по вещи в рюкзаке —
-            положить. Здесь ничего не пропадёт со смертью, и хранилище общее
+            Перетаскивай вещи мышью из рюкзака в казну и обратно; щелчок по
+            вещи в казне тоже забирает её, правая кнопка по вещи в рюкзаке —
+            кладёт. Здесь ничего не пропадёт со смертью, и хранилище общее
             на все твои персонажи.
           </p>
         </div>
@@ -464,6 +483,13 @@
 
         <div class="inv-col" id="craftCol">
           <div class="inv-title">Ремесло</div>
+          <div id="craftBar" hidden>
+            <div class="craft-bar-head">
+              <span id="craftBarName"></span>
+              <span id="craftBarLeft"></span>
+            </div>
+            <div class="craft-bar"><i id="craftBarFill"></i></div>
+          </div>
           <div id="craftList"></div>
           <p class="inv-hint" id="craftHint">
             Простое делается где угодно и без рецепта. Остальное — по свиткам,

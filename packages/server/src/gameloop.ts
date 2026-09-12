@@ -14,6 +14,7 @@ import {
   weaponDamageOf,
   weightSpeedFactor,
   type CombatEvent,
+  type CraftingMessage,
   type LifeMessage,
   type LootMessage,
   type ItemId,
@@ -21,6 +22,7 @@ import {
   type SkillUpMessage,
   type SpellId,
 } from '@grimhold/shared';
+import { craftingMessage, finishCraft } from './commands/craft.js';
 import {
   applyDodgeImpulse,
   resolveCone,
@@ -60,12 +62,22 @@ export interface Outbox {
    * по устаревшей картинке и получал отказы на клетках, выглядящих пустыми.
    */
   inventory: Player[];
+  /** Ход изготовления: начало и конец работы. */
+  crafting: { playerId: string; message: CraftingMessage }[];
   /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
   criticalSaves: Player[];
 }
 
 export function emptyOutbox(): Outbox {
-  return { combat: [], skillUps: [], life: [], loot: [], inventory: [], criticalSaves: [] };
+  return {
+    combat: [],
+    skillUps: [],
+    life: [],
+    loot: [],
+    inventory: [],
+    crafting: [],
+    criticalSaves: [],
+  };
 }
 
 /** Сколько секунд лежать до возможности воскреснуть. */
@@ -88,12 +100,40 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
   for (const player of world.players.values()) {
     const combat = player.combat;
     player.harvestCooldown = Math.max(0, player.harvestCooldown - dt);
-    player.craftCooldown = Math.max(0, player.craftCooldown - dt);
+
+    // Работа идёт, пока игрок жив: полосу двигает клиент, а конец назначает
+    // сервер — иначе изделие зависело бы от частоты кадров у мастера.
+    if (player.crafting) {
+      player.crafting.remaining -= dt;
+      if (player.crafting.remaining <= 0) {
+        for (const event of finishCraft(player)) {
+          if (event.type === 'crafting') {
+            outbox.crafting.push({
+              playerId: player.id,
+              message: craftingMessage(player, event.note as string | undefined),
+            });
+          }
+          if (event.type === 'inventory') outbox.inventory.push(player);
+          if (event.type === 'loot') {
+            outbox.loot.push({ playerId: player.id, message: event.message as LootMessage });
+          }
+        }
+      }
+    }
 
     // Мёртвый не двигается и не действует, только отсчитывает время до подъёма.
     if (!combat.alive) {
       player.deadFor += dt;
       player.pendingInputs.length = 0;
+
+      // Смерть прерывает работу: сырьё цело, изделия нет.
+      if (player.crafting) {
+        player.crafting = null;
+        outbox.crafting.push({
+          playerId: player.id,
+          message: craftingMessage(player, 'Работа брошена'),
+        });
+      }
 
       /**
        * Ранняя просьба о воскрешении не пропадает, а ждёт срока.

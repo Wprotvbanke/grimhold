@@ -2,6 +2,7 @@ import {
   PROTOCOL_VERSION,
   encode,
   type BankMessage,
+  type CraftingMessage,
   type TradeMessage,
   type ChatBroadcast,
   type CharacterSummary,
@@ -30,6 +31,7 @@ export interface ConnectionHandlers {
   onInventory?(message: InventoryMessage): void;
   onBank?(message: BankMessage): void;
   onTrade?(message: TradeMessage): void;
+  onCrafting?(message: CraftingMessage): void;
   onItemError?(message: string): void;
   onDisconnected?(): void;
 }
@@ -98,6 +100,9 @@ export class Connection {
           break;
         case 'trade':
           this.handlers.onTrade?.(message);
+          break;
+        case 'crafting':
+          this.handlers.onCrafting?.(message);
           break;
         case 'itemError':
           this.handlers.onItemError?.(message.message);

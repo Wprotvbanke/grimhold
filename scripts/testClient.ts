@@ -10,6 +10,7 @@ import {
   type ClientMessage,
   type CombatEvent,
   type BankMessage,
+  type CraftingMessage,
   type TradeMessage,
   type InventoryMessage,
   type LifeMessage,
@@ -47,6 +48,8 @@ export class TestClient {
   bank: BankMessage | null = null;
   /** Последнее состояние стола обмена. */
   trade: TradeMessage | null = null;
+  /** Последнее состояние работы: начало и конец изготовления. */
+  crafting: CraftingMessage | null = null;
   readonly errors: string[] = [];
   onSnapshot?: (snapshot: SnapshotMessage) => void;
 
@@ -147,6 +150,9 @@ export class TestClient {
         break;
       case 'trade':
         this.trade = message;
+        break;
+      case 'crafting':
+        this.crafting = message;
         break;
       case 'itemError':
         this.errors.push(message.message);

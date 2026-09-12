@@ -126,7 +126,17 @@ async function main(): Promise<void> {
   const planksBefore = have(dwarf, 'plank');
   dwarf.errors.length = 0;
   dwarf.send({ t: 'craft', recipeId: 'plank_from_log' });
-  await sleep(500);
+  await sleep(400);
+
+  // Работа теперь занимает время, и это видно: сначала приходит полоса.
+  check(dwarf.crafting?.recipeId === 'plank_from_log', 'работа началась и показана');
+  check(
+    have(dwarf, 'plank') === planksBefore,
+    'изделия ещё нет — оно появляется в конце, а не в начале',
+  );
+
+  await sleep(RECIPES.plank_from_log.duration * 1000 + 500);
+  check(dwarf.crafting?.recipeId === null, 'полоса убрана по окончании');
 
   const made = have(dwarf, 'plank') - planksBefore;
   check(made === RECIPES.plank_from_log.output.count, 'из бревна вышли доски', `${made} шт.`);
