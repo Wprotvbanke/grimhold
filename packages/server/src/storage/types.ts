@@ -1,4 +1,4 @@
-import type { CharacterClass, Race } from '@grimhold/shared';
+import type { CharacterClass, Equipment, Grid, Hotbar, Race, RecipeId } from '@grimhold/shared';
 
 /**
  * Интерфейс хранилища. Весь доступ к БД идёт только через него —
@@ -28,6 +28,16 @@ export interface CharacterRecord {
   createdAt: number;
   lastSeenAt: number;
   playtimeSeconds: number;
+  /**
+   * Рюкзак, надетое и изученные рецепты хранятся как JSON в строке персонажа,
+   * а не таблицей на предмет. Так сохранение остаётся одним UPDATE вместо
+   * сорока INSERT. Разносить на строки будем, когда понадобится искать
+   * предметы по миру — то есть под аукцион.
+   */
+  inventory: Grid;
+  equipment: Equipment;
+  knownRecipes: RecipeId[];
+  hotbar: Hotbar;
 }
 
 /** То, что меняется в игре и подлежит пакетной записи. */
@@ -39,6 +49,10 @@ export interface CharacterSave {
   yaw: number;
   lastSeenAt: number;
   playtimeSeconds: number;
+  inventory: Grid;
+  equipment: Equipment;
+  knownRecipes: RecipeId[];
+  hotbar: Hotbar;
 }
 
 export interface Storage {
@@ -58,6 +72,13 @@ export interface Storage {
 
   /** Пакетная запись в одной транзакции — основной путь сохранения. */
   saveCharacters(saves: CharacterSave[]): void;
+
+  /**
+   * Банк привязан к аккаунту, а не к персонажу: это общий склад,
+   * и на вехе 6 именно он станет тем, ради чего выносят добычу.
+   */
+  getBank(accountId: string): Grid;
+  saveBank(accountId: string, bank: Grid): void;
 
   close(): void;
 }

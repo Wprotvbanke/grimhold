@@ -27,7 +27,19 @@ import {
   type SkillId,
   type SkillProgress,
   type SpellId,
+  type Equipment,
+  type Grid,
+  type Hotbar,
+  type InventoryMessage,
+  type RecipeId,
+  carryCapacity,
+  createBackpack,
+  createHotbar,
   createMoveState,
+  equipmentArmor,
+  equipmentWeight,
+  totalWeight,
+  weaponDamageOf,
 } from '@grimhold/shared';
 import { speedMultiplier, type Combatant } from './combatant.js';
 import { PositionHistory } from './history.js';
@@ -70,6 +82,15 @@ export interface Player {
   pendingInputs: MoveInput[];
   /** Номер последнего обработанного ввода — клиент по нему делает реконсилиацию. */
   lastProcessedSeq: number;
+  /**
+   * Последнее присланное намерение движения.
+   *
+   * Нужно рывку: он разрешён только в сторону — вперёд, назад, вбок или
+   * в прыжке. Берём самое свежее намерение, а не обработанное в тике:
+   * команда действия приходит между тиками, и обработанное к тому моменту
+   * отстаёт на целый шаг.
+   */
+  lastIntent: { forward: number; right: number; jump: boolean };
   /** Помечается при любом изменении; персистентность использует это для батча. */
   dirty: boolean;
 
@@ -81,6 +102,13 @@ export interface Player {
   deadFor: number;
   /** Когда каждое заклинание снова готово, в секундах игрового времени. */
   spellCooldowns: Partial<Record<SpellId, number>>;
+  /** Рюкзак: раскладку хранит и проверяет сервер, клиент только рисует. */
+  inventory: Grid;
+  equipment: Equipment;
+  knownRecipes: RecipeId[];
+  hotbar: Hotbar;
+  /** Текущий вес — считается при каждом изменении вещей, а не каждый тик. */
+  carriedWeight: number;
   /** Куда смотрит по вертикали — нужно снарядам. */
   pitch: number;
   /**
@@ -120,6 +148,10 @@ export class World {
     yaw: number;
     instanceId: string;
     playtimeSeconds: number;
+    inventory?: Grid;
+    equipment?: Equipment;
+    knownRecipes?: RecipeId[];
+    hotbar?: Hotbar;
   }): Player {
     const profile = RACES[character.race];
     const attributes = attributesFor(character.race, character.characterClass);
@@ -151,12 +183,18 @@ export class World {
       state,
       pendingInputs: [],
       lastProcessedSeq: -1,
+      lastIntent: { forward: 0, right: 0, jump: false },
       dirty: true,
       attributes,
       maxima,
       skills: emptySkillBook(),
       deadFor: 0,
       spellCooldowns: {},
+      inventory: character.inventory ?? createBackpack(),
+      equipment: character.equipment ?? {},
+      knownRecipes: character.knownRecipes ?? [],
+      hotbar: character.hotbar ?? defaultHotbar(character.characterClass),
+      carriedWeight: 0,
       pitch: 0,
       pendingViewTick: null,
       combat: {
@@ -180,8 +218,13 @@ export class World {
         slowFactor: 1,
         slowRemaining: 0,
         lightRemaining: 0,
+        dodgeCooldown: 0,
+        swingCooldown: 0,
       },
     };
+
+    // Броня и вес выводятся из надетого — пересчитываем сразу при входе.
+    refreshLoadout(player);
 
     this.players.set(id, player);
     return player;
@@ -434,6 +477,21 @@ export class World {
     return entities;
   }
 
+  /** Состояние вещей игрока — уходит ему при каждом изменении. */
+  inventoryMessage(player: Player): InventoryMessage {
+    return {
+      t: 'inventory',
+      backpack: player.inventory,
+      equipment: player.equipment,
+      knownRecipes: player.knownRecipes,
+      hotbar: player.hotbar,
+      weight: Math.round(player.carriedWeight * 10) / 10,
+      capacity: Math.round(carryCapacity(player.attributes)),
+      armor: player.combat.armor,
+      weaponDamage: weaponDamageOf(player.equipment),
+    };
+  }
+
   projectilesFor(viewer: Player): ProjectileSnapshot[] {
     const origin = viewer.state.pos;
     const result: ProjectileSnapshot[] = [];
@@ -450,6 +508,36 @@ export class World {
     }
     return result;
   }
+}
+
+/**
+ * Что лежит в панели у новичка. Панель — про быстрый доступ, поэтому туда
+ * сразу попадает то, чем он реально будет пользоваться с первой минуты.
+ */
+function defaultHotbar(characterClass: CharacterClass): Hotbar {
+  const hotbar = createHotbar();
+  hotbar[0] = 'crude_axe';
+  hotbar[1] = 'bandage';
+  hotbar[2] = 'torch';
+
+  if (characterClass === 'mage') {
+    hotbar[3] = 'spell_ember';
+    hotbar[4] = 'spell_mend';
+  }
+  return hotbar;
+}
+
+/**
+ * Пересчитывает всё, что выводится из вещей: броню и переносимый вес.
+ *
+ * Вызывается при любом изменении рюкзака или экипировки — иначе игрок мог бы
+ * снять доспех и остаться с его бронёй. Единственное место такого вывода,
+ * чтобы ни один путь изменения вещей не мог его обойти.
+ */
+export function refreshLoadout(player: Player): void {
+  player.combat.armor = equipmentArmor(player.equipment);
+  player.carriedWeight = totalWeight(player.inventory) + equipmentWeight(player.equipment);
+  player.dirty = true;
 }
 
 // ---------- вспомогательное ----------

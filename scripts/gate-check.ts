@@ -31,6 +31,7 @@ async function main(): Promise<void> {
         yaw: 0,
         pitch: 0,
         jump: false,
+        sprint: false,
         dt: INPUT_DT,
       });
     }

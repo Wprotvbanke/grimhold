@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   ClientMessageSchema,
@@ -16,7 +17,16 @@ import { SqliteStorage } from './storage/sqlite.js';
 import { World } from './world.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
-const DB_PATH = process.env.DB_PATH ?? 'grimhold.db';
+
+/**
+ * Путь к базе считается от самого файла, а не от рабочей папки.
+ *
+ * Иначе `npm run dev` (папка packages/server) и запуск из корня открывали бы
+ * две разные базы, и персонажи молча «пропадали» бы в зависимости от того,
+ * откуда запустили сервер.
+ */
+const SERVER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DB_PATH = process.env.DB_PATH ?? resolve(SERVER_ROOT, 'grimhold.db');
 
 const storage = new SqliteStorage(DB_PATH);
 const world = new World();
@@ -85,6 +95,14 @@ wss.on('connection', (socket) => {
       if (event.type === 'chat') {
         deliverChat(event.broadcast as ChatBroadcast, event.recipients as string[]);
       }
+      // Любое изменение вещей возвращает игроку новое состояние целиком:
+      // рассинхрон раскладки дороже трафика.
+      if (event.type === 'inventory') {
+        session.send(world.inventoryMessage(player));
+      }
+      if (event.type === 'itemError') {
+        session.send({ t: 'itemError', message: String(event.reason) });
+      }
     }
   });
 
@@ -115,6 +133,12 @@ setInterval(() => {
   for (const entry of outbox.skillUps) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.life) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.loot) sendTo(entry.playerId, entry.message);
+
+  // Вещи изменились по ходу тика — шлём новое состояние рюкзака. Через Set,
+  // потому что за один тик можно добить сразу двоих и попасть в список дважды.
+  for (const player of new Set(outbox.inventory)) {
+    sendTo(player.id, world.inventoryMessage(player));
+  }
 
   // Смерть — критичное событие: пишем немедленно, а не ждём пакетного флаша.
   for (const player of outbox.criticalSaves) {

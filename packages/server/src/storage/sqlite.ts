@@ -1,6 +1,24 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import type { CharacterClass, Race } from '@grimhold/shared';
+import {
+  BANK_HEIGHT,
+  BANK_WIDTH,
+  BACKPACK_HEIGHT,
+  BACKPACK_WIDTH,
+  addItem,
+  createBackpack,
+  createBank,
+  createHotbar,
+  isRecipeId,
+  sanitizeGrid,
+  sanitizeHotbar,
+  type CharacterClass,
+  type Equipment,
+  type Grid,
+  type ItemId,
+  type Race,
+  type RecipeId,
+} from '@grimhold/shared';
 import type { AccountRecord, CharacterRecord, CharacterSave, Storage } from './types.js';
 
 /**
@@ -37,11 +55,42 @@ const SCHEMA = `
     instance_id      TEXT NOT NULL DEFAULT 'overworld',
     created_at       INTEGER NOT NULL,
     last_seen_at     INTEGER NOT NULL,
-    playtime_seconds INTEGER NOT NULL DEFAULT 0
+    playtime_seconds INTEGER NOT NULL DEFAULT 0,
+    inventory        TEXT NOT NULL DEFAULT '',
+    equipment        TEXT NOT NULL DEFAULT '',
+    known_recipes    TEXT NOT NULL DEFAULT '',
+    hotbar           TEXT NOT NULL DEFAULT ''
   );
 
   CREATE INDEX IF NOT EXISTS idx_characters_account ON characters(account_id);
+
+  CREATE TABLE IF NOT EXISTS banks (
+    account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    items      TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL
+  );
 `;
+
+/**
+ * Столбцы, появившиеся после первой версии схемы.
+ *
+ * CREATE TABLE IF NOT EXISTS не добавляет столбцы в уже существующую таблицу,
+ * поэтому базы, созданные до этой вехи, надо дополнить вручную — иначе
+ * персонажи вчерашнего дня перестали бы открываться.
+ */
+const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
+  { table: 'characters', column: 'inventory', definition: "TEXT NOT NULL DEFAULT ''" },
+  { table: 'characters', column: 'equipment', definition: "TEXT NOT NULL DEFAULT ''" },
+  { table: 'characters', column: 'known_recipes', definition: "TEXT NOT NULL DEFAULT ''" },
+  { table: 'characters', column: 'hotbar', definition: "TEXT NOT NULL DEFAULT ''" },
+];
+
+/** Что кладётся новому персонажу, чтобы он мог хоть что-то делать с первой минуты. */
+const STARTER_KIT: { itemId: ItemId; count: number }[] = [
+  { itemId: 'crude_axe', count: 1 },
+  { itemId: 'bandage', count: 3 },
+  { itemId: 'torch', count: 2 },
+];
 
 interface AccountRow {
   id: string;
@@ -65,6 +114,10 @@ interface CharacterRow {
   created_at: number;
   last_seen_at: number;
   playtime_seconds: number;
+  inventory: string;
+  equipment: string;
+  known_recipes: string;
+  hotbar: string;
 }
 
 export class SqliteStorage implements Storage {
@@ -73,6 +126,20 @@ export class SqliteStorage implements Storage {
   constructor(path: string) {
     this.db = new DatabaseSync(path);
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /** Догоняет схему старых баз, не трогая данные. */
+  private migrate(): void {
+    for (const { table, column, definition } of ADDED_COLUMNS) {
+      const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as {
+        name: string;
+      }[];
+      if (columns.some((entry) => entry.name === column)) continue;
+
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      console.log(`[бд] миграция: добавлен столбец ${table}.${column}`);
+    }
   }
 
   createAccount(username: string, passwordHash: string, salt: string): AccountRecord {
@@ -127,6 +194,14 @@ export class SqliteStorage implements Storage {
     spawn: { x: number; y: number; z: number },
   ): CharacterRecord {
     const now = Date.now();
+
+    // Новичок выходит в мир с топором, бинтами и факелами: без этого он
+    // не может ни добывать, ни лечиться, а здоровье само не восстанавливается.
+    let inventory = createBackpack();
+    for (const entry of STARTER_KIT) {
+      inventory = addItem(inventory, entry.itemId, entry.count).grid;
+    }
+
     const record: CharacterRecord = {
       id: randomUUID(),
       accountId,
@@ -141,13 +216,18 @@ export class SqliteStorage implements Storage {
       createdAt: now,
       lastSeenAt: now,
       playtimeSeconds: 0,
+      inventory,
+      equipment: {},
+      knownRecipes: [],
+      hotbar: createHotbar(),
     };
 
     this.db
       .prepare(
         `INSERT INTO characters
-           (id, account_id, name, race, class, x, y, z, yaw, instance_id, created_at, last_seen_at, playtime_seconds)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, account_id, name, race, class, x, y, z, yaw, instance_id,
+            created_at, last_seen_at, playtime_seconds, inventory, equipment, known_recipes, hotbar)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -163,6 +243,10 @@ export class SqliteStorage implements Storage {
         record.createdAt,
         record.lastSeenAt,
         record.playtimeSeconds,
+        JSON.stringify(record.inventory),
+        JSON.stringify(record.equipment),
+        JSON.stringify(record.knownRecipes),
+        JSON.stringify(record.hotbar),
       );
 
     return record;
@@ -178,20 +262,50 @@ export class SqliteStorage implements Storage {
 
     const statement = this.db.prepare(
       `UPDATE characters
-          SET x = ?, y = ?, z = ?, yaw = ?, last_seen_at = ?, playtime_seconds = ?
+          SET x = ?, y = ?, z = ?, yaw = ?, last_seen_at = ?, playtime_seconds = ?,
+              inventory = ?, equipment = ?, known_recipes = ?, hotbar = ?
         WHERE id = ?`,
     );
 
     this.db.exec('BEGIN');
     try {
       for (const save of saves) {
-        statement.run(save.x, save.y, save.z, save.yaw, save.lastSeenAt, save.playtimeSeconds, save.id);
+        statement.run(
+          save.x,
+          save.y,
+          save.z,
+          save.yaw,
+          save.lastSeenAt,
+          save.playtimeSeconds,
+          JSON.stringify(save.inventory),
+          JSON.stringify(save.equipment),
+          JSON.stringify(save.knownRecipes),
+          JSON.stringify(save.hotbar),
+          save.id,
+        );
       }
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  getBank(accountId: string): Grid {
+    const row = this.db
+      .prepare('SELECT items FROM banks WHERE account_id = ?')
+      .get(accountId) as unknown as { items: string } | undefined;
+
+    return sanitizeGrid(parseJson(row?.items), BANK_WIDTH, BANK_HEIGHT);
+  }
+
+  saveBank(accountId: string, bank: Grid): void {
+    this.db
+      .prepare(
+        `INSERT INTO banks (account_id, items, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(account_id) DO UPDATE SET items = excluded.items, updated_at = excluded.updated_at`,
+      )
+      .run(accountId, JSON.stringify(bank), Date.now());
   }
 
   close(): void {
@@ -224,5 +338,39 @@ function toCharacter(row: CharacterRow): CharacterRecord {
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
     playtimeSeconds: row.playtime_seconds,
+    // Данные из базы никогда не принимаются на веру: предмет мог исчезнуть
+    // из игры между версиями, а раскладка — разъехаться.
+    inventory: sanitizeGrid(parseJson(row.inventory), BACKPACK_WIDTH, BACKPACK_HEIGHT),
+    equipment: sanitizeEquipment(parseJson(row.equipment)),
+    knownRecipes: sanitizeRecipes(parseJson(row.known_recipes)),
+    hotbar: sanitizeHotbar(parseJson(row.hotbar)),
   };
+}
+
+function parseJson(raw: string | undefined): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Надетое проверяется так же строго, как рюкзак. */
+function sanitizeEquipment(raw: unknown): Equipment {
+  const result: Equipment = {};
+  if (!raw || typeof raw !== 'object') return result;
+
+  // Сетка один на один: каждый слот держит ровно один предмет.
+  for (const [slot, value] of Object.entries(raw as Record<string, unknown>)) {
+    const grid = sanitizeGrid({ items: [value] }, 1, 1);
+    const item = grid.items[0];
+    if (item) result[slot as keyof Equipment] = { ...item, x: 0, y: 0, rotated: false };
+  }
+  return result;
+}
+
+function sanitizeRecipes(raw: unknown): RecipeId[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((entry): entry is RecipeId => typeof entry === 'string' && isRecipeId(entry));
 }

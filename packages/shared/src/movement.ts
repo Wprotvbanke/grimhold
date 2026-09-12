@@ -9,6 +9,8 @@ import { type Aabb, type Vec3, aabbOverlap, clamp, cloneVec3 } from './math.js';
  */
 
 export const WALK_SPEED = 5.0;
+/** Во сколько раз бег быстрее шага. */
+export const SPRINT_SPEED_SCALE = 1.65;
 export const GRAVITY = -24.0;
 export const JUMP_SPEED = 7.5;
 export const MAX_FALL_SPEED = -50.0;
@@ -55,6 +57,8 @@ export interface MoveInput {
   yaw: number;
   pitch: number;
   jump: boolean;
+  /** Зажат ли бег. Хватит ли на него стамины — решает сервер. */
+  sprint: boolean;
   dt: number;
 }
 
@@ -139,19 +143,43 @@ export function step(state: MoveState, input: MoveInput, colliders: readonly Aab
   }
 
   // Y — здесь же определяется контакт с землёй.
+  const beforeY = pos.y;
   pos.y += vel.y * dt;
   let onGround = false;
-  if (resolveAxis(pos, colliders, 'y', vel.y, body)) {
+  if (resolveVertical(pos, colliders, vel.y, body, beforeY)) {
     onGround = vel.y < 0;
     vel.y = 0;
+  }
+
+  // Последняя проверка: внутри геометрии оставаться нельзя. Обычно тут нечего
+  // делать, но если игрока всё же вдавило — в угол, в шов между коробками или
+  // в стену, построенную на его месте, — он выходит наружу, а не застревает.
+  if (depenetrate(pos, colliders, body)) {
+    onGround = true;
+    if (vel.y < 0) vel.y = 0;
   }
 
   return { pos, vel, yaw, pitch, onGround, body, speedScale: state.speedScale };
 }
 
 /**
+ * Зазор при выталкивании.
+ *
+ * Без него игрок встаёт ровно на грань коробки, и хватает ошибки в одну
+ * миллиардную, чтобы он считался проникшим внутрь. Дальше срабатывала посадка
+ * по вертикали и ставила его на верх стены — прижавшись к забору, игрок
+ * оказывался на нём. Зазор оставляет между телом и стеной миллиметр, которого
+ * float-погрешности не съедают.
+ */
+const SKIN = 0.001;
+
+/**
  * Выталкивает игрока из всех пересекаемых боксов по одной оси.
  * Возвращает true, если было хотя бы одно столкновение.
+ *
+ * Пересечения проверяются по позиции на входе, а двигаем один раз в конце:
+ * если менять позицию по ходу перебора, результат зависит от порядка коробок,
+ * а выталкивание из одной может втолкнуть в другую.
  */
 function resolveAxis(
   pos: Vec3,
@@ -162,18 +190,116 @@ function resolveAxis(
 ): boolean {
   if (velocity === 0) return false;
 
-  let hit = false;
-  for (const box of colliders) {
-    if (!aabbOverlap(playerAabb(pos, body), box)) continue;
+  const player = playerAabb(pos, body);
+  let limit: number | null = null;
 
-    hit = true;
+  for (const box of colliders) {
+    if (!aabbOverlap(player, box)) continue;
+
+    let candidate: number;
     if (axis === 'x') {
-      pos.x = velocity > 0 ? box.minX - body.radius : box.maxX + body.radius;
+      candidate = velocity > 0 ? box.minX - body.radius - SKIN : box.maxX + body.radius + SKIN;
     } else if (axis === 'z') {
-      pos.z = velocity > 0 ? box.minZ - body.radius : box.maxZ + body.radius;
+      candidate = velocity > 0 ? box.minZ - body.radius - SKIN : box.maxZ + body.radius + SKIN;
     } else {
-      pos.y = velocity > 0 ? box.minY - body.height : box.maxY;
+      // По вертикали опорой считается только то, над чем игрок и был: иначе
+      // стена, в которую его прижало сбоку, сработает как пол и поставит его
+      // на верх забора. Поэтому вертикаль разрешается отдельной функцией.
+      candidate = velocity > 0 ? box.minY - body.height - SKIN : box.maxY;
+    }
+
+    // Побеждает самое ограничивающее из препятствий, а не последнее в списке.
+    if (limit === null) limit = candidate;
+    else limit = velocity > 0 ? Math.min(limit, candidate) : Math.max(limit, candidate);
+  }
+
+  if (limit === null) return false;
+  pos[axis] = limit;
+  return true;
+}
+
+/**
+ * Вертикальное столкновение: пол под ногами и потолок над головой.
+ *
+ * Отличается от горизонтального одним условием: коробка засчитывается, только
+ * если игрок был выше её верха (при падении) или ниже её низа (при прыжке).
+ * Без этого стена, к которой прижало сбоку, работает как пол — игрока ставило
+ * на верх городской стены от погрешности в одну миллиардную метра.
+ */
+function resolveVertical(
+  pos: Vec3,
+  colliders: readonly Aabb[],
+  velocity: number,
+  body: Body,
+  before: number,
+): boolean {
+  if (velocity === 0) return false;
+
+  const player = playerAabb(pos, body);
+  let limit: number | null = null;
+
+  for (const box of colliders) {
+    if (!aabbOverlap(player, box)) continue;
+
+    if (velocity < 0) {
+      // Падение: опора только та, что была не выше ног в начале шага.
+      if (box.maxY > before + SKIN) continue;
+      const candidate = box.maxY;
+      limit = limit === null ? candidate : Math.max(limit, candidate);
+    } else {
+      // Подъём: потолок только тот, что был не ниже макушки.
+      if (box.minY < before + body.height - SKIN) continue;
+      const candidate = box.minY - body.height - SKIN;
+      limit = limit === null ? candidate : Math.min(limit, candidate);
     }
   }
-  return hit;
+
+  if (limit === null) return false;
+  pos.y = limit;
+  return true;
+}
+
+/**
+ * Выталкивает игрока наружу, если он всё-таки оказался внутри геометрии.
+ *
+ * Так бывает не только от погрешностей: постройку могли добавить там, где
+ * игрок стоял, или его могло вдавить в угол между двумя коробками. Двигаем
+ * в сторону ближайшей грани — тогда из стены выходят вбок, а не взлетают
+ * на неё. Возвращает true, если пришлось поднимать вверх: это считается
+ * опорой под ногами.
+ */
+function depenetrate(pos: Vec3, colliders: readonly Aabb[], body: Body): boolean {
+  let lifted = false;
+
+  // Двух проходов хватает: после первого остаются разве что углы.
+  for (let pass = 0; pass < 2; pass++) {
+    let touched = false;
+
+    for (const box of colliders) {
+      const player = playerAabb(pos, body);
+      if (!aabbOverlap(player, box)) continue;
+      touched = true;
+
+      const toMinusX = player.maxX - box.minX;
+      const toPlusX = box.maxX - player.minX;
+      const toMinusZ = player.maxZ - box.minZ;
+      const toPlusZ = box.maxZ - player.minZ;
+      const toTop = box.maxY - player.minY;
+
+      const shortest = Math.min(toMinusX, toPlusX, toMinusZ, toPlusZ, toTop);
+
+      if (shortest === toMinusX) pos.x -= toMinusX + SKIN;
+      else if (shortest === toPlusX) pos.x += toPlusX + SKIN;
+      else if (shortest === toMinusZ) pos.z -= toMinusZ + SKIN;
+      else if (shortest === toPlusZ) pos.z += toPlusZ + SKIN;
+      else {
+        pos.y += toTop;
+        lifted = true;
+      }
+    }
+
+    if (!touched) break;
+  }
+
+  return lifted;
 }

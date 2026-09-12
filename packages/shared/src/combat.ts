@@ -1,5 +1,6 @@
 import type { Attributes } from './stats.js';
 import type { Vec3 } from './math.js';
+import { SPRINT_SPEED_SCALE } from './movement.js';
 
 /**
  * Бой в реальном времени.
@@ -38,7 +39,7 @@ export interface ActionProfile {
 export const LIGHT_ATTACK: ActionProfile = {
   kind: 'attack',
   name: 'Быстрый удар',
-  timing: { windup: 0.18, active: 0.1, recovery: 0.25 },
+  timing: { windup: 0.26, active: 0.1, recovery: 0.3 },
   staminaCost: 12,
   damageScale: 1,
   range: 2.4,
@@ -49,18 +50,24 @@ export const LIGHT_ATTACK: ActionProfile = {
 export const HEAVY_ATTACK: ActionProfile = {
   kind: 'heavy',
   name: 'Тяжёлый удар',
-  timing: { windup: 0.45, active: 0.14, recovery: 0.45 },
+  timing: { windup: 0.62, active: 0.14, recovery: 0.45 },
   staminaCost: 25,
   damageScale: 2.1,
   range: 2.8,
   arc: Math.PI / 3,
 };
 
-/** Рывок: короткая неуязвимость в фазе удара — это и есть уклонение. */
+/**
+ * Рывок: короткая неуязвимость в фазе удара — это и есть уклонение.
+ *
+ * Бросок намеренно короткий: длинный превращался в способ передвижения —
+ * им было выгоднее ходить, чем бегать. Зато после него остаётся накат
+ * (`DODGE_GLIDE_SCALE`) — тело не встаёт как вкопанное.
+ */
 export const DODGE: ActionProfile = {
   kind: 'dodge',
   name: 'Рывок',
-  timing: { windup: 0.05, active: 0.3, recovery: 0.2 },
+  timing: { windup: 0.05, active: 0.15, recovery: 0.2 },
   staminaCost: 22,
   damageScale: 0,
   range: 0,
@@ -76,6 +83,15 @@ export const ACTIONS: Record<Exclude<ActionKind, 'block' | 'cast'>, ActionProfil
 /** Скорость рывка. Умножается на скорость ходьбы. */
 export const DODGE_SPEED_SCALE = 3.4;
 
+/**
+ * Накат после рывка: во время восстановления скорость гасится не мгновенно.
+ *
+ * Без него бросок обрывался в стену — разогнался втрое и в тот же кадр встал.
+ * Держится ровно фазу восстановления рывка и считается из фазы действия,
+ * которую обе стороны знают и так, — лишнего состояния в снапшоте не нужно.
+ */
+export const DODGE_GLIDE_SCALE = 1.7;
+
 /** Стамина в секунду, пока держат блок. */
 export const BLOCK_DRAIN = 8;
 /** Какую долю урона гасит блок. */
@@ -86,6 +102,60 @@ export const BLOCK_REDUCTION_VS_HEAVY = 0.35;
 export const BLOCK_STAMINA_HIT = 18;
 /** Скорость передвижения с поднятым щитом. */
 export const BLOCK_SPEED_SCALE = 0.45;
+
+/** Пауза между рывками. Без неё рывок спамится, и уклонение перестаёт быть выбором. */
+export const DODGE_COOLDOWN = 1.4;
+
+/**
+ * Пауза между ударами — время, за которое персонаж «собирается» после серии.
+ *
+ * Без неё удар начинался прямо в фазе восстановления предыдущего, и мышь
+ * можно было щёлкать без остановки: урон шёл сплошным потоком, опережая
+ * собственную анимацию. Пауза невелика — она задаёт ритм, а не отнимает
+ * управление; с ней полный цикл лёгкого удара выходит около секунды.
+ */
+export const ATTACK_COOLDOWN = 0.3;
+
+/** Стамина в секунду, пока бежишь. */
+export const SPRINT_DRAIN = 16;
+
+/**
+ * Модификаторы скорости движения.
+ *
+ * Считаются одной формулой на клиенте и на сервере — иначе предсказание
+ * разъезжается каждый раз, когда игрок поднимает щит или бежит, и сервер
+ * начинает дёргать его назад. Клиент берёт значения из своего намерения,
+ * сервер — из авторитетного состояния; расхождение гасит реконсилиация.
+ */
+export interface SpeedModifiers {
+  blocking: boolean;
+  /** Фаза рывка: короткий бросок с неуязвимостью. */
+  dashing: boolean;
+  /** Восстановление после рывка: инерция, с которой он затухает. */
+  gliding: boolean;
+  sprinting: boolean;
+  /** Замах или восстановление обычного действия — они сковывают. */
+  acting: boolean;
+  /** Замедление от стужи: 1, если его нет. */
+  slowFactor: number;
+  /** Штраф за перегруз: 1, если вес в пределах. */
+  weightFactor: number;
+}
+
+export function movementSpeedFactor(modifiers: SpeedModifiers): number {
+  let scale = modifiers.slowFactor * modifiers.weightFactor;
+
+  // Рывок перебивает всё: это короткий бросок, а не способ ходить.
+  if (modifiers.dashing) return scale * DODGE_SPEED_SCALE;
+  // Сразу за ним — накат: скорость спадает, а не обрывается.
+  if (modifiers.gliding) return scale * DODGE_GLIDE_SCALE;
+
+  if (modifiers.blocking) scale *= BLOCK_SPEED_SCALE;
+  else if (modifiers.sprinting) scale *= SPRINT_SPEED_SCALE;
+
+  if (modifiers.acting) scale *= 0.35;
+  return scale;
+}
 
 /** Урон в спину. Бой от первого лица без этого не наказывает за потерю цели. */
 export const BACKSTAB_MULTIPLIER = 1.6;

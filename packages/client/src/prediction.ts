@@ -5,8 +5,10 @@ import {
   type SelfState,
   type Vec3,
   createMoveState,
+  movementSpeedFactor,
   step,
   type Aabb,
+  type SpeedModifiers,
 } from '@grimhold/shared';
 
 /** Коллизии вокруг точки. Мир чанковый, поэтому набор меняется по ходу движения. */
@@ -51,12 +53,37 @@ export class Predictor {
   private seq = 0;
   private lastAck = -1;
 
+  /**
+   * Модификаторы скорости из намерения игрока.
+   *
+   * Сервер применяет блок, рывок, перегруз и стужу; если клиент о них не знает,
+   * предсказание расходится при каждом поднятом щите, и сервер дёргает игрока
+   * назад. Поэтому клиент считает ту же формулу по своему намерению — оно ему
+   * известно мгновенно, а расхождение гасит реконсилиация.
+   */
+  private modifiers: Omit<SpeedModifiers, 'sprinting'> = {
+    blocking: false,
+    dashing: false,
+    gliding: false,
+    acting: false,
+    slowFactor: 1,
+    weightFactor: 1,
+  };
+
+  setModifiers(modifiers: Omit<SpeedModifiers, 'sprinting'>): void {
+    this.modifiers = modifiers;
+  }
+
+  /** Расовая скорость: множители состояния накладываются поверх неё. */
+  private readonly baseSpeedScale: number;
+
   constructor(
     spawn: Vec3,
     private readonly colliders: ColliderProvider,
     options: { body?: MoveState['body']; speedScale?: number } = {},
   ) {
     this.state = createMoveState(spawn, options);
+    this.baseSpeedScale = this.state.speedScale;
   }
 
   /**
@@ -65,7 +92,14 @@ export class Predictor {
    */
   collectInputs(
     dt: number,
-    intent: { forward: number; right: number; jump: boolean; yaw: number; pitch: number },
+    intent: {
+      forward: number;
+      right: number;
+      jump: boolean;
+      sprint: boolean;
+      yaw: number;
+      pitch: number;
+    },
   ): MoveInput[] {
     this.accumulator = Math.min(this.accumulator + dt, INPUT_DT * 8);
 
@@ -80,10 +114,11 @@ export class Predictor {
         yaw: intent.yaw,
         pitch: intent.pitch,
         jump: intent.jump,
+        sprint: intent.sprint,
         dt: INPUT_DT,
       };
 
-      this.state = step(this.state, input, this.colliders(this.state.pos.x, this.state.pos.z));
+      this.state = this.simulate(this.state, input);
       this.pending.push(input);
       this.sentAt.set(input.seq, performance.now());
       produced.push(input);
@@ -125,7 +160,7 @@ export class Predictor {
 
     // Переигрываем непринятое — иначе откатились бы в прошлое.
     for (const input of this.pending) {
-      this.state = step(this.state, input, this.colliders(this.state.pos.x, this.state.pos.z));
+      this.state = this.simulate(this.state, input);
     }
 
     const dx = before.x - this.state.pos.x;
@@ -142,6 +177,26 @@ export class Predictor {
       this.error.y += dy;
       this.error.z += dz;
     }
+  }
+
+  /** Один шаг с теми же модификаторами скорости, что применяет сервер. */
+  private simulate(state: MoveState, input: MoveInput): MoveState {
+    const sprinting =
+      input.sprint &&
+      !this.modifiers.blocking &&
+      !this.modifiers.acting &&
+      (input.forward !== 0 || input.right !== 0);
+
+    const factor = movementSpeedFactor({ ...this.modifiers, sprinting });
+    const base = this.baseSpeedScale;
+
+    const next = step(
+      { ...state, speedScale: base * factor },
+      input,
+      this.colliders(state.pos.x, state.pos.z),
+    );
+    next.speedScale = base;
+    return next;
   }
 
   /** Позиция для камеры: предсказание плюс затухающая поправка. */

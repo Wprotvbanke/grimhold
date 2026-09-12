@@ -5,7 +5,14 @@
  *
  *   npx tsx scripts/netcode-check.ts [задержка_мс] [секунд]
  */
-import { ChunkedWorld, INPUT_DT, RACES, SPAWN_POINT, WALK_SPEED } from '@grimhold/shared';
+import {
+  ChunkedWorld,
+  INPUT_DT,
+  RACES,
+  SPAWN_POINT,
+  SPRINT_SPEED_SCALE,
+  WALK_SPEED,
+} from '@grimhold/shared';
 import { Predictor } from '../packages/client/src/prediction.js';
 import { TestClient, sleep } from './testClient.js';
 
@@ -34,6 +41,16 @@ async function main(): Promise<void> {
   await client.ready;
 
   client.onSnapshot = (snapshot) => {
+    // Те же модификаторы, что применяет сервер: иначе предсказание разойдётся.
+    predictor.setModifiers({
+      blocking: snapshot.self.blocking,
+      dashing: snapshot.self.action === 'dodge' && snapshot.self.phase === 'active',
+      gliding: snapshot.self.action === 'dodge' && snapshot.self.phase === 'recovery',
+      acting: Boolean(snapshot.self.action) && snapshot.self.action !== 'dodge',
+      slowFactor: 1,
+      weightFactor: 1,
+    });
+
     // Снапшот тоже идёт до нас половину RTT.
     setTimeout(() => {
       predictor.reconcile(snapshot.self, snapshot.ack);
@@ -53,6 +70,8 @@ async function main(): Promise<void> {
       forward: 1,
       right: Math.sin(t * 0.7) > 0 ? 1 : -1,
       jump: Math.sin(t * 1.3) > 0.9,
+      // Бег через раз: под ним предсказание проверяется вместе с тратой стамины.
+      sprint: Math.sin(t * 0.5) > 0,
       yaw: Math.sin(t * 0.35) * Math.PI,
       pitch: 0,
     };
@@ -72,6 +91,25 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  /**
+   * Проверка, что проверка вообще что-то проверяла.
+   *
+   * Однажды скрипт перестал слать обязательное поле, сервер отверг каждый
+   * пакет, игрок не сдвинулся — и тест отрапортовал идеальную сходимость.
+   * Молчаливый успех хуже, чем его отсутствие, поэтому теперь мы требуем
+   * доказательства движения.
+   */
+  const travelled = Math.hypot(
+    predictor.state.pos.x - SPAWN_POINT.x,
+    predictor.state.pos.z - SPAWN_POINT.z,
+  );
+  console.log(`пройдено: ${travelled.toFixed(1)} м`);
+
+  if (travelled < 5) {
+    console.error('FAIL: игрок не двигался — проверять было нечего');
+    process.exit(1);
+  }
+
   corrections.sort((a, b) => a - b);
   const avg = corrections.reduce((sum, v) => sum + v, 0) / corrections.length;
   const p95 = corrections[Math.floor(corrections.length * 0.95)]!;
@@ -86,12 +124,18 @@ async function main(): Promise<void> {
 
   /**
    * Потерянный пакет стоит ровно одного шага ввода: сервер его не увидит,
-   * а клиент уже применил. Поэтому поправка порядка WALK_SPEED * INPUT_DT
-   * (около 8 см на ходу) — это нормальная работа, а не расхождение.
-   * Расхождением считается устойчивая ошибка в несколько таких шагов.
+   * а клиент уже применил. Поэтому поправка такого порядка — это нормальная
+   * работа, а не расхождение. Расхождением считается устойчивая ошибка
+   * в несколько таких шагов.
+   *
+   * Мерить надо **по бегу, а не по шагу**: эта проверка полсекунды из каждой
+   * бежит, и потеря на бегу стоит в SPRINT_SPEED_SCALE раз дороже. Пока
+   * порог считался по скорости ходьбы, каждый второй прогон падал ровно
+   * на 13.7 см — это и есть 8.33 × 1.65, цена одной потери на бегу.
+   * Проверка ловила собственную модель потерь, а не расхождение.
    */
-  const lostInputCost = WALK_SPEED * INPUT_DT;
-  console.log(`цена одного потерянного пакета: ${(lostInputCost * 100).toFixed(2)} см`);
+  const lostInputCost = WALK_SPEED * SPRINT_SPEED_SCALE * INPUT_DT;
+  console.log(`цена одного потерянного пакета на бегу: ${(lostInputCost * 100).toFixed(2)} см`);
 
   const ok = avg < lostInputCost && p95 < lostInputCost * 1.5;
   console.log(ok ? 'OK: предсказание сходится' : 'FAIL: предсказание расходится с сервером');

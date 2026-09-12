@@ -33,8 +33,18 @@ export interface MobProfile {
   windup: number;
   /** Пауза между ударами. */
   attackCooldown: number;
-  /** Как далеко уходит от точки спавна, прежде чем вернуться. */
+  /**
+   * Привязка к дому: с этого расстояния от точки спавна моб уже всерьёз
+   * подумывает бросить погоню. Это не забор, а мера — см. docs/npc.md.
+   */
   leash: number;
+  /**
+   * Упорство в погоне, 0..1.
+   *
+   * Чем выше, тем реже моб отстаёт с каждым пройденным метром. Крыса бросает
+   * сразу за околицей, нежить идёт, пока не развалится.
+   */
+  aggression: number;
   color: number;
   loot: LootEntry[];
 }
@@ -54,6 +64,7 @@ export const MOBS: Record<MobId, MobProfile> = {
     windup: 0.35,
     attackCooldown: 1.1,
     leash: 18,
+    aggression: 0.2,
     color: 0x6b5c4a,
     loot: [{ itemId: 'rat_tail', name: 'Крысиный хвост', chance: 0.7, min: 1, max: 2 }],
   },
@@ -71,6 +82,7 @@ export const MOBS: Record<MobId, MobProfile> = {
     windup: 0.4,
     attackCooldown: 1.3,
     leash: 30,
+    aggression: 0.6,
     color: 0x5a5f66,
     loot: [
       { itemId: 'pelt', name: 'Волчья шкура', chance: 0.6, min: 1, max: 1 },
@@ -91,6 +103,7 @@ export const MOBS: Record<MobId, MobProfile> = {
     windup: 0.5,
     attackCooldown: 1.5,
     leash: 26,
+    aggression: 0.45,
     color: 0x7a5f45,
     loot: [
       { itemId: 'coin', name: 'Монеты', chance: 0.85, min: 3, max: 14 },
@@ -111,6 +124,7 @@ export const MOBS: Record<MobId, MobProfile> = {
     windup: 0.75,
     attackCooldown: 1.8,
     leash: 22,
+    aggression: 0.75,
     color: 0x69735e,
     loot: [
       { itemId: 'rot_flesh', name: 'Гнилая плоть', chance: 0.75, min: 1, max: 3 },
@@ -132,6 +146,7 @@ export const MOBS: Record<MobId, MobProfile> = {
     windup: 0.7,
     attackCooldown: 1.7,
     leash: 28,
+    aggression: 0.55,
     color: 0xbdb49a,
     loot: [
       { itemId: 'bone', name: 'Кость', chance: 0.8, min: 1, max: 3 },
@@ -153,6 +168,7 @@ export const MOBS: Record<MobId, MobProfile> = {
     windup: 1.1,
     attackCooldown: 2.6,
     leash: 24,
+    aggression: 0.5,
     color: 0x6f7a52,
     loot: [
       { itemId: 'ogre_hide', name: 'Шкура огра', chance: 0.8, min: 1, max: 2 },
@@ -174,6 +190,7 @@ export const MOBS: Record<MobId, MobProfile> = {
     windup: 0.6,
     attackCooldown: 1.4,
     leash: 34,
+    aggression: 0.9,
     color: 0x4a5566,
     loot: [
       { itemId: 'grave_silver', name: 'Могильное серебро', chance: 0.5, min: 1, max: 4 },

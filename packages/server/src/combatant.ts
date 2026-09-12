@@ -48,6 +48,15 @@ export interface Combatant {
   slowRemaining: number;
   /** Сколько ещё горит «Светоч». В подземелье это будет выбор: видеть или прятаться. */
   lightRemaining: number;
+  /** Секунд до следующего возможного рывка. */
+  dodgeCooldown: number;
+  /**
+   * Секунд до следующего возможного удара — пауза между сериями.
+   *
+   * Не путать с `attackCooldown` у моба: там темп, которым ИИ решает бить,
+   * а здесь общая для всех бойцов пауза после взмаха.
+   */
+  swingCooldown: number;
 }
 
 export interface DamageResult {
@@ -125,6 +134,8 @@ export function tickCombatant(
   combatant.wardRemaining = Math.max(0, combatant.wardRemaining - dt);
   combatant.slowRemaining = Math.max(0, combatant.slowRemaining - dt);
   combatant.lightRemaining = Math.max(0, combatant.lightRemaining - dt);
+  combatant.dodgeCooldown = Math.max(0, combatant.dodgeCooldown - dt);
+  combatant.swingCooldown = Math.max(0, combatant.swingCooldown - dt);
   combatant.sinceStaminaUse += dt;
 
   let enteredActive = false;

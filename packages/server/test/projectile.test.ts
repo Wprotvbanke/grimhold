@@ -36,6 +36,8 @@ function makeCombatant(overrides: Partial<Combatant> = {}): Combatant {
     slowFactor: 1,
     slowRemaining: 0,
     lightRemaining: 0,
+    dodgeCooldown: 0,
+    swingCooldown: 0,
     ...overrides,
   };
 }

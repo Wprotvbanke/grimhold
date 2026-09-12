@@ -1,10 +1,12 @@
 import {
+  ATTACK_COOLDOWN,
   ACTIONS,
   BACKSTAB_MULTIPLIER,
   BLOCK_REDUCTION,
   BLOCK_REDUCTION_VS_HEAVY,
   BLOCK_STAMINA_HIT,
   DODGE,
+  DODGE_COOLDOWN,
   DODGE_SPEED_SCALE,
   EXPERIENCE_PER_DEFENCE,
   EXPERIENCE_PER_HIT,
@@ -48,16 +50,27 @@ function emptyOutcome(): CombatOutcome {
 /** Может ли боец начать новое действие. */
 export function canAct(combatant: Combatant): boolean {
   if (!combatant.alive) return false;
-  // Во время замаха и удара новое действие не начать — иначе отмены бесплатны.
-  if (combatant.action && combatant.action.phase !== 'recovery') return false;
+  // Действие доигрывается целиком, включая восстановление. Раньше новый удар
+  // разрешался уже в фазе восстановления — тем самым она отменялась, и серия
+  // шла без единой паузы.
+  if (combatant.action) return false;
   return true;
 }
 
 export function startAttack(attacker: Combatant, kind: 'attack' | 'heavy' | 'dodge'): boolean {
   if (!canAct(attacker)) return false;
 
+  // Рывок на перезарядке: без паузы им спамят, и уклонение перестаёт быть выбором.
+  if (kind === 'dodge' && attacker.dodgeCooldown > 0) return false;
+  // Удар тоже не бесконечен: между сериями нужна пауза, иначе урон идёт
+  // сплошным потоком и опережает анимацию.
+  if (kind !== 'dodge' && attacker.swingCooldown > 0) return false;
+
   const profile = ACTIONS[kind];
   if (!spendStamina(attacker, profile.staminaCost)) return false;
+
+  if (kind === 'dodge') attacker.dodgeCooldown = DODGE_COOLDOWN;
+  else attacker.swingCooldown = ATTACK_COOLDOWN + profile.timing.windup + profile.timing.active;
 
   attacker.action = beginAction(profile);
   // Блок и удар несовместимы: щит опускается.

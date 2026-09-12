@@ -56,6 +56,7 @@ export function npcIntent(npc: Npc, elapsedSeconds: number, dt: number): MoveInp
     yaw: npc.state.yaw,
     pitch: 0,
     jump: false,
+    sprint: false,
     dt,
   };
 

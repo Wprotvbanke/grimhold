@@ -85,6 +85,10 @@ export class Persistence {
       yaw: player.state.yaw,
       lastSeenAt: now,
       playtimeSeconds: player.playtimeSeconds,
+      inventory: player.inventory,
+      equipment: player.equipment,
+      knownRecipes: player.knownRecipes,
+      hotbar: player.hotbar,
     };
   }
 }

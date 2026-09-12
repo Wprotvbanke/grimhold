@@ -1,6 +1,5 @@
 import {
   SPELLS,
-  SPELL_BAR,
   type CombatEvent,
   type SelfState,
   type SpellId,
@@ -28,7 +27,6 @@ export class CombatUi {
 
   /** Когда каждое заклинание снова готово, в миллисекундах performance.now(). */
   private readonly cooldowns = new Map<SpellId, number>();
-  private readonly spellNodes = new Map<SpellId, HTMLDivElement>();
 
   private hurtTimer = 0;
   private targetTimer = 0;
@@ -40,7 +38,6 @@ export class CombatUi {
       this.deathScreen.hidden = true;
       onRespawn();
     });
-    this.buildSpellBar();
   }
 
   show(visible: boolean): void {
@@ -55,13 +52,6 @@ export class CombatUi {
   }
 
   updateCooldowns(now: number): void {
-    for (const [spellId, node] of this.spellNodes) {
-      const readyAt = this.cooldowns.get(spellId) ?? 0;
-      const cooling = readyAt > now;
-      node.classList.toggle('cooling', cooling);
-      node.classList.toggle('ready', !cooling);
-    }
-
     if (this.hurtTimer > 0 && now > this.hurtTimer) {
       this.hurt.style.opacity = '0';
       this.hurtTimer = 0;
@@ -112,11 +102,31 @@ export class CombatUi {
 
   /** Полоска здоровья того, по кому попали — короткая, как в старых MMO. */
   showTarget(name: string, hp: number): void {
+    this.setTarget(name, hp);
+    this.targetInfo.hidden = false;
+    this.targetTimer = performance.now() + 4000;
+  }
+
+  /**
+   * Обновляет подпись и полоску, не продлевая показ.
+   *
+   * Имя и полоска правятся строго вместе: в подписи стоит процент здоровья,
+   * и стоит обновить одно без другого, как цифра начинает спорить с полоской.
+   *
+   * Обновлять вообще приходится потому, что событие боя приходит раньше
+   * снапшота: в момент удара клиент ещё знает здоровье цели до этого удара.
+   * Нарисованная один раз полоска застывала на предпоследнем значении —
+   * смертельный удар оставлял её на половине.
+   */
+  setTarget(name: string, hp: number): void {
     el<HTMLDivElement>('targetName').textContent = name;
     const fill = this.targetInfo.querySelector('#targetBar > i') as HTMLElement;
     fill.style.transform = `scaleX(${Math.max(0, Math.min(1, hp))})`;
-    this.targetInfo.hidden = false;
-    this.targetTimer = performance.now() + 4000;
+  }
+
+  /** Кого показывает полоска прямо сейчас — пусто, если она скрыта. */
+  get targetVisible(): boolean {
+    return !this.targetInfo.hidden;
   }
 
   showDeath(killerName: string | undefined): void {
@@ -135,22 +145,6 @@ export class CombatUi {
     return !this.deathScreen.hidden;
   }
 
-  private buildSpellBar(): void {
-    const bar = el<HTMLDivElement>('spellbar');
-    SPELL_BAR.forEach((spellId, index) => {
-      const spell = SPELLS[spellId];
-      const node = document.createElement('div');
-      node.className = 'spell ready';
-      node.title = `${spell.description} (${spell.manaCost} маны)`;
-
-      const key = document.createElement('b');
-      key.textContent = String(index + 1);
-      node.append(key, document.createTextNode(spell.name));
-
-      bar.append(node);
-      this.spellNodes.set(spellId, node);
-    });
-  }
 }
 
 function setBar(id: string, current: number, max: number): void {

@@ -4,6 +4,9 @@ import type { CharacterClass } from './classes.js';
 import type { ActionKind, ActionPhase } from './combat.js';
 import type { MobId } from './mobs.js';
 import type { SpellId } from './spells.js';
+import type { Equipment, Grid, Hotbar } from './inventory.js';
+import type { EquipSlot } from './items.js';
+import type { RecipeId } from './recipes.js';
 import type { SkillId } from './skills.js';
 
 /**
@@ -17,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 6;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -109,6 +112,63 @@ export const RespawnSchema = z.object({
   t: z.literal('respawn'),
 });
 
+const SlotSchema = z.enum(['head', 'chest', 'legs', 'hands', 'mainHand', 'offHand']);
+
+/**
+ * Работа с вещами. Клиент говорит «перенеси предмет отсюда сюда» —
+ * влезает ли он и что при этом происходит, решает исключительно сервер.
+ * Предметы адресуются клеткой, в которой лежат: отдельные идентификаторы
+ * экземпляров не нужны, а значит нечему и разъезжаться.
+ */
+export const MoveItemSchema = z.object({
+  t: z.literal('moveItem'),
+  fromX: z.number().int().min(0).max(63),
+  fromY: z.number().int().min(0).max(63),
+  toX: z.number().int().min(0).max(63),
+  toY: z.number().int().min(0).max(63),
+  rotate: z.boolean(),
+});
+
+export const EquipSchema = z.object({
+  t: z.literal('equip'),
+  x: z.number().int().min(0).max(63),
+  y: z.number().int().min(0).max(63),
+});
+
+export const UnequipSchema = z.object({
+  t: z.literal('unequip'),
+  slot: SlotSchema,
+});
+
+export const UseItemSchema = z.object({
+  t: z.literal('useItem'),
+  x: z.number().int().min(0).max(63),
+  y: z.number().int().min(0).max(63),
+});
+
+export const DropItemSchema = z.object({
+  t: z.literal('dropItem'),
+  x: z.number().int().min(0).max(63),
+  y: z.number().int().min(0).max(63),
+});
+
+/**
+ * Панель горячих клавиш. Назначение хранит вид предмета, а нажатие —
+ * только номер ячейки: что именно произойдёт, решает сервер по виду предмета.
+ */
+export const SetHotbarSchema = z.object({
+  t: z.literal('setHotbar'),
+  index: z.number().int().min(0).max(5),
+  /** Пустая строка очищает ячейку. */
+  itemId: z.string().max(48),
+});
+
+export const UseHotbarSchema = z.object({
+  t: z.literal('useHotbar'),
+  index: z.number().int().min(0).max(5),
+  viewTick: z.number().int().nonnegative(),
+});
+
 export const ChatSchema = z.object({
   t: z.literal('chat'),
   channel: z.enum(['local', 'global']),
@@ -123,6 +183,7 @@ export const InputSchema = z.object({
   yaw: z.number().finite(),
   pitch: z.number().finite(),
   jump: z.boolean(),
+  sprint: z.boolean(),
   dt: z.number().min(0).max(0.1),
 });
 
@@ -137,6 +198,13 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   BlockSchema,
   CastSchema,
   RespawnSchema,
+  MoveItemSchema,
+  EquipSchema,
+  UnequipSchema,
+  UseItemSchema,
+  DropItemSchema,
+  SetHotbarSchema,
+  UseHotbarSchema,
 ]);
 
 export type RegisterMessage = z.infer<typeof RegisterSchema>;
@@ -148,6 +216,13 @@ export type InputMessage = z.infer<typeof InputSchema>;
 export type ActionMessage = z.infer<typeof ActionSchema>;
 export type BlockMessage = z.infer<typeof BlockSchema>;
 export type CastMessage = z.infer<typeof CastSchema>;
+export type MoveItemMessage = z.infer<typeof MoveItemSchema>;
+export type EquipMessage = z.infer<typeof EquipSchema>;
+export type UnequipMessage = z.infer<typeof UnequipSchema>;
+export type UseItemMessage = z.infer<typeof UseItemSchema>;
+export type DropItemMessage = z.infer<typeof DropItemSchema>;
+export type SetHotbarMessage = z.infer<typeof SetHotbarSchema>;
+export type UseHotbarMessage = z.infer<typeof UseHotbarSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 // ---------- Сервер -> Клиент ----------
@@ -238,6 +313,32 @@ export interface LootMessage {
   t: 'loot';
   from: string;
   items: { itemId: string; name: string; count: number }[];
+  /** Сколько не влезло в рюкзак и осталось на земле. */
+  lost: number;
+}
+
+/**
+ * Состояние вещей. Присылается целиком при любом изменении: рюкзак невелик,
+ * а рассинхрон раскладки в игре с полной потерей лута стоит дороже трафика.
+ */
+export interface InventoryMessage {
+  t: 'inventory';
+  backpack: Grid;
+  equipment: Equipment;
+  knownRecipes: RecipeId[];
+  hotbar: Hotbar;
+  /** Текущий вес и предел без штрафа — для полосы нагрузки. */
+  weight: number;
+  capacity: number;
+  /** Броня и урон оружия: чтобы игрок видел, что даёт надетое. */
+  armor: number;
+  weaponDamage: number;
+}
+
+/** Почему действие с вещью не прошло. Клиент показывает это игроку. */
+export interface ItemErrorMessage {
+  t: 'itemError';
+  message: string;
 }
 
 export interface ChatBroadcast {
@@ -310,7 +411,11 @@ export type ServerMessage =
   | SkillUpMessage
   | LifeMessage
   | LootMessage
+  | InventoryMessage
+  | ItemErrorMessage
   | ErrorMessage;
+
+export type { EquipSlot };
 
 /** Сколько персонажей на аккаунт. */
 export const MAX_CHARACTERS = 3;

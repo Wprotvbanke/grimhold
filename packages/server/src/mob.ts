@@ -30,9 +30,15 @@ export interface Mob extends Combatant {
   profile: MobProfile;
   state: MoveState;
   phase: MobPhase;
-  /** Точка спавна: дальше leash от неё моб не уходит. */
+  /** Точка спавна: от неё отсчитывается желание вернуться. */
   home: Vec3;
   targetId: string | null;
+  /** Где моб был в прошлом шаге — по этому меряется пройденный путь. */
+  lastPos: Vec3;
+  /** Сколько метров погони накопилось с прошлого броска кости. */
+  chaseMetres: number;
+  /** Секунд, пока моб ни на кого не бросается: только что отстал. */
+  giveUpFor: number;
   /** Секунд до следующего удара. */
   attackCooldown: number;
   /** Секунд до конца замаха, если он замахнулся. */
@@ -42,8 +48,47 @@ export interface Mob extends Combatant {
 }
 
 const RESPAWN_SECONDS = 45;
-/** Насколько дольше aggroRange моб держится за цель, прежде чем бросить. */
-const CHASE_TOLERANCE = 1.6;
+/**
+ * Насколько дольше aggroRange моб держится за цель, прежде чем бросить.
+ *
+ * Запас щедрый: основной способ отстать теперь не этот порог, а бросок кости
+ * на каждом метре погони (см. ниже). Порог остался как «дальше он тебя просто
+ * не видит», а не как поводок.
+ */
+const CHASE_TOLERANCE = 2.2;
+
+/**
+ * Базовый шанс отстать за метр погони — на самой границе привязки и при
+ * нулевом упорстве. Всё остальное множители: упорство моба и то, насколько
+ * далеко он забрёл от дома.
+ */
+const GIVE_UP_PER_METRE = 0.35;
+
+/** Дальше этого от дома моб разворачивается без всяких бросков кости. */
+const HARD_LEASH_SCALE = 3;
+
+/** Сколько секунд отставший моб ни на кого не смотрит. */
+const GIVE_UP_SECONDS = 6;
+
+/**
+ * Шанс бросить погоню на очередном метре.
+ *
+ * Растёт квадратом расстояния от дома: у самого логова моб держится намертво,
+ * за границей привязки сдаётся быстро. Упорство гасит этот шанс целиком —
+ * у нежити он в десять раз ниже, чем у крысы.
+ */
+function giveUpChance(mob: Mob, distanceHome: number): number {
+  const beyond = distanceHome / mob.profile.leash;
+  return GIVE_UP_PER_METRE * (1 - mob.profile.aggression) * beyond * beyond;
+}
+
+/** Моб потерял интерес: цель забыта, домой, и какое-то время ни на кого. */
+function giveUp(mob: Mob): void {
+  mob.targetId = null;
+  mob.chaseMetres = 0;
+  mob.giveUpFor = GIVE_UP_SECONDS;
+  mob.phase = 'return';
+}
 
 export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: string): Mob {
   const profile = MOBS[mobId];
@@ -75,6 +120,8 @@ export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: stri
     slowFactor: 1,
     slowRemaining: 0,
     lightRemaining: 0,
+    dodgeCooldown: 0,
+    swingCooldown: 0,
     state: createMoveState(home, {
       body: { radius: profile.radius, height: profile.height },
       speedScale: profile.speedScale,
@@ -82,6 +129,9 @@ export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: stri
     phase: 'idle',
     home: { ...home },
     targetId: null,
+    lastPos: { ...home },
+    chaseMetres: 0,
+    giveUpFor: 0,
     attackCooldown: 0,
     windupRemaining: 0,
     respawnIn: 0,
@@ -113,10 +163,18 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
     yaw: mob.yaw,
     pitch: 0,
     jump: false,
+    sprint: false,
     dt,
   };
 
   mob.attackCooldown = Math.max(0, mob.attackCooldown - dt);
+  mob.giveUpFor = Math.max(0, mob.giveUpFor - dt);
+
+  // Путь меряем по факту, а не по скорости из профиля: моб упирается в камни
+  // и заборы, и «пройденный метр» должен быть настоящим — иначе застрявший
+  // у стены моб отстал бы от игрока, стоя на месте.
+  mob.chaseMetres += horizontalDistance(mob.pos, mob.lastPos);
+  mob.lastPos = { ...mob.pos };
 
   if (!mob.alive) {
     mob.phase = 'dead';
@@ -140,10 +198,10 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
 
   const distanceHome = horizontalDistance(mob.pos, mob.home);
 
-  // Ушёл слишком далеко от дома — бросает цель и возвращается.
-  if (distanceHome > mob.profile.leash) {
-    mob.targetId = null;
-    mob.phase = 'return';
+  // Совсем уж далеко — разворот без разговоров: иначе один невезучий бросок
+  // кости мог бы утащить моба через полкарты.
+  if (distanceHome > mob.profile.leash * HARD_LEASH_SCALE) {
+    giveUp(mob);
     return { input: moveToward(mob, mob.home, dt), strike: false };
   }
 
@@ -152,9 +210,24 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
 
     // Цель убежала слишком далеко — теряем интерес.
     if (distance > mob.profile.aggroRange * CHASE_TOLERANCE) {
-      mob.targetId = null;
-      mob.phase = 'return';
+      giveUp(mob);
       return { input: moveToward(mob, mob.home, dt), strike: false };
+    }
+
+    /**
+     * Бросок кости на каждый пройденный метр.
+     *
+     * Жёсткого поводка нет намеренно: на его границе моб дёргался — шаг за
+     * черту разворачивал его домой, шаг обратно возвращал погоню, и так
+     * каждый кадр. Здесь же убегание от моба — это растянутая во времени
+     * проверка удачи: чем дальше он от дома, тем вероятнее отстанет.
+     */
+    while (mob.chaseMetres >= 1) {
+      mob.chaseMetres -= 1;
+      if (Math.random() < giveUpChance(mob, distanceHome)) {
+        giveUp(mob);
+        return { input: moveToward(mob, mob.home, dt), strike: false };
+      }
     }
 
     mob.yaw = yawToward(mob.pos, target.pos);
@@ -168,6 +241,20 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
 
     mob.phase = 'chase';
     return { input: moveToward(mob, target.pos, dt), strike: false };
+  }
+
+  // Погоня кончилась — счётчик метров ни к чему.
+  mob.chaseMetres = 0;
+
+  // Только что отстал: бредёт домой и никого не замечает. Без этой паузы он
+  // тут же цеплялся бы за ту же цель и весь бросок кости был бы впустую.
+  if (mob.giveUpFor > 0) {
+    if (distanceHome > 1.5) {
+      mob.phase = 'return';
+      return { input: moveToward(mob, mob.home, dt), strike: false };
+    }
+    mob.phase = 'idle';
+    return { input: idle, strike: false };
   }
 
   // Цели нет — ищем ближайшую в радиусе обнаружения.
@@ -213,6 +300,9 @@ export function tickRespawn(mob: Mob, dt: number): boolean {
   });
   mob.phase = 'idle';
   mob.targetId = null;
+  mob.lastPos = { ...mob.home };
+  mob.chaseMetres = 0;
+  mob.giveUpFor = 0;
   mob.windupRemaining = 0;
   return true;
 }
@@ -237,7 +327,7 @@ export function killMob(mob: Mob): void {
 function moveToward(mob: Mob, destination: Vec3, dt: number): MoveInput {
   const yaw = yawToward(mob.pos, destination);
   mob.yaw = yaw;
-  return { seq: 0, forward: 1, right: 0, yaw, pitch: 0, jump: false, dt };
+  return { seq: 0, forward: 1, right: 0, yaw, pitch: 0, jump: false, sprint: false, dt };
 }
 
 /** При forward = 1 движение идёт в (-sin yaw, -cos yaw) — отсюда обратное преобразование. */

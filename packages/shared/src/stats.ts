@@ -69,6 +69,33 @@ export function manaRegen(attributes: Attributes): number {
   return 1.5 + attributes.intellect * 0.2;
 }
 
+/**
+ * Сколько килограммов можно нести без штрафа. Дальше начинается перегруз:
+ * скорость падает, и это осознанный выбор «взять больше или уйти быстрее» —
+ * ровно тот выбор, на котором стоит вся ставка подземелья.
+ */
+export function carryCapacity(attributes: Attributes): number {
+  return 20 + attributes.strength * 2;
+}
+
+/** За этим пределом не двигаются вовсе. */
+export function carryLimit(attributes: Attributes): number {
+  return carryCapacity(attributes) * 2;
+}
+
+/**
+ * Множитель скорости от нагрузки: до предела единица, дальше падает линейно
+ * до нуля. Возвращает не меньше 0.15, чтобы перегруженный мог хотя бы доползти
+ * до банка, а не застрять навсегда.
+ */
+export function weightSpeedFactor(attributes: Attributes, weight: number): number {
+  const capacity = carryCapacity(attributes);
+  if (weight <= capacity) return 1;
+
+  const over = (weight - capacity) / capacity;
+  return Math.max(0.15, 1 - over);
+}
+
 /** Пауза без трат, после которой стамина начинает восстанавливаться. */
 export const STAMINA_IDLE_DELAY = 1.0;
 /** Здоровье само не восстанавливается — только зельями и бинтами. */

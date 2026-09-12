@@ -8,3 +8,12 @@ dist/
 *.db-wal
 *.db-shm
 .vite/
+
+# Исходники ассетов до обработки: тяжёлые и в игре не используются.
+# Готовые файлы лежат в packages/client/public, собираются скриптами
+# из scripts/ — см. docs/assets.md.
+assets/source/
+
+# Мусор отладки: снимки экрана и временные скрипты.
+scripts/tmp-*
+screenshot*.png

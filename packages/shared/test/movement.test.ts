@@ -27,6 +27,7 @@ function input(overrides: Partial<MoveInput> = {}): MoveInput {
     yaw: 0,
     pitch: 0,
     jump: false,
+    sprint: false,
     dt: DT,
     ...overrides,
   };

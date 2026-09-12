@@ -5,6 +5,7 @@ import {
   type CharacterSummary,
   type CombatEvent,
   type LifeMessage,
+  type InventoryMessage,
   type LootMessage,
   type SkillUpMessage,
   type ClientMessage,
@@ -24,6 +25,8 @@ export interface ConnectionHandlers {
   onSkillUp?(message: SkillUpMessage): void;
   onLife?(message: LifeMessage): void;
   onLoot?(message: LootMessage): void;
+  onInventory?(message: InventoryMessage): void;
+  onItemError?(message: string): void;
   onDisconnected?(): void;
 }
 
@@ -82,6 +85,12 @@ export class Connection {
           break;
         case 'loot':
           this.handlers.onLoot?.(message);
+          break;
+        case 'inventory':
+          this.handlers.onInventory?.(message);
+          break;
+        case 'itemError':
+          this.handlers.onItemError?.(message.message);
           break;
         case 'error':
           console.error('[сервер]', message.message);

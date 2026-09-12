@@ -46,6 +46,7 @@ async function walk(
       yaw: intent.yaw,
       pitch: 0,
       jump: false,
+      sprint: false,
       dt: INPUT_DT,
     });
     if ((i + 1) % 8 === 0) await sleep(1000 / TICK_RATE);

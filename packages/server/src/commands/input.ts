@@ -1,5 +1,12 @@
-import { MAX_INPUTS_PER_TICK, type InputMessage } from '@grimhold/shared';
+import { type InputMessage } from '@grimhold/shared';
 import type { CommandHandler } from './types.js';
+
+/**
+ * Сколько вводов держим в очереди. Это защита от флуда, а не темп симуляции:
+ * за тик обрабатывается не больше `MAX_INPUTS_PER_TICK` (см. gameloop.ts),
+ * остальное ждёт следующего.
+ */
+const INPUT_QUEUE_LIMIT = 64;
 
 /**
  * Приём намерения движения. Здесь ввод только ставится в очередь —
@@ -14,9 +21,18 @@ export const handleInput: CommandHandler<InputMessage> = (ctx, payload) => {
   }
 
   // Предохранитель от флуда. Полноценное ограничение темпа — вместе с античитом.
-  if (actor.pendingInputs.length >= MAX_INPUTS_PER_TICK) {
-    actor.pendingInputs.shift();
+  //
+  // Копить можно куда больше, чем обрабатывается за один тик: при задержке
+  // в сети вводы приходят пачками, и лишние просто подождут следующего тика.
+  // Терять их нельзя ни с какого конца — выброшенный ввод оставляет дыру
+  // в последовательности, клиент считает его подтверждённым и перестаёт
+  // переигрывать, а позиции расходятся насовсем.
+  if (actor.pendingInputs.length >= INPUT_QUEUE_LIMIT) {
+    return [];
   }
+
+  // Свежее намерение движения нужно рывку: он разрешён только в сторону.
+  actor.lastIntent = { forward: payload.forward, right: payload.right, jump: payload.jump };
 
   actor.pendingInputs.push({
     seq: payload.seq,
@@ -25,6 +41,7 @@ export const handleInput: CommandHandler<InputMessage> = (ctx, payload) => {
     yaw: payload.yaw,
     pitch: payload.pitch,
     jump: payload.jump,
+    sprint: payload.sprint,
     dt: payload.dt,
   });
 

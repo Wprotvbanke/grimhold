@@ -9,6 +9,7 @@ import {
   type CharacterSummary,
   type ClientMessage,
   type CombatEvent,
+  type InventoryMessage,
   type LifeMessage,
   type LootMessage,
   type Race,
@@ -38,6 +39,9 @@ export class TestClient {
   readonly skillUps: SkillUpMessage[] = [];
   readonly life: LifeMessage[] = [];
   readonly loot: LootMessage[] = [];
+  /** Последнее состояние вещей: сервер шлёт его целиком при каждом изменении. */
+  inventory: InventoryMessage | null = null;
+  readonly errors: string[] = [];
   onSnapshot?: (snapshot: SnapshotMessage) => void;
 
   private readonly socket: WebSocket;
@@ -128,6 +132,12 @@ export class TestClient {
         break;
       case 'loot':
         this.loot.push(message);
+        break;
+      case 'inventory':
+        this.inventory = message;
+        break;
+      case 'itemError':
+        this.errors.push(message.message);
         break;
       case 'error':
         console.error('[сервер]', message.message);

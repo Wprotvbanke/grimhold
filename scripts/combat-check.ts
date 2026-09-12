@@ -40,6 +40,7 @@ async function walk(
       yaw: intent.yaw,
       pitch: 0,
       jump: false,
+      sprint: false,
       dt: INPUT_DT,
     });
     if ((i + 1) % 8 === 0) await sleep(1000 / TICK_RATE);
@@ -58,6 +59,7 @@ async function face(client: TestClient, yaw: number, ticks = 4): Promise<void> {
       yaw,
       pitch: 0,
       jump: false,
+      sprint: false,
       dt: INPUT_DT,
     });
     if ((i + 1) % 8 === 0) await sleep(1000 / TICK_RATE);

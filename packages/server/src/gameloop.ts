@@ -1,16 +1,22 @@
 import {
+  MAX_INPUTS_PER_TICK,
   BLOCK_DRAIN,
-  BLOCK_SPEED_SCALE,
-  DODGE_SPEED_SCALE,
   EXPERIENCE_PER_KILL,
   MOBS,
   SPAWN_POINT,
   SPELLS,
+  SPRINT_DRAIN,
+  addItem,
   gainExperience,
+  movementSpeedFactor,
+  isItemId,
   step,
+  weaponDamageOf,
+  weightSpeedFactor,
   type CombatEvent,
   type LifeMessage,
   type LootMessage,
+  type ItemId,
   type SkillId,
   type SkillUpMessage,
   type SpellId,
@@ -27,7 +33,7 @@ import { speedMultiplier, tickCombatant, type Combatant } from './combatant.js';
 import { decideMob, killMob, tickRespawn, type Mob, type MobTarget } from './mob.js';
 import { applyDamage } from './combatant.js';
 import { createProjectile, stepProjectile } from './projectile.js';
-import type { Player, World } from './world.js';
+import { refreshLoadout, type Player, type World } from './world.js';
 
 /**
  * Один тик мира: движение, бой, ИИ, снаряды, смерть.
@@ -45,12 +51,21 @@ export interface Outbox {
   skillUps: { playerId: string; message: SkillUpMessage }[];
   life: { playerId: string; message: LifeMessage }[];
   loot: { playerId: string; message: LootMessage }[];
+  /**
+   * Игроки, которым надо переслать состояние вещей.
+   *
+   * Рюкзак меняется не только по команде игрока: лут падает в него сам, по ходу
+   * тика. Раньше клиенту об этом не сообщали, и добыча оставалась невидимой,
+   * пока игрок не трогал что-нибудь руками — а значит, он перетаскивал вещи
+   * по устаревшей картинке и получал отказы на клетках, выглядящих пустыми.
+   */
+  inventory: Player[];
   /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
   criticalSaves: Player[];
 }
 
 export function emptyOutbox(): Outbox {
-  return { combat: [], skillUps: [], life: [], loot: [], criticalSaves: [] };
+  return { combat: [], skillUps: [], life: [], loot: [], inventory: [], criticalSaves: [] };
 }
 
 /** Сколько секунд лежать до возможности воскреснуть. */
@@ -101,6 +116,8 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
 
       if (kind === 'attack' || kind === 'heavy') {
         const skill = skillForWeapon(player);
+        // Оружие в руке заменяет кулак; пустая рука бьёт как раньше.
+        const weapon = weaponDamageOf(player.equipment);
         const outcome = resolveMelee(
           combat,
           kind,
@@ -109,7 +126,7 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
           world.tick,
           player.pendingViewTick ?? world.tick,
           { id: skill, level: player.skills[skill].level },
-          FIST_DAMAGE,
+          weapon > 0 ? weapon : FIST_DAMAGE,
         );
         collectOutcome(world, outcome, outbox);
       }
@@ -127,36 +144,57 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
   }
 }
 
-/** Прогоняет накопленный ввод через общий шаг симуляции. */
+/**
+ * Прогоняет накопленный ввод через общий шаг симуляции.
+ *
+ * Множитель скорости считается общей с клиентом формулой movementSpeedFactor:
+ * раньше сервер применял блок, рывок и перегруз, а клиент о них не знал, и
+ * предсказание расходилось при каждом поднятом щите.
+ */
 function applyMovement(world: World, player: Player, dt: number): void {
-  void dt;
   const combat = player.combat;
-
-  // Скорость зависит от состояния: щит замедляет, рывок разгоняет, стужа тормозит.
-  let scale = speedMultiplier(combat);
-  if (combat.blocking) scale *= BLOCK_SPEED_SCALE;
-
-  if (combat.action?.kind === 'dodge') {
-    // Ускорение только в фазе рывка, не в замахе и не в восстановлении.
-    if (combat.action.phase === 'active') scale *= DODGE_SPEED_SCALE;
-  } else if (combat.action) {
-    // Замах и восстановление сковывают: бить на бегу нельзя.
-    scale *= 0.35;
-  }
-
   const baseScale = player.state.speedScale;
-  for (const input of player.pendingInputs) {
+  const dashing = combat.action?.kind === 'dodge' && combat.action.phase === 'active';
+  // Накат: бросок кончился, а инерция ещё несёт.
+  const gliding = combat.action?.kind === 'dodge' && combat.action.phase === 'recovery';
+
+  // За тик прогоняем ограниченное число вводов: остальные подождут следующего.
+  // Так пачка, пришедшая после сетевой заминки, не разгоняет игрока рывком
+  // и при этом не теряется.
+  const batch = player.pendingInputs.splice(0, MAX_INPUTS_PER_TICK);
+
+  for (const input of batch) {
+    // Бежать можно только налегке и не в бою: щит, замах и пустая стамина
+    // отменяют бег. Те же условия проверяет клиент у себя.
+    const sprinting =
+      input.sprint &&
+      !combat.blocking &&
+      !combat.action &&
+      combat.vitals.stamina > 0 &&
+      (input.forward !== 0 || input.right !== 0);
+
+    const scale = movementSpeedFactor({
+      blocking: combat.blocking,
+      dashing,
+      gliding,
+      sprinting,
+      acting: Boolean(combat.action) && combat.action?.kind !== 'dodge',
+      slowFactor: speedMultiplier(combat),
+      weightFactor: weightSpeedFactor(player.attributes, player.carriedWeight),
+    });
+
     const colliders = world.collidersAt(player.instanceId, player.state.pos.x, player.state.pos.z);
-    player.state = step(
-      { ...player.state, speedScale: baseScale * scale },
-      input,
-      colliders,
-    );
+    player.state = step({ ...player.state, speedScale: baseScale * scale }, input, colliders);
     player.state.speedScale = baseScale;
+
+    if (sprinting) {
+      combat.vitals.stamina = Math.max(0, combat.vitals.stamina - SPRINT_DRAIN * input.dt);
+      combat.sinceStaminaUse = 0;
+    }
+
     player.lastProcessedSeq = input.seq;
     player.pitch = input.pitch;
   }
-  player.pendingInputs.length = 0;
 
   // Единственное место, где боевая позиция синхронизируется с движением.
   combat.pos = player.state.pos;
@@ -352,15 +390,32 @@ function handleDeath(
   grantExperience(world, killerId, skillOfKiller(world, killerId), EXPERIENCE_PER_KILL, outbox);
 
   const killer = world.playerByCombatantId(killerId);
-  if (killer) {
-    const items = rollLoot(mob);
-    if (items.length > 0) {
-      outbox.loot.push({
-        playerId: killer.id,
-        message: { t: 'loot', from: mob.name, items },
-      });
-    }
+  if (!killer) return;
+
+  const rolled = rollLoot(mob);
+  if (rolled.length === 0) return;
+
+  // Лут кладётся в рюкзак. Что не влезло — остаётся на земле, то есть
+  // теряется: это первая ситуация, где игрок платит за набитый рюкзак.
+  const taken: { itemId: string; name: string; count: number }[] = [];
+  let lost = 0;
+
+  for (const entry of rolled) {
+    const result = addItem(killer.inventory, entry.itemId, entry.count);
+    killer.inventory = result.grid;
+
+    const got = entry.count - result.leftover;
+    if (got > 0) taken.push({ itemId: entry.itemId, name: entry.name, count: got });
+    lost += result.leftover;
   }
+
+  refreshLoadout(killer);
+  outbox.inventory.push(killer);
+
+  outbox.loot.push({
+    playerId: killer.id,
+    message: { t: 'loot', from: mob.name, items: taken, lost },
+  });
 }
 
 /**
@@ -446,10 +501,14 @@ function skillOfKiller(world: World, killerId: string): SkillId {
   return player ? skillForWeapon(player) : 'blade';
 }
 
-function rollLoot(mob: Mob): { itemId: string; name: string; count: number }[] {
-  const items: { itemId: string; name: string; count: number }[] = [];
+function rollLoot(mob: Mob): { itemId: ItemId; name: string; count: number }[] {
+  const items: { itemId: ItemId; name: string; count: number }[] = [];
   for (const entry of MOBS[mob.mobId].loot) {
     if (Math.random() > entry.chance) continue;
+    // Таблицы лута ссылаются на предметы по идентификатору; несуществующие
+    // молча пропускаем, иначе опечатка в таблице роняла бы весь бой.
+    if (!isItemId(entry.itemId)) continue;
+
     const count = entry.min + Math.floor(Math.random() * (entry.max - entry.min + 1));
     items.push({ itemId: entry.itemId, name: entry.name, count });
   }

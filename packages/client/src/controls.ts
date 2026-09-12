@@ -7,6 +7,8 @@ export interface IntentSample {
   forward: number;
   right: number;
   jump: boolean;
+  /** Зажат ли бег. Хватит ли стамины — решает сервер. */
+  sprint: boolean;
   yaw: number;
   pitch: number;
 }
@@ -23,8 +25,8 @@ export interface ControlsHooks {
   onAction(kind: 'attack' | 'heavy' | 'dodge'): void;
   /** Щит поднят или опущен. */
   onBlock(active: boolean): void;
-  /** Применить заклинание из панели, индекс 0..5. */
-  onCast(index: number): void;
+  /** Нажата ячейка панели горячих клавиш, индекс 0..5. */
+  onHotbar(index: number): void;
 }
 
 export class Controls {
@@ -95,8 +97,15 @@ export class Controls {
   }
 
   /**
-   * Боевой ввод. ЛКМ — быстрый удар, Shift+ЛКМ — тяжёлый, ПКМ удерживать —
-   * блок, C — рывок, цифры — заклинания.
+   * Боевой ввод. ЛКМ — быстрый удар, средняя кнопка — тяжёлый, ПКМ удерживать —
+   * блок, C — рывок в сторону движения, цифры — панель, Shift — бег.
+   *
+   * Рюкзака здесь нет: пока он открыт, захват мыши отпущен и этот обработчик
+   * молчит, поэтому клавишей рюкзака целиком заведует main.ts. Когда-то она
+   * была в обоих местах, и нажатие открывало рюкзак и тут же закрывало его.
+   *
+   * Тяжёлый удар переехал со Shift+ЛКМ на среднюю кнопку: Shift теперь занят
+   * бегом, и сочетание «бегу и бью тяжёлым» стало бы неразрешимым.
    */
   private wireCombat(): void {
     this.canvas.addEventListener('mousedown', (event) => {
@@ -104,7 +113,9 @@ export class Controls {
       event.preventDefault();
 
       if (event.button === 0) {
-        this.hooks.onAction(event.shiftKey ? 'heavy' : 'attack');
+        this.hooks.onAction('attack');
+      } else if (event.button === 1) {
+        this.hooks.onAction('heavy');
       } else if (event.button === 2) {
         this.blocking = true;
         this.hooks.onBlock(true);
@@ -125,16 +136,30 @@ export class Controls {
 
       if (event.code === 'KeyC') {
         event.preventDefault();
-        this.hooks.onAction('dodge');
+        // Рывок — бросок в сторону, а не кнопка «потратить стамину». Стоя
+        // на месте рвать некуда, и сервер такое намерение всё равно отбросит:
+        // проверяем здесь, чтобы руки зря не дёргались и откат не тикал.
+        if (this.dashDirection()) this.hooks.onAction('dodge');
         return;
       }
 
       const digit = /^Digit([1-6])$/.exec(event.code);
       if (digit) {
         event.preventDefault();
-        this.hooks.onCast(Number(digit[1]) - 1);
+        this.hooks.onHotbar(Number(digit[1]) - 1);
       }
     });
+  }
+
+  /** Есть ли куда рвать: зажато направление или прыжок. */
+  private dashDirection(): boolean {
+    return (
+      this.held('KeyW') ||
+      this.held('KeyS') ||
+      this.held('KeyA') ||
+      this.held('KeyD') ||
+      this.held('Space')
+    );
   }
 
   requestLock(): void {
@@ -148,6 +173,7 @@ export class Controls {
       forward,
       right,
       jump: this.held('Space'),
+      sprint: this.held('ShiftLeft') || this.held('ShiftRight'),
       yaw: this.yaw,
       pitch: this.pitch,
     };

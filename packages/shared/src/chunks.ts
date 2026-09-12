@@ -1,5 +1,6 @@
 import { type Aabb, boxFromCenter } from './math.js';
 import { TOWN_BOXES, TOWN_SIZE, type LevelBox } from './level.js';
+import { generateNature } from './nature.js';
 
 /**
  * Чанковый мир.
@@ -94,9 +95,9 @@ function wildernessChunk(cx: number, cz: number): LevelBox[] {
   const { x: originX, z: originZ } = chunkCenter(cx, cz);
   const boxes: LevelBox[] = [];
 
-  // Земля чанка.
+  // Земля чанка: грунт, а не городская мостовая.
   boxes.push({
-    kind: 'floor',
+    kind: 'ground',
     box: boxFromCenter(originX, -0.5, originZ, CHUNK_SIZE, 1, CHUNK_SIZE),
   });
 
@@ -116,6 +117,24 @@ function wildernessChunk(cx: number, cz: number): LevelBox[] {
         height,
         depth,
       ),
+    });
+  }
+
+  /**
+   * Стволы деревьев и валуны из растительности.
+   *
+   * Сами растения рисует клиент (client/src/nature.ts), но раскладка общая,
+   * поэтому телесность им можно дать прямо здесь — невидимыми коробками.
+   * Иначе лес был бы нарисован на стекле: деревья видно, а пройти сквозь них
+   * можно насквозь.
+   */
+  for (const plant of generateNature(cx, cz)) {
+    if (plant.solid <= 0) continue;
+    const width = plant.solid * 2 * plant.scale;
+    boxes.push({
+      kind: 'rock',
+      hidden: true,
+      box: boxFromCenter(plant.x, 1.2, plant.z, width, 2.4, width),
     });
   }
 
@@ -191,6 +210,8 @@ export class ChunkedWorld {
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         for (const entry of this.getChunk(cx + dx, cz + dz)) {
+          // Декоративные коробки в столкновениях не участвуют.
+          if (entry.noCollide) continue;
           colliders.push(entry.box);
         }
       }

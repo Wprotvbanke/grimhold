@@ -25,7 +25,8 @@ export interface UiHandlers {
 export class Ui {
   private readonly authScreen = el<HTMLDivElement>('authScreen');
   private readonly charScreen = el<HTMLDivElement>('charScreen');
-  private readonly pauseHint = el<HTMLDivElement>('pauseHint');
+  private readonly resumeHint = el<HTMLDivElement>('resumeHint');
+  private readonly captureHint = el<HTMLDivElement>('captureHint');
   private readonly chatLog = el<HTMLDivElement>('chatLog');
   private readonly chatInput = el<HTMLInputElement>('chatInput');
 
@@ -104,9 +105,37 @@ export class Ui {
     this.charScreen.hidden = true;
   }
 
-  setPaused(paused: boolean): void {
-    this.pauseHint.hidden = !paused;
+  /**
+   * Подсказка «щёлкни, чтобы управлять». Пришла на смену экрану паузы:
+   * тот закрывал собой мир и останавливал игру там, где она не останавливается —
+   * сервер-то продолжает считать, и мобы продолжают бить.
+   */
+  setResumeHint(visible: boolean): void {
+    this.resumeHint.hidden = !visible;
   }
+
+  /**
+   * Сообщает, кому принадлежат клавиши браузера. Показывается ненадолго при
+   * входе в полный экран и выходе из него: молчаливый захват Ctrl+W пугал бы
+   * сильнее, чем помогал.
+   */
+  setCaptureHint(full: boolean, captured: boolean): void {
+    if (!full) this.captureHint.textContent = 'Клавиши браузера возвращены';
+    else if (captured)
+      this.captureHint.textContent = 'Клавиатура захвачена игрой — удержи Escape, чтобы выйти';
+    else
+      // Полный захват умеет только Chromium. В остальных браузерах игре
+      // достаётся всё, что страница вправе отменить, но не Ctrl+W и Ctrl+T.
+      this.captureHint.textContent = 'Полный экран. Ctrl+W и Ctrl+T этот браузер игре не отдаёт';
+    this.captureHint.hidden = false;
+
+    clearTimeout(this.captureTimer);
+    this.captureTimer = setTimeout(() => {
+      this.captureHint.hidden = true;
+    }, 3500);
+  }
+
+  private captureTimer: ReturnType<typeof setTimeout> | undefined;
 
   get inMenus(): boolean {
     return !this.authScreen.hidden || !this.charScreen.hidden;

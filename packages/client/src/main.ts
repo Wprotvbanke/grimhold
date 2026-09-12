@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import {
+  DAY_START,
   INTERP_DELAY_MS,
   MAX_STEP_DT,
   CORPSE_SECONDS,
   MOBS,
   RACES,
   SKILLS,
-  SPELLS,
-  SPELL_BAR,
   TICK_MS,
   eyeHeight,
+  sunHeight,
+  timeOfDay,
   type CharacterSummary,
   type CombatEvent,
   type EntitySnapshot,
@@ -30,11 +31,15 @@ import { Predictor } from './prediction.js';
 import {
   createAvatar,
   createMobMesh,
+  createProjectileLights,
   createProjectileMesh,
   createScene,
   mobTagHeight,
   tagHeight,
 } from './scene.js';
+import { InventoryUi } from './inventoryui.js';
+import { guardBrowserKeys, toggleFullCapture, wireFullCapture } from './keyboard.js';
+import { createQuality } from './quality.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -44,10 +49,20 @@ const hud = document.getElementById('hud')!;
 const labels = document.getElementById('labels')!;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
+// Разрешение задаёт quality.ts: оно отступает при просадке и возвращается,
+// когда запас появился. Постоянное число тут подходило бы ровно одной машине.
+const quality = createQuality(renderer);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+/**
+ * Тени: обычный PCF, а не мягкий.
+ *
+ * `PCFSoftShadowMap` в этой версии three удалён — он молча подменялся на
+ * обычный и писал предупреждение в каждый запуск. Пишем то, что получаем
+ * на самом деле; мягкость, если понадобится, придётся добирать разрешением
+ * карты и смещением, а не этим флагом.
+ */
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 // Руки рисуются вторым проходом поверх мира, поэтому очисткой управляем сами.
@@ -56,6 +71,13 @@ document.body.appendChild(renderer.domElement);
 
 const world = createScene();
 const scene = world.scene;
+
+/** Лампы снарядов: пул постоянного размера, см. scene.ts. */
+const projectileLights = createProjectileLights(scene);
+
+/** Частота тика сервера: из неё выводится время суток. Придёт с приветствием. */
+let serverTickRate = 1000 / TICK_MS;
+
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 200);
 camera.rotation.order = 'YXZ';
 
@@ -96,6 +118,25 @@ const ui = new Ui({
   onChatSend: (channel, text) => connection.send({ t: 'chat', channel, text }),
 });
 
+/**
+ * Рюкзак. Пока он открыт, захват мыши отпущен — иначе нельзя перетаскивать
+ * вещи, а движение в это время только мешало бы.
+ */
+const inventoryUi = new InventoryUi({
+  onMove: (fromX, fromY, toX, toY, rotate) =>
+    connection.send({ t: 'moveItem', fromX, fromY, toX, toY, rotate }),
+  onEquip: (x, y) => connection.send({ t: 'equip', x, y }),
+  onAssignHotbar: (index, itemId) => connection.send({ t: 'setHotbar', index, itemId }),
+  onUseHotbar: (index) => useHotbar(index),
+  onUnequip: (slot) => connection.send({ t: 'unequip', slot }),
+  onUse: (x, y) => connection.send({ t: 'useItem', x, y }),
+  onDrop: (x, y) => connection.send({ t: 'dropItem', x, y }),
+  onClose: () => {
+    controls.suspended = false;
+    if (game && !combatUi.dead) ui.setResumeHint(!controls.locked);
+  },
+});
+
 const combatUi = new CombatUi(() => {
   connection.send({ t: 'respawn' });
   // Жест пользователя ещё «живой» — только здесь захват мыши и разрешён.
@@ -121,18 +162,19 @@ const controls = new Controls(renderer.domElement, {
   },
   onLockChange: (locked) => {
     if (!game) return;
-    // Пока чат открыт или игрок мёртв, пауза не показывается.
-    ui.setPaused(!locked && !ui.chatFocused && !combatUi.dead);
+    // Подсказка вместо экрана паузы: мир видно всегда.
+    ui.setResumeHint(!locked && !ui.chatFocused && !combatUi.dead && !inventoryUi.open);
     if (locked) controls.suspended = false;
   },
   onAction: (kind) => {
     if (!game || combatUi.dead) return;
 
     // Руки дёргаются сразу, не дожидаясь ответа сервера, — иначе удар
-    // ощущается вязким. Но только если стамины хватает: правило то же,
-    // по которому сервер откажет, поэтому картинка не обманет.
+    // ощущается вязким. Но по тем же правилам, по которым откажет сервер:
+    // хватает ли стамины и вышла ли пауза после прошлого удара. Иначе
+    // анимацию можно спамить вхолостую — бьёшь, а урона и траты нет.
     const stamina = connection.latestSnapshot?.self.stamina ?? 0;
-    if (stamina >= ViewModel.staminaCost(kind)) game.hands.beginAction(kind);
+    if (stamina < ViewModel.staminaCost(kind) || !game.hands.beginAction(kind)) return;
 
     connection.send({ t: 'action', kind, seq: actionSeq++, viewTick: viewTick() });
   },
@@ -140,26 +182,17 @@ const controls = new Controls(renderer.domElement, {
     if (!game) return;
     connection.send({ t: 'block', active });
   },
-  onCast: (index) => {
-    if (!game || combatUi.dead) return;
-    const spellId = SPELL_BAR[index];
-    if (!spellId) return;
-
-    // Перезарядку сервер проверит сам; здесь только чтобы не спамить впустую.
-    const now = performance.now();
-    if (!combatUi.isReady(spellId, now)) return;
-
-    combatUi.markCast(spellId, now);
-    game.hands.beginAction('cast');
-    connection.send({ t: 'cast', spellId, viewTick: viewTick() });
-    ui.system(`Читаешь: ${SPELLS[spellId].name}`);
-  },
+  onHotbar: (index) => useHotbar(index),
 });
 
 const connection = new Connection(SERVER_URL, {
   onAuthenticated: (username, characters, max) => ui.showCharacters(username, characters, max),
   onAuthError: (message) => ui.showCharacterError(message),
-  onWelcome: (message) => startGame(message.character, message.spawn),
+  onWelcome: (message) => {
+    // Частота тика нужна часам мира: время суток выводится из номера тика.
+    serverTickRate = message.tickRate;
+    startGame(message.character, message.spawn);
+  },
   onChat: (message) => ui.appendChat(message),
   onCombat: (event) => handleCombatEvent(event),
   onSkillUp: (message) =>
@@ -167,27 +200,113 @@ const connection = new Connection(SERVER_URL, {
   onLife: (message) => {
     if (message.event === 'died') {
       combatUi.showDeath(message.killerName);
-      ui.setPaused(false);
+      ui.setResumeHint(false);
       document.exitPointerLock();
     } else {
       combatUi.hideDeath();
       // Захват мыши уже запрошен при клике по кнопке. Если браузер его не дал,
-      // покажем подсказку паузы вместо молчаливой невозможности двигаться.
-      ui.setPaused(!controls.locked);
+      // подсказка объяснит, что делать.
+      ui.setResumeHint(!controls.locked);
     }
   },
   onLoot: (message) => {
     const list = message.items.map((item) => `${item.name} ×${item.count}`).join(', ');
-    ui.system(`С «${message.from}» выпало: ${list}`);
+    if (list) {
+      ui.system(`С «${message.from}»: ${list}`);
+      // Руки тянутся и забирают добычу — видно, что она попала именно к тебе.
+      game?.hands.playTake();
+    }
+    // Не влезшее в рюкзак теряется — об этом надо сказать прямо.
+    if (message.lost > 0) {
+      ui.system(`Рюкзак полон, потеряно предметов: ${message.lost}`);
+    }
   },
+  onInventory: (message) => {
+    inventoryUi.update(message);
+    // Перегруз замедляет, и предсказание обязано знать об этом сразу,
+    // иначе сервер начнёт дёргать игрока назад на каждом шаге.
+    weightFactor = weightSpeedFactorFor(message.weight, message.capacity);
+  },
+  onItemError: (message) => inventoryUi.showError(message),
   onDisconnected: () => {
     if (game) ui.system('Связь потеряна, переподключаюсь…');
   },
 });
 
-document.getElementById('pauseHint')!.addEventListener('click', () => {
-  ui.setPaused(false);
-  controls.requestLock();
+/**
+ * Ячейка панели. Что произойдёт — надеть, применить или прочесть заклинание —
+ * решает сервер по виду предмета; клиент шлёт только номер ячейки.
+ */
+function useHotbar(index: number): void {
+  if (!game || combatUi.dead) return;
+  connection.send({ t: 'useHotbar', index, viewTick: viewTick() });
+}
+
+// Захват мыши возвращается щелчком по миру: отдельного экрана паузы нет,
+// он только закрывал происходящее и мешал.
+renderer.domElement.addEventListener('mousedown', () => {
+  if (!game || combatUi.dead || inventoryUi.open) return;
+  if (!controls.locked) controls.requestLock();
+});
+
+/**
+ * Клавиша рюкзака — целиком здесь, и только здесь.
+ *
+ * Controls её не слышит: пока рюкзак открыт, захват мыши отпущен и боевой ввод
+ * приостановлен. Когда-то обработчик стоял в обоих местах, и одно нажатие
+ * открывало рюкзак и тут же его закрывало — то есть он не открывался вовсе.
+ */
+function toggleInventory(): void {
+  if (!game || combatUi.dead || ui.chatFocused) return;
+
+  if (inventoryUi.open) {
+    inventoryUi.hide();
+    // Жест пользователя ещё «живой» — только под ним браузер и вернёт захват.
+    controls.requestLock();
+    return;
+  }
+
+  // Мышь нужна курсором, а не для обзора: отпускаем захват.
+  controls.suspended = true;
+  document.exitPointerLock();
+  ui.setResumeHint(false);
+  inventoryUi.show();
+}
+
+/**
+ * Клавиатура принадлежит игре, пока игрок в ней: мышь захвачена или открыт
+ * рюкзак. В чате и на экранах входа она возвращается браузеру — там печатают.
+ */
+guardBrowserKeys(() => (controls.locked && !controls.suspended) || inventoryUi.open);
+wireFullCapture((full, captured) => ui.setCaptureHint(full, captured));
+
+/** Игрок печатает — клавиши принадлежат полю, а не игре. */
+function typingInto(target: EventTarget | null): boolean {
+  const node = target as HTMLElement | null;
+  return node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement;
+}
+
+window.addEventListener('keydown', (event) => {
+  // Иначе «i» не набрать в имени персонажа: обработчик висит на окне и видит
+  // нажатия из полей ввода тоже.
+  if (typingInto(event.target)) return;
+
+  if (event.code === 'KeyI') {
+    event.preventDefault();
+    toggleInventory();
+    return;
+  }
+
+  // Полный экран берём на себя: только вход через API отдаёт игре Ctrl+W,
+  // Ctrl+T и прочие клавиши браузера, нативный полный экран — нет.
+  if (event.code === 'F11') {
+    event.preventDefault();
+    void toggleFullCapture(document.documentElement);
+    return;
+  }
+
+  // Escape закрывает, но захват не возвращает: курсор остаётся свободным.
+  if (event.code === 'Escape' && inventoryUi.open) inventoryUi.hide();
 });
 
 interface Avatar {
@@ -200,15 +319,36 @@ interface Avatar {
   pose: InterpolatedPose;
   /** Секунд с момента смерти — по нему тело заваливается и оседает. */
   deathTime: number;
+  /** Сколько ещё отыгрывать вздрагивание от удара. */
+  hurtTime: number;
 }
 
 const avatars = new Map<string, Avatar>();
+
+/**
+ * Чья полоска здоровья висит на экране.
+ *
+ * Держим отдельно, чтобы обновлять её по снапшотам: событие боя знает только
+ * факт удара, а остаток здоровья приходит следующим сообщением.
+ */
+let targetId: string | null = null;
 const projectiles = new Map<string, THREE.Object3D>();
 const renderPos = { x: 0, y: 0, z: 0 };
 
 let lastFrame = performance.now();
 let lastSnapshotTick = -1;
 let actionSeq = 0;
+/** Штраф скорости за перегруз. Обновляется вместе с состоянием вещей. */
+let weightFactor = 1;
+
+/**
+ * Тот же штраф, что считает сервер, но по числам из сообщения о вещах:
+ * клиенту не нужны атрибуты, достаточно веса и предела.
+ */
+function weightSpeedFactorFor(weight: number, capacity: number): number {
+  if (weight <= capacity) return 1;
+  return Math.max(0.15, 1 - (weight - capacity) / capacity);
+}
 
 function startGame(character: CharacterSummary, spawn: { x: number; y: number; z: number }): void {
   const profile = RACES[character.race];
@@ -237,8 +377,9 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   combatUi.show(true);
   combatUi.hideDeath();
   ui.system(`Добро пожаловать, ${character.name}.`);
-  ui.system('ЛКМ — удар, Shift+ЛКМ — тяжёлый, ПКМ — блок, C — рывок, 1…6 — заклинания.');
-  ui.setPaused(true);
+  ui.system('ЛКМ — удар, СКМ — тяжёлый, ПКМ — блок, Shift — бег, C — рывок в сторону.');
+  ui.system('1…6 — панель, I — рюкзак. Вещи на панель кладутся перетаскиванием.');
+  ui.setResumeHint(true);
 }
 
 renderer.setAnimationLoop(() => {
@@ -247,7 +388,18 @@ renderer.setAnimationLoop(() => {
   lastFrame = now;
 
   if (game) {
-    // 1. Ввод применяется немедленно и уходит на сервер.
+    // 1. Ввод применяется немедленно и уходит на сервер. Модификаторы скорости
+    // берутся из намерения игрока — той же формулой, что считает сервер.
+    const authoritative = connection.latestSnapshot?.self;
+    game.predictor.setModifiers({
+      blocking: controls.blocking,
+      dashing: authoritative?.action === 'dodge' && authoritative.phase === 'active',
+      gliding: authoritative?.action === 'dodge' && authoritative.phase === 'recovery',
+      acting: Boolean(authoritative?.action) && authoritative?.action !== 'dodge',
+      slowFactor: 1,
+      weightFactor: weightFactor,
+    });
+
     for (const input of game.predictor.collectInputs(dt, controls.sample())) {
       connection.send({ t: 'input', ...input });
     }
@@ -281,6 +433,7 @@ renderer.setAnimationLoop(() => {
       phase: self?.phase ?? null,
       blocking: controls.blocking,
       speed: Math.hypot(velocity.x, velocity.z),
+      onGround: game.predictor.state.onGround,
       alive: self?.alive ?? true,
     });
   } else {
@@ -291,7 +444,19 @@ renderer.setAnimationLoop(() => {
     camera.lookAt(0, 1.5, 0);
   }
 
-  world.update(now / 1000);
+  // Время суток берётся из тика сервера — общих часов мира. До входа в игру
+  // тика нет, и город облетается в том же сумеречном утре, с которого
+  // начинается день: показывать случайное время на экране входа незачем.
+  const worldTime = connection.latestSnapshot
+    ? timeOfDay(connection.latestSnapshot.tick, serverTickRate)
+    : DAY_START;
+  world.update(now / 1000, worldTime, camera);
+
+  // Руки живут в своей сцене со своим светом, но темнеть обязаны вместе
+  // с миром: иначе ночью они светятся посреди тёмного города.
+  game?.hands.setAmbience(Math.max(0, Math.min(1, sunHeight(worldTime) * 3)));
+
+  quality.frame(now);
 
   renderer.clear();
   renderer.render(scene, camera);
@@ -329,6 +494,8 @@ function consumeSnapshot(now: number): void {
 /** Снаряды живут недолго — просто держим сцену в соответствии со снапшотом. */
 function syncProjectiles(list: ProjectileSnapshot[]): void {
   const seen = new Set<string>();
+
+  projectileLights.update(list);
 
   for (const projectile of list) {
     seen.add(projectile.id);
@@ -382,6 +549,7 @@ function ensureAvatar(entity: EntitySnapshot): Avatar {
     interpolator: new EntityInterpolator(),
     pose: { x: entity.x, y: entity.y, z: entity.z, yaw: entity.yaw, speed: 0 },
     deathTime: 0,
+    hurtTime: 0,
   };
   avatars.set(entity.id, avatar);
 
@@ -414,6 +582,18 @@ function ensureAvatar(entity: EntitySnapshot): Avatar {
 }
 
 function updateAvatars(now: number, dt: number): void {
+  // Полоска цели идёт за снапшотами: в событии боя остатка здоровья нет,
+  // и нарисованная по нему полоска застывала на значении до удара —
+  // смертельный удар оставлял её на половине. Подпись обновляется тем же
+  // вызовом: в ней стоит процент, и разъехаться с полоской он не должен.
+  if (targetId && combatUi.targetVisible) {
+    const target = avatars.get(targetId);
+    if (target) {
+      const hp = target.entity.alive ? target.entity.hp : 0;
+      combatUi.setTarget(nameFor({ ...target.entity, hp }), hp);
+    }
+  }
+
   for (const avatar of avatars.values()) {
     avatar.interpolator.sample(now, avatar.pose);
     avatar.interpolator.prune(now);
@@ -430,6 +610,11 @@ function updateAvatars(now: number, dt: number): void {
     const winding = avatar.entity.phase === 'windup';
     if (avatar.model?.has('attack') && winding) avatar.model.play('attack');
 
+    // Удар перебивает и ходьбу, и стойку: иначе непонятно, попал ты или нет.
+    avatar.hurtTime = Math.max(0, avatar.hurtTime - dt);
+    const flinching = avatar.hurtTime > 0 && !winding;
+    if (flinching) avatar.model?.play('hurt');
+
     // Живой — сбрасываем всё, что осталось от прошлой смерти.
     avatar.deathTime = 0;
     avatar.group.rotation.x = 0;
@@ -439,7 +624,7 @@ function updateAvatars(now: number, dt: number): void {
     avatar.group.scale.setScalar(winding && !avatar.model?.has('attack') ? 1.06 : 1);
 
     if (avatar.model) {
-      if (!winding || !avatar.model.has('attack')) {
+      if (!flinching && (!winding || !avatar.model.has('attack'))) {
         avatar.model.play(avatar.pose.speed > 0.4 ? 'walk' : 'idle');
       }
       avatar.model.update(dt);
@@ -516,9 +701,25 @@ function handleCombatEvent(event: CombatEvent): void {
   // Полоска цели: показываем, по кому попал именно ты.
   if (event.attackerId === selfId && event.targetId) {
     const target = avatars.get(event.targetId);
-    if (target) combatUi.showTarget(nameFor(target.entity), target.entity.hp);
+    if (target) {
+      // Событие боя приходит раньше снапшота, поэтому здоровье в нём ещё
+      // старое. Вычитаем урон сразу, а дальше полоску догоняют снапшоты.
+      const guess = event.kind === 'death' ? 0 : target.entity.hp;
+      targetId = event.targetId;
+      combatUi.showTarget(nameFor({ ...target.entity, hp: guess }), guess);
+    }
+  }
+
+  // Вздрагивание от удара. Бьёт кто угодно и по кому угодно: чужая драка
+  // читается со стороны так же, как своя.
+  if (event.kind === 'hit' && event.targetId) {
+    const target = avatars.get(event.targetId);
+    if (target?.model?.has('hurt')) target.hurtTime = HURT_SECONDS;
   }
 }
+
+/** Сколько длится вздрагивание. Ровно столько же в клипе — см. stopmotion.ts. */
+const HURT_SECONDS = 0.45;
 
 /** Переводит мировую точку в экранную. Возвращает null, если она за спиной. */
 function projectToScreen(x: number, y: number, z: number): { x: number; y: number } | null {
@@ -555,7 +756,8 @@ function updateHud(dt: number): void {
     `тик: ${snapshot?.tick ?? '—'}  ack: ${snapshot?.ack ?? '—'}  в полёте: ${pending}\n` +
     `поправка: ${(correction * 100).toFixed(1)} см\n` +
     `позиция: ${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}\n` +
-    `рядом: ${avatars.size}   чанков: ${world.loadedChunks}   кадр: ${(1 / dt).toFixed(0)} fps`;
+    `рядом: ${avatars.size}   чанков: ${world.loadedChunks}   кадр: ${(1 / dt).toFixed(0)} fps` +
+    `   качество: ${quality.scale.toFixed(2)}`;
 }
 
 addEventListener('resize', () => {

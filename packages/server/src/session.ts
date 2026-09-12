@@ -150,6 +150,8 @@ export class Session {
       character: toSummary(character),
       spawn: { x: character.x, y: character.y, z: character.z },
     });
+    // Рюкзак нужен игроку сразу, а не после первого изменения.
+    this.send(this.world.inventoryMessage(player));
     console.log(`[мир] вошёл ${character.name}`);
   }
 

@@ -19,12 +19,22 @@ export const handleAction: CommandHandler<ActionMessage> = (ctx, payload) => {
   const { actor } = ctx;
   if (!actor.combat.alive) return [];
 
+  // Рывок — это бросок в сторону, а не кнопка «потратить стамину». Стоя на
+  // месте рывать некуда: раньше C на месте съедал стамину и давал только
+  // неуязвимость, и выгоднее всего было жать его, никуда не двигаясь.
+  if (payload.kind === 'dodge' && !dashDirection(actor.lastIntent)) return [];
+
   // Запоминаем, какой снапшот игрок видел: по нему отматываются цели.
   actor.pendingViewTick = payload.viewTick;
 
   startAttack(actor.combat, payload.kind);
   return [];
 };
+
+/** Есть ли куда рвать: любое направление движения или прыжок. */
+function dashDirection(intent: { forward: number; right: number; jump: boolean }): boolean {
+  return intent.forward !== 0 || intent.right !== 0 || intent.jump;
+}
 
 export const handleBlock: CommandHandler<BlockMessage> = (ctx, payload) => {
   const { actor } = ctx;

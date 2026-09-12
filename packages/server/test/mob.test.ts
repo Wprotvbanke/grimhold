@@ -108,12 +108,30 @@ describe('автомат моба', () => {
     expect(struck).toBe(true);
   });
 
-  it('возвращается домой, если увели слишком далеко', () => {
+  it('за тройной привязкой разворачивается домой сразу', () => {
     const mob = createMob('m1', 'wolf', HOME, 'overworld');
-    mob.pos = { x: 0, y: 0, z: -MOBS.wolf.leash - 5 };
+    mob.pos = { x: 0, y: 0, z: -MOBS.wolf.leash * 3 - 5 };
 
     decideMob(mob, [{ id: 'p1', pos: mob.pos, alive: true }], DT);
     expect(mob.phase).toBe('return');
+    expect(mob.targetId).toBeNull();
+  });
+
+  it('убегающего бросает тем скорее, чем дальше от дома', () => {
+    // Поводка больше нет: моб отстаёт по броску кости на каждом метре погони.
+    // Здесь проверяется само правило — что погоня конечна, — а не числа.
+    const mob = createMob('m1', 'wolf', HOME, 'overworld');
+    mob.pos = { x: 0, y: 0, z: -MOBS.wolf.leash };
+
+    let metres = 0;
+    while (mob.phase !== 'return' && metres < 200) {
+      // Игрок держится впереди, моб тянется за ним и отсчитывает метры.
+      mob.pos = { x: 0, y: 0, z: mob.pos.z - 1 };
+      metres++;
+      decideMob(mob, [{ id: 'p1', pos: { x: 0, y: 0, z: mob.pos.z - 2 }, alive: true }], DT);
+    }
+
+    expect(mob.phase, 'моб гнался бесконечно').toBe('return');
     expect(mob.targetId).toBeNull();
   });
 });

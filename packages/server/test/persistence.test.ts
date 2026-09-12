@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createBank } from '@grimhold/shared';
 import { Persistence } from '../src/persistence.js';
 import { World } from '../src/world.js';
 import type { CharacterSave, Storage } from '../src/storage/types.js';
@@ -30,6 +31,8 @@ function fakeStorage(): Storage & { writes: CharacterSave[][] } {
     createCharacter: () => {
       throw new Error('не используется');
     },
+    getBank: () => createBank(),
+    saveBank: () => {},
     close: () => {},
   };
 }

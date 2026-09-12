@@ -1,6 +1,10 @@
 import * as THREE from 'three';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   ACTIONS,
+  ATTACK_COOLDOWN,
+  DODGE_COOLDOWN,
   RACES,
   WALK_SPEED,
   type ActionKind,
@@ -12,158 +16,256 @@ import {
  * Руки от первого лица.
  *
  * Рисуются в отдельной сцене поверх мира с очисткой буфера глубины — иначе
- * при подходе к стене руки уезжали бы внутрь геометрии. Это стандартное
- * решение для видмодели в шутерах, и здесь оно нужно ровно по той же причине.
+ * при подходе к стене руки уезжали бы внутрь геометрии.
  *
- * Анимация привязана к фазам действия из combat.ts — тем самым, по которым
- * сервер проверяет попадание. Поэтому картинка не врёт: удар виден именно
- * тогда, когда он засчитывается.
+ * Анимации готовые, из модели. Раньше позы собирались кодом по костям — это
+ * была вынужденная мера, пока анимаций не было, и выглядела соответственно:
+ * вручную подобранное движение кисти с двумя десятками суставов получается
+ * сломанным, сколько ни правь оси и углы. Возвращаться к этому не стоит.
+ *
+ * Главное правило осталось прежним: **удар привязан к фазам с сервера**. Клип
+ * растягивается так, чтобы кулак доходил до цели ровно к концу замаха — тогда
+ * картинка не врёт о том, когда засчитано попадание. Начинается анимация по
+ * нажатию, не дожидаясь ответа: полпинга задержки в своих руках заметны сразу.
  */
 
 export interface ViewModelState {
   action: ActionKind | null;
   phase: ActionPhase | null;
   blocking: boolean;
-  /** Горизонтальная скорость — по ней качаются руки при ходьбе. */
+  /** Горизонтальная скорость — по ней выбирается шаг или бег. */
   speed: number;
+  /** Стоит ли игрок на земле: по отрыву проигрывается прыжок. */
+  onGround: boolean;
   alive: boolean;
 }
 
-/** Поза руки: углы в плече и локте плюс смещение всей руки. */
-interface ArmPose {
-  shoulderX: number;
-  shoulderY: number;
-  shoulderZ: number;
-  elbow: number;
-  offsetZ: number;
-  offsetY: number;
-}
+/** Клипы модели под нашими именами. */
+export type HandsClip =
+  | 'equip'
+  | 'idle'
+  | 'fidget'
+  | 'walk'
+  | 'sprint'
+  | 'punchRight'
+  | 'punchLeft'
+  | 'blockStart'
+  | 'blockLoop'
+  | 'blockStop'
+  | 'takeStart'
+  | 'takeLoop'
+  | 'takeStop';
 
-const IDLE_RIGHT: ArmPose = {
-  shoulderX: -0.55,
-  shoulderY: -0.35,
-  shoulderZ: 0.18,
-  elbow: 1.15,
-  offsetZ: 0,
-  offsetY: 0,
+/** Как называются клипы в модели. Первый найденный побеждает. */
+const CLIP_NAMES: Record<HandsClip, string[]> = {
+  equip: ['Equip'],
+  idle: ['Idle'],
+  fidget: ['Idle_Fidget'],
+  walk: ['Walk'],
+  sprint: ['Sprint_Type_1', 'Run'],
+  punchRight: ['Punch_R', 'Punch'],
+  punchLeft: ['Punch_L', 'Punch_2'],
+  blockStart: ['Block_Start'],
+  blockLoop: ['Block_Loop'],
+  blockStop: ['Block_Stop'],
+  takeStart: ['Take_Start'],
+  takeLoop: ['Take_Loop'],
+  takeStop: ['Take_Stop'],
 };
 
-const IDLE_LEFT: ArmPose = {
-  shoulderX: -0.45,
-  shoulderY: 0.4,
-  shoulderZ: -0.2,
-  elbow: 1.05,
-  offsetZ: 0,
-  offsetY: 0,
-};
+/** Клипы, которые играют один раз и замирают на последнем кадре. */
+const ONCE: HandsClip[] = [
+  'equip',
+  'fidget',
+  'punchRight',
+  'punchLeft',
+  'blockStart',
+  'blockStop',
+  'takeStart',
+  'takeStop',
+];
 
-/** Замах: кулак уходит назад и вверх — это видимый сигнал удара. */
-const WINDUP_RIGHT: ArmPose = {
-  shoulderX: -1.65,
-  shoulderY: -0.75,
-  shoulderZ: 0.55,
-  elbow: 2.1,
-  offsetZ: 0.12,
-  offsetY: 0.05,
-};
+const MODEL_URL = '/models/hands.glb';
 
-/** Удар: рука выброшена вперёд. */
-const STRIKE_RIGHT: ArmPose = {
-  shoulderX: 0.35,
-  shoulderY: -0.12,
-  shoulderZ: -0.1,
-  elbow: 0.12,
-  offsetZ: -0.34,
-  offsetY: -0.02,
-};
+/**
+ * Наш «вперёд» — это -Z, а модель выгружена лицом в +Z: без разворота кулак
+ * при ударе летит в камеру, а не от неё.
+ */
+const MODEL_YAW = Math.PI;
 
-/** Блок: обе руки подняты перед лицом. */
-const BLOCK_RIGHT: ArmPose = {
-  shoulderX: -1.15,
-  shoulderY: -0.15,
-  shoulderZ: 0.5,
-  elbow: 2.0,
-  offsetZ: -0.1,
-  offsetY: 0.14,
-};
+/**
+ * Куда ставить кисти относительно глаз и насколько крупно.
+ *
+ * Модель выгружена в координатах мира — руки стоят на высоте пояса живого
+ * человека, и в кадре от первого лица они оказываются далеко и мелко.
+ * Поэтому и место, и размер считаются: руки переносятся на нужное расстояние
+ * от глаз и масштабируются так, чтобы занять заданную долю ширины кадра.
+ *
+ * Держим близко к глазам и широко разведёнными: так руки видно крупно, а
+ * середина кадра остаётся свободной — обзор загораживают не крупные руки,
+ * а сведённые к центру. Ориентир: кулаки у самых краёв (около ±0.77 по ширине
+ * кадра), чуть ниже середины по высоте (−0.25), между ними широкий просвет.
+ */
+const HANDS_DISTANCE = 0.26;
+const HANDS_DROP = 0.085;
+/**
+ * Какую часть высоты кадра занимает предплечье в стойке.
+ *
+ * Меряем по длине руки, а не по промежутку между кулаками: в стойке они
+ * сведены, и подгонка «по промежутку» раздувала модель вдвое, лишь бы
+ * растянуть эти двадцать пять сантиметров на пол-экрана. Руки получались
+ * гигантскими, а кисти всё равно сходились в центре — промежуток-то задан
+ * позой, и масштабом его не изменить.
+ */
+const HANDS_SCREEN_HEIGHT = 0.7;
 
-const BLOCK_LEFT: ArmPose = {
-  shoulderX: -1.2,
-  shoulderY: 0.2,
-  shoulderZ: -0.55,
-  elbow: 1.95,
-  offsetZ: -0.16,
-  offsetY: 0.16,
-};
+/**
+ * Насколько притушить руки.
+ *
+ * Модель сделана для светлой сцены, а у нас мрачное средневековье: как есть
+ * руки светятся ярче всего вокруг и перетягивают взгляд. Тушим сам материал,
+ * а не свет видмодели, — так они одинаково темнее и днём, и в подземелье.
+ *
+ * Множитель линейный, а глаз видит sRGB: 0.35 на экране выглядит примерно
+ * как две трети прежней яркости, а не как треть.
+ */
+const HANDS_TINT = 0.35;
 
-/** Рывок: руки прижаты. */
-const DODGE_ARM: ArmPose = {
-  shoulderX: -1.0,
-  shoulderY: -0.2,
-  shoulderZ: 0.3,
-  elbow: 2.3,
-  offsetZ: 0.08,
-  offsetY: -0.12,
-};
+/**
+ * На сколько развести руки в стороны, в единицах модели.
+ *
+ * В анимации кисти сведены почти к центру кадра, а нам нужен свободный обзор
+ * посередине. Масштабом этого не добиться — промежуток задан позой.
+ *
+ * Плечо **сдвигается вбок**, а не доворачивается. Доворот пробовали первым,
+ * и он оказался неуправляемым: поворот вокруг вертикали уводит кисть не только
+ * вбок, но и по глубине, поэтому на одних углах руки разъезжались, на соседних
+ * скрещивались, а посадка то и дело улетала за край кадра. Сдвиг же линеен:
+ * прибавка превращается в предсказуемую долю кадра.
+ */
+const HANDS_SPREAD = 0.034;
 
-/** Каст: ладонь вперёд, в ней разгорается свет. */
-const CAST_LEFT: ArmPose = {
-  shoulderX: 0.1,
-  shoulderY: 0.35,
-  shoulderZ: -0.35,
-  elbow: 0.55,
-  offsetZ: -0.22,
-  offsetY: 0.08,
-};
+/** Со скольки метров в секунду считаем, что игрок бежит, а не идёт. */
+const RUN_SPEED = WALK_SPEED * 1.25;
 
-interface Arm {
-  root: THREE.Group;
-  shoulder: THREE.Group;
-  forearm: THREE.Group;
-  hand: THREE.Mesh;
-  pose: ArmPose;
-}
+/** Как редко руки «переминаются» в покое, секунды. */
+const FIDGET_MIN = 9;
+const FIDGET_MAX = 20;
 
 export class ViewModel {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(58, 1, 0.01, 10);
 
-  private readonly right: Arm;
-  private readonly left: Arm;
-  private readonly castGlow: THREE.PointLight;
+  private mixer: THREE.AnimationMixer | null = null;
+  /** Риг держим отдельно: посадку приходится пересчитывать при смене кадра. */
+  private rig: THREE.Object3D | null = null;
+  /** Кости плеч: ими руки разводятся в стороны поверх анимации. */
+  private shoulders: { bone: THREE.Bone; axis: THREE.Vector3 }[] = [];
+  /** Лежит ли сейчас на плечах наша добавка. Снимается перед каждым микшером. */
+  private spreadApplied = false;
+  /** Посадка ещё не считалась при известном соотношении сторон. */
+  private needsAnchor = false;
+  private readonly actions = new Map<HandsClip, THREE.AnimationAction>();
+  private current: HandsClip | null = null;
+
+  /** Сколько ещё длится клип, который нельзя перебивать раньше времени. */
+  private holdFor = 0;
+  /** Что показать, когда текущий клип доиграет. */
+  private queued: HandsClip | null = null;
 
   /** Локальная фаза действия: анимация стартует по клику, не дожидаясь сервера. */
   private localAction: { kind: ActionKind; elapsed: number } | null = null;
-  /** Последнее действие, о котором сообщил сервер — чтобы ловить смену, а не наличие. */
   private lastServerAction: ActionKind | null = null;
-  private bobPhase = 0;
+  /** Серия ударов чередует руки, иначе выглядит механической. */
+  private swing = 0;
+  /**
+   * Сколько ещё нельзя бить и уклоняться.
+   *
+   * Те же паузы, что у сервера. Без них руки махали на каждое нажатие, хотя
+   * сервер такие удары отбрасывает: получался спам анимации без урона и без
+   * траты стамины — картинка обещала бой, которого нет.
+   */
+  private swingCooldown = 0;
+  private dodgeCooldown = 0;
 
-  constructor(race: Race) {
-    const profile = RACES[race];
+  /** Был ли игрок на земле в прошлом кадре — по смене ловим прыжок. */
+  private grounded = true;
+  /** Сколько ещё отыгрывать взмах руками в прыжке. */
+  private airborne = 0;
 
-    // Дворф коренастее и руки у него толще и короче, эльф — наоборот.
-    const scale = profile.height / 1.8;
-    const thickness = profile.radius / 0.35;
+  /** Блок держится, пока игрок жмёт кнопку: вход, петля, выход. */
+  private blocking = false;
+  /** Подбор вещи: старт, петля, завершение. */
+  private taking = 0;
+  private fidgetIn = FIDGET_MIN;
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-    const key = new THREE.DirectionalLight(0xffe6c4, 2.2);
+  /** Свет видмодели: его приходится приглушать к ночи. */
+  private readonly lamps: THREE.Light[];
+  private readonly lampBase: number[];
+
+  constructor(private readonly race: Race) {
+    const fill = new THREE.AmbientLight(0xffffff, 1.4);
+    this.scene.add(fill);
+    const key = new THREE.DirectionalLight(0xffe6c4, 2.1);
     key.position.set(-0.6, 1, 0.8);
     this.scene.add(key);
     const rim = new THREE.DirectionalLight(0x8fb0d8, 0.9);
     rim.position.set(0.8, 0.2, -0.6);
     this.scene.add(rim);
 
-    this.right = this.buildArm(1, scale, thickness, profile.color);
-    this.left = this.buildArm(-1, scale, thickness, profile.color);
-    this.scene.add(this.right.root, this.left.root);
+    this.lamps = [fill, key, rim];
+    this.lampBase = this.lamps.map((light) => light.intensity);
 
-    this.castGlow = new THREE.PointLight(0x9ec8ff, 0, 1.2, 2);
-    this.left.hand.add(this.castGlow);
+    void this.load(race);
   }
 
-  /** Начать анимацию немедленно по нажатию — до ответа сервера. */
-  beginAction(kind: ActionKind): void {
+  /**
+   * Начать анимацию немедленно по нажатию — до ответа сервера.
+   *
+   * Возвращает false, если действие всё равно не пройдёт: идёт другое или
+   * не вышла пауза. Тогда не стоит ни махать руками, ни слать намерение.
+   */
+  beginAction(kind: ActionKind): boolean {
+    if (!this.canBegin(kind)) return false;
+
+    if (kind === 'attack' || kind === 'heavy') {
+      this.swing++;
+      const timing = ACTIONS[kind].timing;
+      this.swingCooldown = ATTACK_COOLDOWN + timing.windup + timing.active;
+    }
+    if (kind === 'dodge') this.dodgeCooldown = DODGE_COOLDOWN;
+
     this.localAction = { kind, elapsed: 0 };
+    return true;
+  }
+
+  /** Пройдёт ли действие прямо сейчас — по тем же правилам, что у сервера. */
+  canBegin(kind: ActionKind): boolean {
+    // Начатое доигрывается целиком: на сервере действие тоже нельзя прервать.
+    if (this.localAction) return false;
+    if ((kind === 'attack' || kind === 'heavy') && this.swingCooldown > 0) return false;
+    if (kind === 'dodge' && this.dodgeCooldown > 0) return false;
+    return true;
+  }
+
+  /**
+   * Подгоняет освещение рук под время суток.
+   *
+   * У видмодели свой свет — мировой на неё не действует, иначе руки резались
+   * бы тенями от того, чего в их сцене нет. Но и жить своей жизнью он не
+   * должен: ночью ярко освещённые руки светились посреди тёмного города,
+   * будто их подсвечивают изнутри.
+   */
+  setAmbience(daylight: number): void {
+    const level = 0.4 + Math.max(0, Math.min(1, daylight)) * 0.6;
+    for (const [index, light] of this.lamps.entries()) {
+      light.intensity = this.lampBase[index]! * level;
+    }
+  }
+
+  /** Игрок поднял вещь — руки тянутся и забирают её. */
+  playTake(): void {
+    this.taking = this.lengthOf('takeStart') + this.lengthOf('takeLoop');
   }
 
   /** Хватает ли стамины: те же числа, по которым решает сервер. */
@@ -171,50 +273,73 @@ export class ViewModel {
     return ACTIONS[kind].staminaCost;
   }
 
+  /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */
+  get playing(): HandsClip | null {
+    return this.current;
+  }
+
+  /** Действие клипа: по нему видно, с какой скоростью он растянут. */
+  actionFor(clip: HandsClip): THREE.AnimationAction | null {
+    return this.actions.get(clip) ?? null;
+  }
+
   update(dt: number, state: ViewModelState): void {
-    if (this.localAction) {
-      this.localAction.elapsed += dt;
-      if (this.localAction.elapsed > totalDuration(this.localAction.kind)) {
-        this.localAction = null;
-      }
-    }
-
-    /**
-     * Сервер отстаёт на полпинга: к моменту, когда он сообщает «бью»,
-     * локальная анимация уже идёт, а когда она закончилась — он всё ещё
-     * может сообщать о том же ударе. Поэтому реагируем только на смену
-     * действия, а не на его наличие: иначе руки махали бы дважды.
-     */
-    if (state.action !== this.lastServerAction) {
-      if (state.action && !this.localAction) {
-        this.localAction = { kind: state.action, elapsed: 0 };
-      }
-      this.lastServerAction = state.action;
-    }
-
-    const kind = this.localAction?.kind ?? null;
-    const phase = kind ? localPhase(kind, this.localAction!.elapsed) : null;
-
-    // Покачивание при ходьбе. Без него руки выглядят приклеенными к экрану.
-    this.bobPhase += dt * (4 + (state.speed / WALK_SPEED) * 7);
-    const bobAmount = Math.min(state.speed / WALK_SPEED, 1) * 0.022;
-    const bobY = Math.sin(this.bobPhase * 2) * bobAmount;
-    const bobX = Math.cos(this.bobPhase) * bobAmount * 1.3;
-
-    const targetRight = this.rightTarget(kind, phase, state);
-    const targetLeft = this.leftTarget(kind, phase, state);
-
-    // Удар должен быть резким, возврат — плавным: разная скорость подхода.
-    const snap = phase === 'active' ? 34 : 13;
-    applyPose(this.right, targetRight, dt, snap, bobX, bobY);
-    applyPose(this.left, targetLeft, dt, snap, -bobX, bobY);
-
-    // Свет в ладони разгорается по мере чтения заклинания.
-    const casting = kind === 'cast';
-    const target = casting ? 2.4 : 0;
-    this.castGlow.intensity += (target - this.castGlow.intensity) * Math.min(1, dt * 8);
+    this.advanceAction(dt, state);
 
     this.scene.visible = state.alive;
+    if (!this.mixer) return;
+
+    this.holdFor = Math.max(0, this.holdFor - dt);
+    this.taking = Math.max(0, this.taking - dt);
+
+    const wanted = this.choose(dt, state);
+    if (wanted) this.play(wanted);
+
+    // Микшер обязан писать в чистую кость, поэтому добавку снимаем до него
+    // и возвращаем после.
+    this.unspreadArms();
+    this.mixer.update(dt);
+    this.spreadArms();
+  }
+
+  /**
+   * Разводит руки в стороны поверх анимации — сдвигом плеча наружу.
+   *
+   * Сдвигаем, а не подменяем позу плеча. Когда сюда ставилась поза покоя,
+   * весь размах удара пропадал: в клипе руку выносит плечо, и от удара
+   * оставалось одно доразгибание локтя — кулак задирался к лицу вместо
+   * выпада вперёд.
+   *
+   * Добавка **снимается перед микшером и возвращается после** — см.
+   * `unspreadArms`. Пара обязательна, поэтому обе стороны защищены флагом:
+   * повторный вызов ничего не делает, и накопить сдвиг нельзя.
+   */
+  private spreadArms(): void {
+    if (this.spreadApplied) return;
+    for (const { bone, axis } of this.shoulders) {
+      bone.position.addScaledVector(axis, HANDS_SPREAD);
+    }
+    this.spreadApplied = true;
+  }
+
+  /**
+   * Снимает разведение, чтобы микшер писал в чистую кость.
+   *
+   * Без этого руки **уползали за край экрана**, и тем быстрее, чем дольше
+   * стоишь. Причина в том, что микшер трогает только те свойства, у которых
+   * в клипе есть дорожка: позицию плеча двигают удар, блок и подбор вещи,
+   * а стойка и ходьба — нет. Пока добавка считалась от «позы, которую выставил
+   * микшер», в стойке этой позой оказывалась уже сдвинутая кость, и сдвиг
+   * ложился поверх себя кадр за кадром. Заодно объясняется и то, что руки
+   * возвращались в кадр, стоило ударить: удар переписывал позицию и обнулял
+   * накопленное.
+   */
+  private unspreadArms(): void {
+    if (!this.spreadApplied) return;
+    for (const { bone, axis } of this.shoulders) {
+      bone.position.addScaledVector(axis, -HANDS_SPREAD);
+    }
+    this.spreadApplied = false;
   }
 
   /** Рисует руки поверх мира, очистив глубину, чтобы они не резались стенами. */
@@ -222,6 +347,18 @@ export class ViewModel {
     if (this.camera.aspect !== aspect) {
       this.camera.aspect = aspect;
       this.camera.updateProjectionMatrix();
+      this.camera.updateMatrixWorld(true);
+      this.needsAnchor = true;
+    }
+
+    // Размер и разведение рук считаются от ширины кадра, а она известна
+    // только здесь: на момент загрузки камера ещё квадратная, и посадка,
+    // посчитанная тогда, в широком окне даёт заметно более узкие руки.
+    // Флагом, а не прямым вызовом: модель может приехать и до первого кадра,
+    // и после него — порядок не должен влиять на то, где окажутся руки.
+    if (this.needsAnchor && this.rig) {
+      this.anchor(this.rig, this.race);
+      this.needsAnchor = false;
     }
     renderer.clearDepth();
     renderer.render(this.scene, this.camera);
@@ -234,131 +371,380 @@ export class ViewModel {
     });
   }
 
-  private rightTarget(kind: ActionKind | null, phase: ActionPhase | null, state: ViewModelState): ArmPose {
-    if (kind === 'dodge') return DODGE_ARM;
-    if (state.blocking) return BLOCK_RIGHT;
+  /**
+   * Локальное действие живёт своей жизнью, а сервер лишь подтверждает его.
+   *
+   * К моменту, когда сервер сообщает «бью», анимация уже идёт, а когда она
+   * кончилась — он всё ещё может сообщать о том же ударе. Поэтому реагируем
+   * на смену действия, а не на его наличие: иначе руки махали бы дважды.
+   */
+  private advanceAction(dt: number, state: ViewModelState): void {
+    this.swingCooldown = Math.max(0, this.swingCooldown - dt);
+    this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt);
+    this.airborne = Math.max(0, this.airborne - dt);
 
-    if (kind === 'attack' || kind === 'heavy') {
-      if (phase === 'windup') return WINDUP_RIGHT;
-      if (phase === 'active') return STRIKE_RIGHT;
-      // Восстановление: рука возвращается через промежуточное положение.
-      return mixPose(STRIKE_RIGHT, IDLE_RIGHT, 0.5);
+    // Прыжок ловим по отрыву от земли, а не по нажатию: так взмах руками
+    // совпадает с моментом, когда игрока действительно оторвало — падение
+    // с уступа выглядит так же, как прыжок.
+    if (this.grounded && !state.onGround) this.airborne = this.lengthOf('equip');
+    this.grounded = state.onGround;
+
+    if (this.localAction) {
+      this.localAction.elapsed += dt;
+      if (this.localAction.elapsed > totalDuration(this.localAction.kind)) {
+        this.localAction = null;
+      }
     }
 
-    return IDLE_RIGHT;
+    if (state.action !== this.lastServerAction) {
+      // Сервер подтвердил действие, о котором мы ещё не знали — например,
+      // его начал не игрок, а оглушение или чужая механика.
+      if (state.action && !this.localAction) this.beginAction(state.action);
+      this.lastServerAction = state.action;
+    }
   }
 
-  private leftTarget(kind: ActionKind | null, phase: ActionPhase | null, state: ViewModelState): ArmPose {
-    if (kind === 'cast') return CAST_LEFT;
-    if (kind === 'dodge') return { ...DODGE_ARM, shoulderY: -DODGE_ARM.shoulderY, shoulderZ: -DODGE_ARM.shoulderZ };
-    if (state.blocking) return BLOCK_LEFT;
+  /**
+   * Что показывать сейчас. Порядок важен: удар перебивает всё, блок держится
+   * до отпускания, подбор вещи доигрывает до конца, и только потом остаётся
+   * движение или покой.
+   */
+  private choose(dt: number, state: ViewModelState): HandsClip | null {
+    const action = this.localAction?.kind ?? null;
 
-    // При замахе левая рука уходит чуть вперёд — корпус разворачивается.
-    if ((kind === 'attack' || kind === 'heavy') && phase === 'windup') {
-      return { ...IDLE_LEFT, shoulderX: -0.7, offsetZ: -0.08 };
+    // Удар. Правая и левая чередуются, тяжёлый всегда правой — он размашистее.
+    if (action === 'attack' || action === 'heavy') {
+      if (action === 'heavy') return 'punchRight';
+      return this.swing % 2 === 0 ? 'punchRight' : 'punchLeft';
     }
 
-    return IDLE_LEFT;
+    // Прыжок: короткий взмах руками. Уступает удару, но перебивает ходьбу —
+    // в воздухе шаг выглядит нелепо.
+    if (this.airborne > 0 && this.actions.has('equip')) return 'equip';
+
+    // Блок: вход играется один раз, дальше петля, на отпускании — выход.
+    if (state.blocking) {
+      if (!this.blocking) {
+        this.blocking = true;
+        this.queued = 'blockLoop';
+        return 'blockStart';
+      }
+      return this.holdFor > 0 ? null : 'blockLoop';
+    }
+    if (this.blocking) {
+      this.blocking = false;
+      return 'blockStop';
+    }
+
+    // Подбор вещи — тоже из трёх частей.
+    if (this.taking > 0) {
+      if (this.current !== 'takeStart' && this.current !== 'takeLoop') {
+        this.queued = 'takeLoop';
+        return 'takeStart';
+      }
+      return this.holdFor > 0 ? null : 'takeLoop';
+    }
+    if (this.current === 'takeLoop') return 'takeStop';
+
+    // Клип, который нельзя обрывать, доигрывает: это удар, вход в блок,
+    // выход из него и завершение подбора.
+    if (this.holdFor > 0) return null;
+    if (this.queued) {
+      const next = this.queued;
+      this.queued = null;
+      return next;
+    }
+
+    if (state.speed >= RUN_SPEED) return 'sprint';
+    if (state.speed > 0.2) return 'walk';
+
+    // Стоя руки изредка переминаются — иначе картинка выглядит замершей.
+    this.fidgetIn -= dt;
+    if (this.fidgetIn <= 0 && this.actions.has('fidget')) {
+      this.fidgetIn = FIDGET_MIN + Math.random() * (FIDGET_MAX - FIDGET_MIN);
+      return 'fidget';
+    }
+    return 'idle';
   }
 
-  private buildArm(side: 1 | -1, scale: number, thickness: number, color: number): Arm {
-    const skin = new THREE.MeshLambertMaterial({ color: shade(color, 1.25) });
-    const sleeve = new THREE.MeshLambertMaterial({ color: shade(color, 0.65) });
+  private play(clip: HandsClip): void {
+    if (clip === this.current) return;
 
-    const upperLength = 0.3 * scale;
-    const foreLength = 0.34 * scale;
-    const radius = 0.055 * scale * thickness;
+    const next = this.actions.get(clip);
+    if (!next) return;
 
-    const root = new THREE.Group();
-    root.position.set(side * 0.22 * scale * thickness, -0.28 * scale, -0.12);
+    const previous = this.current ? this.actions.get(this.current) : null;
+    // Удар начинается рывком, остальное перетекает плавно.
+    const quick = clip === 'punchRight' || clip === 'punchLeft';
+    const fade = quick ? 0.04 : 0.14;
 
-    const shoulder = new THREE.Group();
-    root.add(shoulder);
+    /**
+     * Темп удара задаётся не рукой, а видом удара.
+     *
+     * Правая и левая — просто два замаха одной серии, и идти они обязаны
+     * одинаково. Скорость берётся из фаз действия: кулак должен доходить
+     * до цели ровно к концу замаха, а замах у лёгкого и тяжёлого разный.
+     * Пока скорость была привязана к клипу, левая рука била вдвое быстрее
+     * правой — просто потому, что её растянули под лёгкий удар, а правую
+     * под тяжёлый.
+     */
+    if (quick) {
+      const kind = this.localAction?.kind === 'heavy' ? 'heavy' : 'attack';
+      const timing = ACTIONS[kind].timing;
+      next.timeScale = next.getClip().duration / (timing.windup + timing.active);
+    }
 
-    const upper = new THREE.Mesh(
-      new THREE.CapsuleGeometry(radius * 1.05, upperLength, 3, 8),
-      sleeve,
-    );
-    // Капсула растёт по Y, а рука должна идти вперёд — отсюда поворот.
-    upper.rotation.x = Math.PI / 2;
-    upper.position.z = -upperLength / 2;
-    shoulder.add(upper);
+    next.reset().fadeIn(fade).play();
+    previous?.fadeOut(fade);
 
-    const forearm = new THREE.Group();
-    forearm.position.z = -upperLength;
-    shoulder.add(forearm);
-
-    const lower = new THREE.Mesh(new THREE.CapsuleGeometry(radius, foreLength, 3, 8), skin);
-    lower.rotation.x = Math.PI / 2;
-    lower.position.z = -foreLength / 2;
-    forearm.add(lower);
-
-    const hand = new THREE.Mesh(
-      new THREE.BoxGeometry(radius * 2.3, radius * 2.1, radius * 2.4),
-      skin,
-    );
-    hand.name = side === 1 ? 'hand-right' : 'hand-left';
-    hand.position.z = -foreLength - radius * 0.8;
-    forearm.add(hand);
-
-    const pose: ArmPose = side === 1 ? { ...IDLE_RIGHT } : { ...IDLE_LEFT };
-    return { root, shoulder, forearm, hand, pose };
+    this.current = clip;
+    // Одноразовые клипы держим до конца, чтобы их не перебило на полпути.
+    this.holdFor = ONCE.includes(clip) ? this.lengthOf(clip) : 0;
   }
-}
 
-function applyPose(
-  arm: Arm,
-  target: ArmPose,
-  dt: number,
-  speed: number,
-  bobX: number,
-  bobY: number,
-): void {
-  const t = 1 - Math.exp(-speed * dt);
+  private lengthOf(clip: HandsClip): number {
+    const action = this.actions.get(clip);
+    if (!action) return 0;
+    const scale = action.timeScale === 0 ? 1 : Math.abs(action.timeScale);
+    return action.getClip().duration / scale;
+  }
 
-  arm.pose.shoulderX += (target.shoulderX - arm.pose.shoulderX) * t;
-  arm.pose.shoulderY += (target.shoulderY - arm.pose.shoulderY) * t;
-  arm.pose.shoulderZ += (target.shoulderZ - arm.pose.shoulderZ) * t;
-  arm.pose.elbow += (target.elbow - arm.pose.elbow) * t;
-  arm.pose.offsetZ += (target.offsetZ - arm.pose.offsetZ) * t;
-  arm.pose.offsetY += (target.offsetY - arm.pose.offsetY) * t;
+  private async load(race: Race): Promise<void> {
+    // Вне браузера грузить неоткуда: относительный путь там не разрешается.
+    // Тесты подставляют риг сами через useRig.
+    if (typeof document === 'undefined') return;
 
-  arm.shoulder.rotation.set(arm.pose.shoulderX, arm.pose.shoulderY, arm.pose.shoulderZ);
-  arm.forearm.rotation.x = arm.pose.elbow;
+    try {
+      const loader = new GLTFLoader();
+      const draco = new DRACOLoader();
+      draco.setDecoderPath('/draco/');
+      loader.setDRACOLoader(draco);
 
-  const base = arm.root.userData.base as { x: number; y: number; z: number } | undefined;
-  if (!base) {
-    arm.root.userData.base = {
-      x: arm.root.position.x,
-      y: arm.root.position.y,
-      z: arm.root.position.z,
+      const gltf = await loader.loadAsync(MODEL_URL);
+      this.useRig(gltf.scene, gltf.animations, race);
+    } catch (error) {
+      console.warn('[руки] модель не загрузилась:', error);
+    }
+  }
+
+  /**
+   * Ставит руки перед камерой и заводит клипы.
+   *
+   * Отдельно от загрузки, потому что этим же путём риг подставляют тесты:
+   * проверять надо посадку и выбор анимаций, а не то, докачался ли файл.
+   */
+  useRig(rig: THREE.Object3D, clips: THREE.AnimationClip[], race: Race): void {
+    rig.rotation.y = MODEL_YAW;
+
+    rig.traverse((node) => {
+      const mesh = node as THREE.SkinnedMesh;
+      if (!mesh.isSkinnedMesh) return;
+
+      mesh.frustumCulled = false;
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        const standard = material as THREE.MeshStandardMaterial;
+        if (standard.color) standard.color.multiplyScalar(HANDS_TINT);
+      }
+    });
+
+    this.scene.add(rig);
+    this.rig = rig;
+    this.mixer = new THREE.AnimationMixer(rig);
+
+    for (const [name, candidates] of Object.entries(CLIP_NAMES) as [HandsClip, string[]][]) {
+      const clip = candidates
+        .map((candidate) => findClip(clips, candidate))
+        .find((found): found is THREE.AnimationClip => found !== null);
+      if (!clip) continue;
+
+      const action = this.mixer.clipAction(clip);
+      if (ONCE.includes(name)) {
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+      }
+      this.actions.set(name, action);
+    }
+
+    /**
+     * Плечи: по ним руки разводятся в стороны.
+     *
+     * Ось — «наружу по экрану», то есть мировая горизонталь, переведённая
+     * в пространство родителя кости. Знак не угадывается, а **проверяется**:
+     * пробный сдвиг показывает, в какую сторону кисть уезжает от середины.
+     * Угадывать тут нечего — риг развёрнут на пол-оборота, а названия L и R
+     * в нём даны с точки зрения зрителя, и любое предположение о знаке
+     * оказывалось обратным.
+     */
+    this.shoulders = [];
+    rig.updateMatrixWorld(true);
+
+    for (const side of ['L', 'R'] as const) {
+      let bone: THREE.Bone | null = null;
+      rig.traverse((node) => {
+        const candidate = node as THREE.Bone;
+        if (!bone && candidate.isBone && new RegExp(`^DEF-upper_arm${side}`, 'i').test(candidate.name)) {
+          bone = candidate;
+        }
+      });
+      if (!bone) continue;
+
+      const found = bone as THREE.Bone;
+      let fist: THREE.Object3D | null = null;
+      found.traverse((node) => {
+        if (!fist && new RegExp(`^DEF-hand${side}`, 'i').test(node.name)) fist = node;
+      });
+      if (!fist) continue;
+
+      const hand = fist as THREE.Object3D;
+      const parentWorld = new THREE.Quaternion();
+      (found.parent ?? found).getWorldQuaternion(parentWorld);
+      const axis = new THREE.Vector3(1, 0, 0).applyQuaternion(parentWorld.invert()).normalize();
+
+      const rest = found.position.clone();
+      const before = Math.abs(hand.getWorldPosition(new THREE.Vector3()).x);
+      found.position.copy(rest).addScaledVector(axis, 0.1);
+      rig.updateMatrixWorld(true);
+      const after = Math.abs(hand.getWorldPosition(new THREE.Vector3()).x);
+      found.position.copy(rest);
+      rig.updateMatrixWorld(true);
+
+      if (after < before) axis.negate();
+      this.shoulders.push({ bone: found, axis });
+    }
+
+    this.anchor(rig, this.race);
+    this.needsAnchor = true;
+
+    // Входим в мир с доставанием рук, если такой клип есть.
+    if (this.actions.has('equip')) this.play('equip');
+
+    // Сразу применяем первый кадр: иначе между загрузкой и первым обновлением
+    // руки успевают мелькнуть в позе, в которой лежат в файле.
+    this.unspreadArms();
+    this.mixer.update(0);
+    this.spreadArms();
+  }
+
+  /**
+   * Ставит руки перед камерой: нужное расстояние, высота и размер в кадре.
+   *
+   * Модель выгружена в координатах мира — кисти стоят на высоте пояса живого
+   * человека, и как есть выглядят далёкими и мелкими. Поэтому размер считается
+   * от кадра: на выбранном расстоянии руки должны занимать заданную долю его
+   * ширины. Подбирать это руками пришлось бы заново после каждой замены модели.
+   */
+  private anchor(rig: THREE.Object3D, race: Race): void {
+    const idle = this.actions.get('idle');
+    if (!idle || !this.mixer) return;
+
+    // Считаем от исходного положения: посадку повторяют при смене кадра,
+    // и накапливать поправки поверх прежних нельзя.
+    rig.position.set(0, 0, 0);
+    rig.scale.setScalar(1);
+    rig.updateMatrixWorld(true);
+
+    /**
+     * Мерим по чистой стойке.
+     *
+     * Посадка считается и повторно — когда становится известен кадр, — а к
+     * тому времени уже идёт другой клип. Если просто добавить стойку поверх,
+     * микшер смешает позы, и кулаки окажутся не там: в игре руки от этого
+     * выходили вдвое крупнее и сведёнными к центру.
+     */
+    const wasPlaying = this.current;
+    this.unspreadArms();
+    this.mixer.stopAllAction();
+    idle.reset().play();
+    this.mixer.setTime(0);
+
+    /**
+     * Меряем по кулакам, а не по всему мешу: предплечья уходят далеко назад,
+     * и подгонка «по габаритам» раздувала руки вдвое шире экрана, заодно
+     * утаскивая их вниз за край кадра.
+     */
+    const fists: THREE.Object3D[] = [];
+    const elbows: THREE.Object3D[] = [];
+    rig.traverse((node) => {
+      if (/^DEF-hand[LR]/i.test(node.name)) fists.push(node);
+      if (/^DEF-forearm[LR]/i.test(node.name)) elbows.push(node);
+    });
+    if (fists.length < 2 || elbows.length < 2) return;
+
+    const measure = (): { centre: THREE.Vector3; forearm: number } => {
+      // Меряем ту же позу, которая будет на экране, — уже с разведёнными
+      // плечами. Без этого посадка считалась по сведённой стойке, а рисовались
+      // руки развёрнутыми: кулаки уезжали к самой камере, за край кадра.
+      this.spreadArms();
+      rig.updateMatrixWorld(true);
+      const points = fists.map((fist) => fist.getWorldPosition(new THREE.Vector3()));
+      const centre = points
+        .reduce((sum, point) => sum.add(point), new THREE.Vector3())
+        .divideScalar(points.length);
+      const forearm = elbows[0]!
+        .getWorldPosition(new THREE.Vector3())
+        .distanceTo(points[0]!);
+      return { centre, forearm };
     };
+
+    const before = measure();
+    if (before.forearm <= 0) return;
+
+    // Высота кадра на том расстоянии, где будут руки.
+    const frameHeight = 2 * HANDS_DISTANCE * Math.tan((this.camera.fov * Math.PI) / 360);
+    // Рост расы поверх общего размера: у дворфа руки короче, у эльфа длиннее.
+    rig.scale.multiplyScalar(
+      ((frameHeight * HANDS_SCREEN_HEIGHT) / before.forearm) * (RACES[race].height / 1.8),
+    );
+
+    const after = measure();
+    rig.position.add(new THREE.Vector3(0, -HANDS_DROP, -HANDS_DISTANCE).sub(after.centre));
+    rig.updateMatrixWorld(true);
+
+    /**
+     * Довод по экрану, а не по трёхмерной середине.
+     *
+     * В стойке одна рука выдвинута ближе другой, поэтому одинаковые отступы
+     * в пространстве дают на экране разные: ближний кулак уезжает к краю,
+     * дальний жмётся к центру. Двигаем риг вбок, пока кулаки не встанут
+     * симметрично относительно прицела.
+     */
+    this.camera.updateMatrixWorld(true);
+    for (let pass = 0; pass < 3; pass++) {
+      const onScreen = fists.map((fist) =>
+        fist.getWorldPosition(new THREE.Vector3()).project(this.camera),
+      );
+      const offset = (onScreen[0]!.x + onScreen[1]!.x) / 2;
+      if (Math.abs(offset) < 0.01) break;
+
+      // Насколько метров сдвинуть, чтобы съесть эту долю экрана.
+      const halfWidth =
+        HANDS_DISTANCE *
+        Math.tan((this.camera.fov * Math.PI) / 360) *
+        Math.max(this.camera.aspect, 1);
+      rig.position.x -= offset * halfWidth;
+      rig.updateMatrixWorld(true);
+    }
+
+    // Возвращаем то, что играло: анимация не должна сбиваться из-за замера.
+    // Клип при этом не глушим — после stop кости встают в позу из файла,
+    // и до первого обновления микшера руки видно именно в ней.
+    this.current = 'idle';
+    if (wasPlaying && wasPlaying !== 'idle') this.play(wasPlaying);
+    this.unspreadArms();
+    this.mixer.update(0);
+    this.spreadArms();
   }
-  const origin = arm.root.userData.base as { x: number; y: number; z: number };
-  arm.root.position.set(
-    origin.x + bobX,
-    origin.y + bobY + arm.pose.offsetY,
-    origin.z + arm.pose.offsetZ,
+}
+
+/** Клип по имени: у экспортёров оно бывает с приставкой вроде `rig|Idle`. */
+function findClip(clips: THREE.AnimationClip[], name: string): THREE.AnimationClip | null {
+  const exact = THREE.AnimationClip.findByName(clips, name);
+  if (exact) return exact;
+
+  const wanted = name.toLowerCase();
+  return (
+    clips.find((clip) => (clip.name.split('|').pop() ?? clip.name).toLowerCase() === wanted) ?? null
   );
-}
-
-function mixPose(a: ArmPose, b: ArmPose, k: number): ArmPose {
-  return {
-    shoulderX: a.shoulderX + (b.shoulderX - a.shoulderX) * k,
-    shoulderY: a.shoulderY + (b.shoulderY - a.shoulderY) * k,
-    shoulderZ: a.shoulderZ + (b.shoulderZ - a.shoulderZ) * k,
-    elbow: a.elbow + (b.elbow - a.elbow) * k,
-    offsetZ: a.offsetZ + (b.offsetZ - a.offsetZ) * k,
-    offsetY: a.offsetY + (b.offsetY - a.offsetY) * k,
-  };
-}
-
-/** Фазы берутся из тех же таймингов, по которым сервер считает удар. */
-function localPhase(kind: ActionKind, elapsed: number): ActionPhase {
-  const timing = timingFor(kind);
-  if (elapsed < timing.windup) return 'windup';
-  if (elapsed < timing.windup + timing.active) return 'active';
-  return 'recovery';
 }
 
 function totalDuration(kind: ActionKind): number {
@@ -372,12 +758,4 @@ function timingFor(kind: ActionKind) {
   if (kind === 'dodge') return ACTIONS.dodge.timing;
   // Блок и каст держатся сервером; для рук хватает короткого цикла.
   return { windup: 0.5, active: 0.1, recovery: 0.4 };
-}
-
-/** Осветляет или затемняет цвет расы — для кожи и рукава. */
-function shade(color: number, factor: number): number {
-  const r = Math.min(255, Math.round(((color >> 16) & 0xff) * factor));
-  const g = Math.min(255, Math.round(((color >> 8) & 0xff) * factor));
-  const b = Math.min(255, Math.round((color & 0xff) * factor));
-  return (r << 16) | (g << 8) | b;
 }
