@@ -13,6 +13,7 @@ import {
 import { dispatch } from './commands/index.js';
 import { canRespawn, emptyOutbox, respawnPlayer, tickWorld } from './gameloop.js';
 import { craftingMessage } from './commands/craft.js';
+import { gatheringMessage } from './commands/harvest.js';
 import { endTrade, tradeMessages } from './commands/trade.js';
 import { Persistence } from './persistence.js';
 import { Session } from './session.js';
@@ -142,6 +143,9 @@ wss.on('connection', (socket) => {
       if (event.type === 'crafting') {
         session.send(craftingMessage(player, event.note as string | undefined));
       }
+      if (event.type === 'gathering') {
+        session.send(gatheringMessage(player, event.note as string | undefined));
+      }
       if (event.type === 'itemError') {
         session.send({ t: 'itemError', message: String(event.reason) });
       }
@@ -191,6 +195,7 @@ setInterval(() => {
   for (const entry of outbox.life) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.loot) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.crafting) sendTo(entry.playerId, entry.message);
+  for (const entry of outbox.gathering) sendTo(entry.playerId, entry.message);
 
   // Вещи изменились по ходу тика — шлём новое состояние рюкзака. Через Set,
   // потому что за один тик можно добить сразу двоих и попасть в список дважды.

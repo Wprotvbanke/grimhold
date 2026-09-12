@@ -111,8 +111,13 @@ export interface Player {
    * отстаёт на целый шаг.
    */
   lastIntent: { forward: number; right: number; jump: boolean };
-  /** Секунд до следующего удара по ресурсной ноде. */
-  harvestCooldown: number;
+  /**
+   * Начатая добыча, если игрок сейчас работает над нодой.
+   *
+   * Сама нода лежит рядом с именем: восстанавливать её из имени каждый тик
+   * ради проверки расстояния — лишняя работа на ровном месте.
+   */
+  gathering: { nodeId: string; node: ResourceNode; duration: number; remaining: number } | null;
   /**
    * Начатая работа, если игрок сейчас мастерит.
    *
@@ -233,7 +238,7 @@ export class World {
       pendingInputs: [],
       lastProcessedSeq: -1,
       lastIntent: { forward: 0, right: 0, jump: false },
-      harvestCooldown: 0,
+      gathering: null,
       crafting: null,
       wantsRespawn: false,
       dirty: true,

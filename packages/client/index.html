@@ -402,6 +402,26 @@
       }
       #captureHint[hidden] { display: none; }
 
+      /* Шкала добычи. Стоит под прицелом, а подсказка о ноде — над ним:
+         работа идёт прямо в мире, и уводить взгляд в угол экрана незачем. */
+      #gatherBar {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, 40px);
+        z-index: 8; width: 190px; pointer-events: none; text-align: center;
+      }
+      #gatherBar[hidden] { display: none; }
+      #gatherBar .track {
+        height: 7px; border-radius: 2px; overflow: hidden;
+        background: rgba(6, 6, 8, 0.8); border: 1px solid #2b2721;
+      }
+      #gatherBar .track > i {
+        display: block; height: 100%; width: 100%; transform-origin: left center;
+        background: linear-gradient(90deg, #5d6b46, #9bae6a);
+      }
+      #gatherName {
+        font-size: 11px; color: var(--gold); margin-bottom: 3px;
+        text-shadow: 0 1px 3px #000;
+      }
+
       /* Подсказка о ресурсной ноде под прицелом: что это и чем добывать.
          Стоит над прицелом, а не на месте прицела, чтобы не мешать целиться. */
       #nodeHint {
@@ -544,6 +564,11 @@
     <div id="captureHint" hidden></div>
 
     <div id="nodeHint" hidden></div>
+
+    <div id="gatherBar" hidden>
+      <div id="gatherName"></div>
+      <div class="track"><i id="gatherFill"></i></div>
+    </div>
 
     <!-- Экран входа -->
     <div class="screen" id="authScreen">

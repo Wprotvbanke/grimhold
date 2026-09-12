@@ -20,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -512,6 +512,25 @@ export interface CraftingMessage {
   note?: string;
 }
 
+/**
+ * Ход добычи.
+ *
+ * Устроено как `crafting`: два сообщения — начало и конец, между ними полосу
+ * двигает клиент по известной длительности. Гнать шкалу тиками означало бы
+ * двадцать пакетов в секунду ради картинки.
+ */
+export interface GatheringMessage {
+  t: 'gathering';
+  /** Что добывают. `null` — работа кончилась, полосу убрать. */
+  nodeId: string | null;
+  /** Название ноды — подписью над полосой. */
+  name: string;
+  duration: number;
+  remaining: number;
+  /** Чем кончилось, если кончилось. */
+  note?: string;
+}
+
 /** Почему действие с вещью не прошло. Клиент показывает это игроку. */
 export interface ItemErrorMessage {
   t: 'itemError';
@@ -601,6 +620,7 @@ export type ServerMessage =
   | BankMessage
   | TradeMessage
   | CraftingMessage
+  | GatheringMessage
   | ItemErrorMessage
   | ErrorMessage;
 

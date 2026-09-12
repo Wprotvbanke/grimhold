@@ -65,6 +65,14 @@ export interface NodeProfile {
    * почему не выходит руда.
    */
   tint: number;
+  /**
+   * Сколько секунд идёт одна добыча.
+   *
+   * Добыча — работа, а не нажатие: полоса растёт, и её видно. Раньше ресурс
+   * падал в рюкзак мгновенно, а пауза шла молча — со стороны это выглядело
+   * как случайный отказ кнопки, а не как труд.
+   */
+  time: number;
   /** Сколько штук ставить в чанк: от и до. */
   min_per_chunk: number;
   max_per_chunk: number;
@@ -91,6 +99,7 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min: 1,
     max: 2,
     charges: 3,
+    time: 1.0,
     respawn: 120,
     solid: 0.4,
     height: 1.6,
@@ -108,6 +117,7 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min: 1,
     max: 2,
     charges: 3,
+    time: 2.0,
     respawn: 180,
     solid: 0.5,
     height: 1.6,
@@ -125,6 +135,7 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min: 1,
     max: 2,
     charges: 3,
+    time: 2.6,
     respawn: 240,
     solid: 0.6,
     height: 1.6,
@@ -146,6 +157,7 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min: 1,
     max: 3,
     charges: 4,
+    time: 1.4,
     respawn: 120,
     solid: 0.6,
     height: 1.4,
@@ -163,6 +175,7 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min: 1,
     max: 2,
     charges: 4,
+    time: 1.2,
     respawn: 120,
     solid: 0.6,
     height: 1.2,
@@ -180,6 +193,7 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min: 1,
     max: 3,
     charges: 2,
+    time: 0.8,
     respawn: 90,
     solid: 0,
     height: 0,
@@ -201,6 +215,7 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min: 2,
     max: 4,
     charges: 3,
+    time: 0.9,
     respawn: 90,
     solid: 0,
     height: 0,
@@ -228,9 +243,6 @@ export const HARVEST_RANGE = 3.2;
 
 /** До какой доли роста оседает истощённая нода: пень, выработка, вытоптанная трава. */
 export const DEPLETED_SCALE = 0.3;
-
-/** Пауза между ударами по ноде. Тот же порядок, что у удара в бою. */
-export const HARVEST_COOLDOWN = 0.6;
 
 /** Своё зерно: правка расстановки камней не должна сдвигать весь лес и ноды. */
 function mulberry32(seed: number): () => number {

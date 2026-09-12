@@ -15,6 +15,7 @@ import {
   weightSpeedFactor,
   type CombatEvent,
   type CraftingMessage,
+  type GatheringMessage,
   type LifeMessage,
   type LootMessage,
   type ItemId,
@@ -23,6 +24,7 @@ import {
   type SpellId,
 } from '@grimhold/shared';
 import { craftingMessage, finishCraft } from './commands/craft.js';
+import { finishHarvest, gatheringMessage, outOfReach } from './commands/harvest.js';
 import {
   applyDodgeImpulse,
   resolveCone,
@@ -64,6 +66,8 @@ export interface Outbox {
   inventory: Player[];
   /** Ход изготовления: начало и конец работы. */
   crafting: { playerId: string; message: CraftingMessage }[];
+  /** Ход добычи: начало и конец работы у ноды. */
+  gathering: { playerId: string; message: GatheringMessage }[];
   /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
   criticalSaves: Player[];
 }
@@ -76,6 +80,7 @@ export function emptyOutbox(): Outbox {
     loot: [],
     inventory: [],
     crafting: [],
+    gathering: [],
     criticalSaves: [],
   };
 }
@@ -99,7 +104,34 @@ export function tickWorld(world: World, dt: number, outbox: Outbox): void {
 function tickPlayers(world: World, dt: number, outbox: Outbox): void {
   for (const player of world.players.values()) {
     const combat = player.combat;
-    player.harvestCooldown = Math.max(0, player.harvestCooldown - dt);
+
+    // Добыча идёт, пока игрок стоит у ноды: отошёл — работа брошена.
+    // Это и есть способ передумать, отдельной кнопки отмены не нужно.
+    if (player.gathering) {
+      if (outOfReach(player, player.gathering.node)) {
+        player.gathering = null;
+        outbox.gathering.push({
+          playerId: player.id,
+          message: gatheringMessage(player, 'Ты отошёл'),
+        });
+      } else {
+        player.gathering.remaining -= dt;
+        if (player.gathering.remaining <= 0) {
+          for (const event of finishHarvest(player, world)) {
+            if (event.type === 'gathering') {
+              outbox.gathering.push({
+                playerId: player.id,
+                message: gatheringMessage(player, event.note as string | undefined),
+              });
+            }
+            if (event.type === 'inventory') outbox.inventory.push(player);
+            if (event.type === 'loot') {
+              outbox.loot.push({ playerId: player.id, message: event.message as LootMessage });
+            }
+          }
+        }
+      }
+    }
 
     // Работа идёт, пока игрок жив: полосу двигает клиент, а конец назначает
     // сервер — иначе изделие зависело бы от частоты кадров у мастера.
@@ -125,6 +157,15 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     if (!combat.alive) {
       player.deadFor += dt;
       player.pendingInputs.length = 0;
+
+      // Смерть прерывает и добычу: заряд ноды цел, в руках пусто.
+      if (player.gathering) {
+        player.gathering = null;
+        outbox.gathering.push({
+          playerId: player.id,
+          message: gatheringMessage(player, 'Работа брошена'),
+        });
+      }
 
       // Смерть прерывает работу: сырьё цело, изделия нет.
       if (player.crafting) {

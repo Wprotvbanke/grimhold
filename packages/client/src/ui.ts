@@ -4,6 +4,7 @@ import {
   type CharacterClass,
   type CharacterSummary,
   type ChatBroadcast,
+  type GatheringMessage,
   type Race,
 } from '@grimhold/shared';
 
@@ -28,6 +29,10 @@ export class Ui {
   private readonly resumeHint = el<HTMLDivElement>('resumeHint');
   private readonly captureHint = el<HTMLDivElement>('captureHint');
   private readonly nodeHint = el<HTMLDivElement>('nodeHint');
+  private readonly gatherBar = el<HTMLDivElement>('gatherBar');
+  /** Текущая добыча: полосу двигает клиент по присланной длительности. */
+  private gathering: { duration: number; endsAt: number } | null = null;
+  private gatherTimer = 0;
   private readonly chatLog = el<HTMLDivElement>('chatLog');
   private readonly chatInput = el<HTMLInputElement>('chatInput');
 
@@ -116,6 +121,44 @@ export class Ui {
   }
 
   /**
+   * Ход добычи: полоса под прицелом.
+   *
+   * Сервер присылает начало и конец, между ними шкалу двигает клиент — ровно
+   * как с ремеслом. Двадцать пакетов в секунду ради картинки того не стоят,
+   * а конец всё равно назначает сервер.
+   */
+  setGathering(message: GatheringMessage): void {
+    if (message.note) this.system(message.note);
+
+    if (this.gatherTimer) cancelAnimationFrame(this.gatherTimer);
+    this.gatherTimer = 0;
+
+    if (!message.nodeId) {
+      this.gathering = null;
+      this.gatherBar.hidden = true;
+      return;
+    }
+
+    this.gathering = {
+      duration: Math.max(0.1, message.duration),
+      endsAt: performance.now() + message.remaining * 1000,
+    };
+    this.gatherBar.hidden = false;
+    el<HTMLDivElement>('gatherName').textContent = message.name;
+
+    const fill = el<HTMLElement>('gatherFill');
+    const tick = (): void => {
+      if (!this.gathering) return;
+      const left = Math.max(0, (this.gathering.endsAt - performance.now()) / 1000);
+      const done = 1 - left / this.gathering.duration;
+      fill.style.transform = `scaleX(${Math.min(1, Math.max(0, done))})`;
+      // Дошла до края — ждём слова сервера, он и уберёт полосу.
+      this.gatherTimer = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  /**
    * Что за ресурсная нода перед игроком и чем её брать.
    *
    * Без подсказки добыча превращается в угадайку: модели нод взяты из того же
@@ -123,6 +166,12 @@ export class Ui {
    * Пустая строка убирает подсказку.
    */
   setNodeHint(name: string, tool: string | null, ready: boolean, verb = 'добыть'): void {
+    // Пока идёт работа, подсказка молчит: под прицелом уже стоит полоса
+    // с тем же названием, и повторять его дважды незачем.
+    if (this.gathering) {
+      this.nodeHint.hidden = true;
+      return;
+    }
     if (!name) {
       this.nodeHint.hidden = true;
       return;

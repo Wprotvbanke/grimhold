@@ -293,6 +293,7 @@ const connection = new Connection(SERVER_URL, {
     inventoryUi.setBank(message);
   },
   onCrafting: (message) => inventoryUi.setCrafting(message),
+  onGathering: (message) => ui.setGathering(message),
   onItemError: (message) => inventoryUi.showError(message),
   onDisconnected: () => {
     if (game) ui.system('Связь потеряна, переподключаюсь…');

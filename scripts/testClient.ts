@@ -11,6 +11,7 @@ import {
   type CombatEvent,
   type BankMessage,
   type CraftingMessage,
+  type GatheringMessage,
   type TradeMessage,
   type InventoryMessage,
   type LifeMessage,
@@ -50,6 +51,8 @@ export class TestClient {
   trade: TradeMessage | null = null;
   /** Последнее состояние работы: начало и конец изготовления. */
   crafting: CraftingMessage | null = null;
+  /** Последнее состояние добычи: начало и конец работы у ноды. */
+  gathering: GatheringMessage | null = null;
   readonly errors: string[] = [];
   onSnapshot?: (snapshot: SnapshotMessage) => void;
 
@@ -153,6 +156,9 @@ export class TestClient {
         break;
       case 'crafting':
         this.crafting = message;
+        break;
+      case 'gathering':
+        this.gathering = message;
         break;
       case 'itemError':
         this.errors.push(message.message);
