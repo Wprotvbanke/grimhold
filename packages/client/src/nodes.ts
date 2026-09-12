@@ -36,16 +36,26 @@ export interface NodeField {
   /** Имена истощённых нод — приходят снапшотом с сервера. */
   setDepleted(ids: readonly string[]): void;
   /**
-   * Нода, по которой ударит игрок: ближайшая в радиусе и перед собой.
+   * Нода под перекрестием: луч из глаза в центр экрана.
    * `null`, если целиться не во что.
    */
-  targetAt(x: number, z: number, yaw: number): ResourceNode | null;
+  targetAt(ray: THREE.Ray): ResourceNode | null;
   /** Истощена ли нода — по этому подсказка молчит про пустую выработку. */
   isDepleted(id: string): boolean;
 }
 
-/** Насколько нода должна быть «перед» игроком: косинус половины раствора. */
-const FACING = 0.35;
+/**
+ * Насколько «толще» цель для прицеливания, чем её коробка столкновений.
+ *
+ * Точное попадание пикселем в ствол было бы мучением: игрок целится в дерево,
+ * а не в его геометрию. Но и конус в семьдесят градусов, который тут стоял
+ * раньше, врал в другую сторону — подсказка загоралась, когда ноду даже не
+ * видно на экране.
+ */
+const AIM_PADDING = 0.25;
+/** Нижняя граница размера цели: трава и волокно лежат почти плашмя. */
+const AIM_MIN_RADIUS = 0.5;
+const AIM_MIN_HEIGHT = 0.6;
 
 export function createNodes(): NodeField {
   const placed = new Map<string, Placed>();
@@ -62,6 +72,9 @@ export function createNodes(): NodeField {
   const position = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
   const tint = new THREE.Color();
+  // Прицеливание считается каждый кадр — временные объекты переиспользуем.
+  const aimBox = new THREE.Box3();
+  const aimPoint = new THREE.Vector3();
 
   /** Матрица ноды с учётом того, цела она или выработана. */
   function poseOf(node: ResourceNode): THREE.Matrix4 {
@@ -157,24 +170,31 @@ export function createNodes(): NodeField {
       for (const mesh of touched) mesh.instanceMatrix.needsUpdate = true;
     },
 
-    targetAt(x, z, yaw) {
-      // «Вперёд» при yaw = 0 — это −Z, как и в общей симуляции движения.
-      const forwardX = -Math.sin(yaw);
-      const forwardZ = -Math.cos(yaw);
-
+    targetAt(ray) {
       let best: ResourceNode | null = null;
-      let bestDistance = HARVEST_RANGE;
+      let bestHit = Infinity;
 
       for (const nodes of loaded.values()) {
         for (const node of nodes) {
-          const dx = node.x - x;
-          const dz = node.z - z;
-          const distance = Math.hypot(dx, dz);
-          if (distance > bestDistance || distance < 0.001) continue;
-          if ((dx * forwardX + dz * forwardZ) / distance < FACING) continue;
+          // Дальность считает сервер по горизонтали — здесь та же мерка,
+          // иначе подсказка обещала бы то, в чём он откажет.
+          const flat = Math.hypot(node.x - ray.origin.x, node.z - ray.origin.z);
+          if (flat > HARVEST_RANGE) continue;
+
+          const profile = NODES[node.nodeId];
+          const radius = Math.max(profile.solid * node.scale, AIM_MIN_RADIUS) + AIM_PADDING;
+          const height = Math.max(profile.height * node.scale, AIM_MIN_HEIGHT) + AIM_PADDING;
+
+          aimBox.min.set(node.x - radius, 0, node.z - radius);
+          aimBox.max.set(node.x + radius, height, node.z + radius);
+          if (!ray.intersectBox(aimBox, aimPoint)) continue;
+
+          // Ближайшая по лучу, а не по земле: за стволом может стоять второй.
+          const hit = aimPoint.distanceToSquared(ray.origin);
+          if (hit >= bestHit) continue;
 
           best = node;
-          bestDistance = distance;
+          bestHit = hit;
         }
       }
 

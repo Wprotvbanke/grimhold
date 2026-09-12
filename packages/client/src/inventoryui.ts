@@ -360,11 +360,8 @@ export class InventoryUi {
 
     for (const node of this.bankWrap.querySelectorAll('.inv-item')) node.remove();
     for (const item of grid.items) {
-      const node = this.buildStaticItem(item);
-      node.title += '\nЩелчок — забрать';
-      node.addEventListener('click', () => {
-        if (this.takeClick()) this.handlers.onWithdraw(item.x, item.y);
-      });
+      const node = this.buildItemNode(item, 'bank');
+      node.title += '\nЩелчок — забрать, перетаскивание — переложить';
       this.bankWrap.append(node);
     }
   }
@@ -525,7 +522,7 @@ export class InventoryUi {
 
     // Предметы рисуются поверх сетки, растягиваясь на свои клетки.
     for (const node of this.wrap.querySelectorAll('.inv-item')) node.remove();
-    for (const item of grid.items) this.wrap.append(this.buildItemNode(item));
+    for (const item of grid.items) this.wrap.append(this.buildItemNode(item, 'backpack'));
   }
 
   /** Вид предмета без поведения: одинаков и в рюкзаке, и в казне. */
@@ -552,39 +549,54 @@ export class InventoryUi {
     return node;
   }
 
-  private buildItemNode(item: PlacedItem): HTMLElement {
+  /**
+   * Вещь со всем поведением.
+   *
+   * Одна дверь на рюкзак и на казну: вещи в сундуке тянут, поворачивают
+   * и раскладывают ровно теми же движениями. Развести их по двум местам уже
+   * пробовали — и казна молча осталась без перетаскивания, потому что правка
+   * в одном месте не дошла до второго.
+   */
+  private buildItemNode(item: PlacedItem, from: GridKind): HTMLElement {
     const def = itemDef(item.defId);
     const node = this.buildStaticItem(item);
 
-    // Правая кнопка кладёт вещь в казну, но только пока сундук открыт:
-    // иначе она была бы кнопкой без последствий.
-    // Пока открыт сундук, щелчок кладёт вещь в казну — той же кнопкой, какой
-    // её оттуда забирают. Правая здесь не годится: браузер открывает по ней
-    // своё меню, и договориться с ним нельзя.
-    node.addEventListener('click', () => {
-      if (this.takeClick() && this.bankOpen) this.handlers.onDeposit(item.x, item.y);
-    });
-
-    node.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      if (!this.bankOpen && this.tradeOpen) this.handlers.onTradeOffer(item.x, item.y);
-    });
-
     node.addEventListener('mousedown', (event) => {
       event.preventDefault();
-      this.beginDrag(item, node, event, 'backpack');
+      this.beginDrag(item, node, event, from);
     });
 
-    node.addEventListener('dblclick', (event) => {
-      event.preventDefault();
-      // У сундука тот же щелчок уже значит «положить»: надевать вещь заодно
-      // с отправкой её в казну — не то, чего ждёшь.
-      if (this.bankOpen) return;
-      // Надеваемое надевается, съедобное используется — угадывать не надо,
-      // это видно по определению предмета.
-      if (def.slot) this.handlers.onEquip(item.x, item.y);
-      else if (def.kind === 'consumable') this.handlers.onUse(item.x, item.y);
+    /**
+     * Щелчок переносит вещь между рюкзаком и казной — одной и той же левой
+     * кнопкой в обе стороны. Правая тут не годится: браузер открывает по ней
+     * своё меню, и договориться с ним нельзя.
+     *
+     * Конец перетаскивания браузер тоже считает щелчком, поэтому спрашиваем
+     * `takeClick`: иначе поворот вещи на месте читался бы как «забрать».
+     */
+    node.addEventListener('click', () => {
+      if (!this.takeClick()) return;
+      if (from === 'bank') this.handlers.onWithdraw(item.x, item.y);
+      else if (this.bankOpen) this.handlers.onDeposit(item.x, item.y);
     });
+
+    if (from === 'backpack') {
+      node.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        if (!this.bankOpen && this.tradeOpen) this.handlers.onTradeOffer(item.x, item.y);
+      });
+
+      node.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        // У сундука тот же щелчок уже значит «положить»: надевать вещь заодно
+        // с отправкой её в казну — не то, чего ждёшь.
+        if (this.bankOpen) return;
+        // Надеваемое надевается, съедобное используется — угадывать не надо,
+        // это видно по определению предмета.
+        if (def.slot) this.handlers.onEquip(item.x, item.y);
+        else if (def.kind === 'consumable') this.handlers.onUse(item.x, item.y);
+      });
+    }
 
     return node;
   }

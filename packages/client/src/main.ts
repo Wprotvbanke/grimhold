@@ -214,7 +214,7 @@ const controls = new Controls(renderer.domElement, {
     if (!game || combatUi.dead) return;
     // E — единственная клавиша взаимодействия. У казны она открывает сундук,
     // в лесу бьёт по ноде: игроку не нужно помнить две.
-    if (atVault()) {
+    if (aimedVault) {
       connection.send({ t: 'openBank' });
       return;
     }
@@ -563,12 +563,14 @@ let tradeOpen = false;
 /** На каком расстоянии клиент вообще предлагает обмен. Сервер строже. */
 const TRADE_REACH = 5;
 
-/** Стоит ли игрок у казны. Та же проверка есть на сервере — она и решает. */
-function atVault(): boolean {
-  const self = connection.latestSnapshot?.self;
-  if (!self) return false;
-  return Math.hypot(self.x - BANK.x, self.z - BANK.z) <= BANK.range;
-}
+/**
+ * Смотрит ли игрок на казну прямо сейчас.
+ *
+ * Ставится там же, где рисуется подсказка: клавиша обязана делать ровно то,
+ * что обещано на экране, иначе `E` то открывает сундук, то рубит дерево
+ * в зависимости от того, чего игрок не видит.
+ */
+let aimedVault = false;
 /** Что у игрока в основной руке. Приходит вместе с состоянием вещей. */
 let mainHandItem: string | null = null;
 /** Хватает ли лёгкости на рывок. Считается по тому же правилу, что у сервера. */
@@ -613,15 +615,37 @@ function playerInFront(): EntitySnapshot | null {
   return best;
 }
 
+/**
+ * На что смотрит игрок.
+ *
+ * Подсказка `E` идёт за перекрестием, а не за корпусом: раньше она загоралась
+ * от одной близости и не гасла, даже когда цель оставалась за спиной.
+ */
+const aimRay = new THREE.Ray();
+const aimDirection = new THREE.Vector3();
+const bankBox = new THREE.Box3(
+  new THREE.Vector3(BANK.x - BANK.width / 2, 0, BANK.z - BANK.depth / 2),
+  new THREE.Vector3(BANK.x + BANK.width / 2, BANK.height, BANK.z + BANK.depth / 2),
+);
+/** Запас к коробке казны: целятся в сундук, а не в его рёбра. */
+const BANK_AIM_PADDING = 0.3;
+bankBox.expandByScalar(BANK_AIM_PADDING);
+
 function updateNodeHint(x: number, z: number): void {
+  camera.getWorldDirection(aimDirection);
+  aimRay.set(camera.position, aimDirection);
+
   // Казна перебивает ноду: в городе нод нет, а подсказка нужна одна.
-  if (Math.hypot(x - BANK.x, z - BANK.z) <= BANK.range) {
+  // Дальность считаем от ног, как сервер, а направление — по лучу из глаза.
+  aimedVault =
+    Math.hypot(x - BANK.x, z - BANK.z) <= BANK.range && aimRay.intersectsBox(bankBox);
+  if (aimedVault) {
     aimedNode = null;
     ui.setNodeHint('Казна', null, true, 'открыть');
     return;
   }
 
-  const node = world.nodes.targetAt(x, z, controls.yaw);
+  const node = world.nodes.targetAt(aimRay);
   aimedNode = node?.id ?? null;
 
   if (!node || world.nodes.isDepleted(node.id)) {
