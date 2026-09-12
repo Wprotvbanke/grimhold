@@ -13,6 +13,7 @@
  *   5. изученное и сделанное переживает перезаход.
  */
 import { RECIPES, countOf, type InventoryMessage } from '@grimhold/shared';
+import { equip, gather, makeTool } from './fieldwork.js';
 import { TestClient, sleep } from './testClient.js';
 
 const failures: string[] = [];
@@ -31,82 +32,14 @@ function have(client: TestClient, defId: string): number {
 }
 
 /**
- * Кладёт вещь в рюкзак чужими руками нельзя, а начинать с пустого — долго.
- * Поэтому сырьё добываем как игрок: рубим ближайшее дерево.
+ * Сырьё добываем как игрок: связать топор из подножного и срубить дерево.
+ * Вещь в рюкзак чужими руками не положить, а путь новичка всё равно должен
+ * работать — если он сломается, проверка обязана падать именно здесь.
  */
 async function chopLogs(client: TestClient, wanted: number): Promise<number> {
-  const { generateNodes } = await import('@grimhold/shared');
-  const { INPUT_DT, TICK_RATE, HARVEST_COOLDOWN } = await import('@grimhold/shared');
-
-  let tree: { id: string; x: number; z: number } | null = null;
-  let best = Infinity;
-  for (const cx of [-1, 0, 1]) {
-    for (const cz of [-1, 0, 1]) {
-      for (const node of generateNodes(cx, cz)) {
-        if (node.nodeId !== 'tree') continue;
-        const distance = Math.hypot(node.x, node.z);
-        if (distance < best) {
-          best = distance;
-          tree = node;
-        }
-      }
-    }
-  }
-  if (!tree) return 0;
-
-  // Доходим, обходя стволы: навигации нет, упираемся честно.
-  let seq = 0;
-  let closest = Infinity;
-  let stuck = 0;
-  let sidestep = 0;
-
-  for (let step = 0; step < 600; step++) {
-    const self = client.latestSnapshot?.self;
-    if (!self) break;
-    const distance = Math.hypot(tree.x - self.x, tree.z - self.z);
-    if (distance <= 2.4) break;
-
-    if (distance < closest - 0.05) {
-      closest = distance;
-      stuck = 0;
-    } else if (++stuck > 6 && sidestep <= 0) {
-      sidestep = 14;
-      stuck = 0;
-    }
-
-    const yaw = Math.atan2(-(tree.x - self.x), -(tree.z - self.z));
-    const right = sidestep > 0 ? (Math.floor(step / 40) % 2 === 0 ? 1 : -1) : 0;
-    if (sidestep > 0) sidestep--;
-
-    for (let i = 0; i < 4; i++) {
-      client.send({
-        t: 'input',
-        seq: seq++,
-        forward: right === 0 ? 1 : 0.4,
-        right,
-        yaw,
-        pitch: 0,
-        jump: false,
-        sprint: true,
-        dt: INPUT_DT,
-      });
-    }
-    await sleep(1000 / TICK_RATE);
-  }
-
-  // Берём топор в руку и рубим, пока не наберём нужное.
-  const axe = client.inventory?.backpack.items.find((item) => item.defId === 'crude_axe');
-  if (axe) {
-    client.send({ t: 'equip', x: axe.x, y: axe.y });
-    await sleep(400);
-  }
-
-  for (let i = 0; i < 12 && have(client, 'log') < wanted; i++) {
-    client.send({ t: 'harvest', nodeId: tree.id });
-    await sleep(HARVEST_COOLDOWN * 1000 + 120);
-  }
-
-  return have(client, 'log');
+  if (!(await makeTool(client, 'crude_axe'))) return 0;
+  if (!(await equip(client, 'crude_axe'))) return 0;
+  return gather(client, 'log', wanted);
 }
 
 async function main(): Promise<void> {

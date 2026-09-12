@@ -17,6 +17,7 @@ import type { ItemId, ToolKind } from './items.js';
  */
 
 export type NodeId =
+  | 'deadfall'
   | 'tree'
   | 'ore_vein'
   | 'stone_pile'
@@ -70,6 +71,34 @@ export interface NodeProfile {
 }
 
 export const NODES: Record<NodeId, NodeProfile> = {
+  /**
+   * Сухостой — нулевой ярус добычи и единственный выход из голых рук.
+   *
+   * Без него круг не размыкался: камень лежал за киркой, кирка — за камнем,
+   * а топор и нож упирались в то же самое. Новичок жил на выданном топоре
+   * и, потеряв его, не мог сделать новый.
+   *
+   * Сухое дерево читается само: с живого рубят бревно, с мёртвого ломают
+   * ветки. Ради этой ясности сухостой изъят из декоративных рощ — в мире
+   * нет ни одного, который нельзя обломать.
+   */
+  deadfall: {
+    id: 'deadfall',
+    name: 'Сухостой',
+    tool: null,
+    toolTier: 0,
+    itemId: 'branch',
+    min: 1,
+    max: 2,
+    charges: 3,
+    respawn: 120,
+    solid: 0.4,
+    height: 1.6,
+    models: ['deadtree_1', 'deadtree_2', 'deadtree_3', 'deadtree_4', 'deadtree_5'],
+    tint: 0xffffff,
+    min_per_chunk: 4,
+    max_per_chunk: 7,
+  },
   tree: {
     id: 'tree',
     name: 'Дерево',
@@ -104,11 +133,15 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min_per_chunk: 2,
     max_per_chunk: 4,
   },
+  /**
+   * Камень с осыпи берётся руками: он там уже лежит расколотым, и кирка для
+   * этого не нужна. Кирку это не обесценивает — руда остаётся только за ней.
+   */
   stone_pile: {
     id: 'stone_pile',
     name: 'Каменная осыпь',
-    tool: 'pick',
-    toolTier: 1,
+    tool: null,
+    toolTier: 0,
     itemId: 'stone',
     min: 1,
     max: 3,
@@ -155,11 +188,15 @@ export const NODES: Record<NodeId, NodeProfile> = {
     min_per_chunk: 4,
     max_per_chunk: 7,
   },
+  /**
+   * Волокно надирается руками. Нож от этого не лишний: травы — его работа,
+   * а без трав нет зелий.
+   */
   fiber_bush: {
     id: 'fiber_bush',
     name: 'Волокнистый куст',
-    tool: 'knife',
-    toolTier: 1,
+    tool: null,
+    toolTier: 0,
     itemId: 'plant_fiber',
     min: 2,
     max: 4,

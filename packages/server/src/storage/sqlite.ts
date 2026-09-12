@@ -85,9 +85,17 @@ const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: 'characters', column: 'hotbar', definition: "TEXT NOT NULL DEFAULT ''" },
 ];
 
-/** Что кладётся новому персонажу, чтобы он мог хоть что-то делать с первой минуты. */
+/**
+ * Что кладётся новому персонажу.
+ *
+ * Инструментов тут нет намеренно: их делают сами из того, что лежит под
+ * ногами за воротами — ветка, камень, волокно. Выданный топор делал первые
+ * минуты прелюдией, а не игрой, и держал весь мир на одной вещи: потерял —
+ * и мир закрылся.
+ *
+ * Бинты и факелы остаются: это расходники, а не ступень.
+ */
 const STARTER_KIT: { itemId: ItemId; count: number }[] = [
-  { itemId: 'crude_axe', count: 1 },
   { itemId: 'bandage', count: 3 },
   { itemId: 'torch', count: 2 },
 ];

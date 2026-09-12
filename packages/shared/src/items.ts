@@ -101,6 +101,7 @@ export type ItemId =
   | 'scroll_stamina_draught'
   | 'scroll_stone_elixir'
   // ---- ресурсы из мира ----
+  | 'branch'
   | 'log'
   | 'ore'
   | 'herb'
@@ -202,6 +203,9 @@ const ITEM_LIST: ItemDef[] = [
   })),
 
   // ---------- ресурсы из мира ----------
+  // Ветка — единственное дерево, которое берётся без топора, и на ней держится
+  // весь выход из голых рук: из неё вяжутся первые инструменты.
+  { id: 'branch', name: 'Ветка', kind: 'resource', width: 1, height: 2, weight: 1, stack: 10, tier: 0 },
   { id: 'log', name: 'Бревно', kind: 'resource', width: 2, height: 2, weight: 5, stack: 5, tier: 0 },
   { id: 'ore', name: 'Руда', kind: 'resource', width: 1, height: 1, weight: 3, stack: 10, tier: 1 },
   { id: 'herb', name: 'Травы', kind: 'resource', width: 1, height: 1, weight: 0.1, stack: 20, tier: 0 },

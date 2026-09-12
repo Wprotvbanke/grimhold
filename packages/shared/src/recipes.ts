@@ -6,6 +6,10 @@ import type { Race } from './races.js';
  *
  * Два яруса, и это главное решение всей системы:
  *
+ *  - **Нулевой** — то, что берётся голыми руками: ветка с сухостоя, камень
+ *    с осыпи, волокно с куста. Из них вяжутся нож, топор и кирка, и только
+ *    с ними открывается всё остальное. Без этого яруса круг был замкнут:
+ *    камень лежал за киркой, а кирка — за камнем.
  *  - **Базовый** доступен всем и без рецепта. Бинты, факелы, стрелы, доски,
  *    грубые инструменты. Одиночка не должен упереться в стену только потому,
  *    что нужной расы нет онлайн.
@@ -102,11 +106,13 @@ const RECIPE_LIST: Recipe[] = [
     duration: 1,
   },
   {
+    // Факел из ветки, а не из доски: свет нужен раньше первого топора.
+    // В игре, где темнота — механика, держать огонь за инструментом нельзя.
     id: 'torch',
     name: 'Факел',
     output: { itemId: 'torch', count: 2 },
     inputs: [
-      { itemId: 'plank', count: 1 },
+      { itemId: 'branch', count: 1 },
       { itemId: 'cloth', count: 1 },
     ],
     duration: 1,
@@ -121,13 +127,19 @@ const RECIPE_LIST: Recipe[] = [
     ],
     duration: 2,
   },
+  /**
+   * Первые орудия вяжутся из того, что берётся голыми руками: ветка с
+   * сухостоя, камень с осыпи, волокно с куста. Досок тут нет намеренно —
+   * доски требуют топора, а топор требовал досок, и круг не размыкался.
+   */
   {
     id: 'crude_axe',
     name: 'Грубый топор',
     output: { itemId: 'crude_axe', count: 1 },
     inputs: [
-      { itemId: 'plank', count: 2 },
+      { itemId: 'branch', count: 2 },
       { itemId: 'stone', count: 2 },
+      { itemId: 'plant_fiber', count: 2 },
     ],
     duration: 3,
   },
@@ -136,8 +148,9 @@ const RECIPE_LIST: Recipe[] = [
     name: 'Грубая кирка',
     output: { itemId: 'crude_pick', count: 1 },
     inputs: [
-      { itemId: 'plank', count: 2 },
+      { itemId: 'branch', count: 2 },
       { itemId: 'stone', count: 3 },
+      { itemId: 'plant_fiber', count: 2 },
     ],
     duration: 3,
   },
@@ -146,8 +159,9 @@ const RECIPE_LIST: Recipe[] = [
     name: 'Нож',
     output: { itemId: 'knife', count: 1 },
     inputs: [
-      { itemId: 'plank', count: 1 },
+      { itemId: 'branch', count: 1 },
       { itemId: 'stone', count: 1 },
+      { itemId: 'plant_fiber', count: 1 },
     ],
     duration: 2,
   },

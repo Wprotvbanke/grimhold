@@ -67,7 +67,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/blocks.md](docs/blocks.md) | ставишь декорацию, трогаешь мир коробками |
 | [docs/buildings.md](docs/buildings.md) | строишь здание, текстуры построек, таверна |
 | [docs/loot.md](docs/loot.md) | предметы, добыча с мобов, рюкзак, вес, экипировка |
-| [docs/nodes.md](docs/nodes.md) | ресурсные ноды: что где добывают и чем |
+| [docs/nodes.md](docs/nodes.md) | ресурсные ноды: что где добывают и чем, путь с пустыми руками |
 | [docs/crafting.md](docs/crafting.md) | рецепты, изготовление, свитки и расовое ремесло |
 | [docs/bank.md](docs/bank.md) | городская казна: что переживает смерть |
 | [docs/trade.md](docs/trade.md) | прямой обмен между игроками, стол и подтверждения |

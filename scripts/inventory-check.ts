@@ -12,6 +12,7 @@
  *   6. расходник лечит и тратится.
  */
 import { INPUT_DT, TICK_RATE, itemAt, itemDef, type EntitySnapshot } from '@grimhold/shared';
+import { makeTool } from './fieldwork.js';
 import { TestClient, sleep } from './testClient.js';
 
 const failures: string[] = [];
@@ -90,7 +91,7 @@ async function main(): Promise<void> {
 
   console.log('\n1. Стартовый набор');
   check(client.inventory !== null, 'сервер прислал состояние рюкзака');
-  check(find(client, 'crude_axe') !== null, 'топор на месте');
+  check(find(client, 'crude_axe') === null, 'инструментов не выдают — их делают сами');
   check((find(client, 'bandage')?.count ?? 0) >= 3, 'бинты на месте');
   check(client.inventory!.weight > 0, 'вещи что-то весят',
     `${client.inventory!.weight} кг`);
@@ -98,22 +99,26 @@ async function main(): Promise<void> {
     `${client.inventory!.capacity} кг`);
 
   console.log('\n2. Экипировка');
-  const axe = find(client, 'crude_axe')!;
-  client.send({ t: 'equip', x: axe.x, y: axe.y });
+  // Надевать нечего, пока не сделаешь: нож дешевле прочего — ветка, камень
+  // и волокно, и всё это берётся руками.
+  check(await makeTool(client, 'knife'), 'нож связан своими руками');
+
+  const knife = find(client, 'knife')!;
+  client.send({ t: 'equip', x: knife.x, y: knife.y });
   await sleep(400);
 
-  check(client.inventory?.equipment.mainHand?.defId === 'crude_axe', 'топор в руке');
+  check(client.inventory?.equipment.mainHand?.defId === 'knife', 'нож в руке');
   check(
-    client.inventory!.weaponDamage === itemDef('crude_axe').damage,
+    client.inventory!.weaponDamage === itemDef('knife').damage,
     'урон оружия подхвачен',
     `${client.inventory!.weaponDamage}`,
   );
-  check(find(client, 'crude_axe') === null, 'надетое ушло из рюкзака');
+  check(find(client, 'knife') === null, 'надетое ушло из рюкзака');
 
   client.send({ t: 'unequip', slot: 'mainHand' });
   await sleep(400);
-  check(client.inventory?.equipment.mainHand === undefined, 'топор снят');
-  check(find(client, 'crude_axe') !== null, 'снятое вернулось в рюкзак');
+  check(client.inventory?.equipment.mainHand === undefined, 'нож снят');
+  check(find(client, 'knife') !== null, 'снятое вернулось в рюкзак');
 
   console.log('\n3. Отказ в невозможном');
   client.errors.length = 0;
