@@ -17,6 +17,7 @@ function makeCombatant(overrides: Partial<Combatant> = {}): Combatant {
   const attributes = overrides.attributes ?? attributesFor('human', 'warrior');
   return {
     id: 'c1',
+    kind: 'player',
     name: 'Цель',
     instanceId: 'overworld',
     pos: { x: 0, y: 0, z: 0 },
@@ -42,17 +43,24 @@ function makeCombatant(overrides: Partial<Combatant> = {}): Combatant {
   };
 }
 
-/** Заклинатель смотрит в -Z, цель ставим прямо перед ним. */
+/**
+ * Заклинатель смотрит в -Z, цель ставим прямо перед ним.
+ *
+ * Дуэль уносим подальше от города: в безопасной зоне снаряд между игроками
+ * не долетает, и это правильно — но проверяем мы тут не её, а урон.
+ */
+const DUEL_Z = -120;
+
 function scenario(casterClass: 'mage' | 'warrior', targetDistance: number) {
   const caster = makeCombatant({
     id: 'caster',
     name: 'Маг',
     attributes: attributesFor('elf', casterClass),
-    pos: { x: 0, y: 0, z: 0 },
+    pos: { x: 0, y: 0, z: DUEL_Z },
   });
   const target = makeCombatant({
     id: 'target',
-    pos: { x: 0, y: 0, z: -targetDistance },
+    pos: { x: 0, y: 0, z: DUEL_Z - targetDistance },
     attributes: attributesFor('dwarf', 'warrior'),
   });
   return { caster, target };
@@ -109,7 +117,7 @@ describe('пробитие цели насквозь', () => {
 
   it('пролетает мимо, если цели нет на пути', () => {
     const { caster, target } = scenario('mage', 5);
-    target.pos = { x: 20, y: 0, z: -5 };
+    target.pos = { x: 20, y: 0, z: DUEL_Z - 5 };
 
     const bolt = createProjectile('x1', caster, 'ember', 0, 0);
     expect(fly(bolt, [caster, target], 1 / 20)).toBeNull();
@@ -117,7 +125,7 @@ describe('пробитие цели насквозь', () => {
 
   it('гаснет о стену, не задев того, кто за ней', () => {
     const { caster, target } = scenario('mage', 8);
-    const wall = { minX: -5, maxX: 5, minY: 0, maxY: 4, minZ: -4.5, maxZ: -3.5 };
+    const wall = { minX: -5, maxX: 5, minY: 0, maxY: 4, minZ: DUEL_Z - 4.5, maxZ: DUEL_Z - 3.5 };
 
     const bolt = createProjectile('x1', caster, 'lightning', 0, 0);
     const hit = fly(bolt, [caster, target], 1 / 20, [wall]);

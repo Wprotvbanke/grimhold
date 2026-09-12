@@ -23,6 +23,7 @@ import {
   type Vec3,
 } from '@grimhold/shared';
 import { applyDamage, spendMana, spendStamina, type Combatant } from './combatant.js';
+import { mayAttack } from './pvp.js';
 import { PositionHistory } from './history.js';
 
 /**
@@ -41,10 +42,18 @@ export interface CombatOutcome {
   experience: { combatantId: string; skill: SkillId; amount: number }[];
   /** Кто погиб в результате. */
   deaths: { victim: Combatant; killer: Combatant }[];
+  /**
+   * Почему удар не дошёл до того, кто стоял под ним.
+   *
+   * Молчаливый промах по человеку в городе выглядит как поломка: замах есть,
+   * цель в двух шагах, урона нет. Сказать причину дешевле, чем объяснять её
+   * потом.
+   */
+  refusals: { attackerId: string; reason: string }[];
 }
 
 function emptyOutcome(): CombatOutcome {
-  return { events: [], experience: [], deaths: [] };
+  return { events: [], experience: [], deaths: [], refusals: [] };
 }
 
 /** Может ли боец начать новое действие. */
@@ -113,8 +122,16 @@ export function resolveMelee(
 
   const candidates: Candidate[] = [];
   for (const target of targets) {
-    if (target === attacker || !target.alive) continue;
-    if (target.instanceId !== attacker.instanceId) continue;
+    // Кого бить можно — решает один предикат на всю игру, см. pvp.ts.
+    const verdict = mayAttack(attacker, target);
+    if (!verdict.ok) {
+      // Причина есть только у запретов PvP: «сам себя» и «другой инстанс»
+      // объяснять нечего.
+      if (verdict.reason && inAttackCone(attacker.pos, attacker.yaw, target.pos, profile.range, profile.arc, target.radius)) {
+        outcome.refusals.push({ attackerId: attacker.id, reason: verdict.reason });
+      }
+      continue;
+    }
 
     const past = history.at(target.id, rewindTick, { pos: target.pos, yaw: target.yaw });
     if (!inAttackCone(attacker.pos, attacker.yaw, past.pos, profile.range, profile.arc, target.radius)) {

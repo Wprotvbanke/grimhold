@@ -22,6 +22,11 @@ import {
 export interface Combatant {
   id: string;
   name: string;
+  /**
+   * Игрок или зверь. От этого зависит, действуют ли правила PvP: между
+   * игроками они есть, между игроком и мобом их нет и не будет.
+   */
+  kind: 'player' | 'mob';
   instanceId: string;
   pos: Vec3;
   yaw: number;

@@ -16,7 +16,8 @@ TypeScript и three.js. Meridian 59 как основа, PvP-флаги как �
 `packages/shared` (общий код), `packages/server`, `packages/client`, `scripts`.
 
 **Состояние:** вехи 1–4 закрыты (фундамент, мультиплеер с базой, бой и мобы,
-инвентарь с ремеслом). Дальше веха 5 — PvP-флаги. Осталось три вехи из семи.
+инвентарь с ремеслом). Идёт веха 5 — PvP: безопасные зоны готовы, дальше
+флаги и карма. Осталось три вехи из семи.
 
 Мир при этом уже одет: небо, смена дня и ночи, уличный огонь, лес и постройки
 города — см. разделы ниже.
@@ -33,7 +34,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 |---|---|
 | `npm run check` | тесты и типы всех пакетов и скриптов |
 | `npm test` · `npx vitest run <файл>` | юнит-тесты целиком или один файл |
-| `npm run e2e` · `combat` · `inventory` · `harvest` · `craft` · `bank` · `trade` · `netcode` · `gate` | сквозные проверки |
+| `npm run e2e` · `combat` · `pvp` · `inventory` · `harvest` · `craft` · `bank` · `trade` · `netcode` · `gate` | сквозные проверки |
 | `npx tsx scripts/prepare-*.ts` | пересобрать ассеты — см. [docs/assets.md](docs/assets.md) |
 | `npx tsx scripts/screenshot.ts` | снимок игры браузером против запущенного `dev` |
 | `npm run roster` | сводка по населению мира |
@@ -64,6 +65,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/combat.md](docs/combat.md) | удары, стамина, рывок, столкновения, движение |
 | [docs/hands.md](docs/hands.md) | руки от первого лица: клипы, посадка в кадре, разведение |
 | [docs/npc.md](docs/npc.md) | мобы, погоня, характеристики, жители города |
+| [docs/pvp.md](docs/pvp.md) | кто кого может бить: безопасные зоны, флаги |
 | [docs/blocks.md](docs/blocks.md) | ставишь декорацию, трогаешь мир коробками |
 | [docs/buildings.md](docs/buildings.md) | строишь здание, текстуры построек, таверна |
 | [docs/loot.md](docs/loot.md) | предметы, добыча с мобов, рюкзак, вес, экипировка |

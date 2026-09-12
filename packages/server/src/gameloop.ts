@@ -68,6 +68,8 @@ export interface Outbox {
   crafting: { playerId: string; message: CraftingMessage }[];
   /** Ход добычи: начало и конец работы у ноды. */
   gathering: { playerId: string; message: GatheringMessage }[];
+  /** Короткие объяснения игроку: почему не вышло. */
+  itemErrors: { playerId: string; message: string }[];
   /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
   criticalSaves: Player[];
 }
@@ -81,6 +83,7 @@ export function emptyOutbox(): Outbox {
     inventory: [],
     crafting: [],
     gathering: [],
+    itemErrors: [],
     criticalSaves: [],
   };
 }
@@ -466,6 +469,13 @@ function collectOutcome(world: World, outcome: CombatOutcome, outbox: Outbox): v
   }
   for (const death of outcome.deaths) {
     handleDeath(world, death.victim, death.killer.id, death.killer.name, outbox);
+  }
+  // Причину говорим один раз за замах, а не по разу на каждую цель в конусе.
+  const said = new Set<string>();
+  for (const refusal of outcome.refusals) {
+    if (said.has(refusal.attackerId)) continue;
+    said.add(refusal.attackerId);
+    outbox.itemErrors.push({ playerId: refusal.attackerId, message: refusal.reason });
   }
 }
 

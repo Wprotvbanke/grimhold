@@ -196,6 +196,9 @@ setInterval(() => {
   for (const entry of outbox.loot) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.crafting) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.gathering) sendTo(entry.playerId, entry.message);
+  for (const entry of outbox.itemErrors) {
+    sendTo(entry.playerId, { t: 'itemError', message: entry.message });
+  }
 
   // Вещи изменились по ходу тика — шлём новое состояние рюкзака. Через Set,
   // потому что за один тик можно добить сразу двоих и попасть в список дважды.

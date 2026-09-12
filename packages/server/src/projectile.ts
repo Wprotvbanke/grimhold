@@ -9,6 +9,7 @@ import {
   type Vec3,
 } from '@grimhold/shared';
 import { applyDamage, type Combatant } from './combatant.js';
+import { mayAttack } from './pvp.js';
 
 /**
  * Снаряды заклинаний.
@@ -138,10 +139,14 @@ function checkImpact(
   }
 
   for (const target of combatants) {
-    if (!target.alive) continue;
     if (target.id === projectile.ownerId) continue;
-    if (target.instanceId !== projectile.instanceId) continue;
     if (!aabbOverlap(body, combatantBox(target))) continue;
+
+    // Снаряд подчиняется тем же правилам, что и меч: иначе в городе нельзя
+    // было бы ударить, но можно было бы сжечь.
+    const owner = combatants.find((entry) => entry.id === projectile.ownerId);
+    if (owner && !mayAttack(owner, target).ok) continue;
+    if (!owner && (!target.alive || target.instanceId !== projectile.instanceId)) continue;
 
     const spell = SPELLS[projectile.spellId];
     const raw = spellDamage(projectile.casterAttributes, spell.power, projectile.skillLevel);

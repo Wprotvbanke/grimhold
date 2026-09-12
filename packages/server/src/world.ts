@@ -259,6 +259,7 @@ export class World {
       pendingViewTick: null,
       combat: {
         id,
+        kind: 'player',
         name: character.name,
         instanceId: character.instanceId,
         pos: { x: character.x, y: character.y, z: character.z },
