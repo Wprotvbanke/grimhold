@@ -22,7 +22,8 @@
     "seed": "tsx scripts/seed-account.ts",
     "combat": "tsx scripts/combat-check.ts",
     "roster": "tsx scripts/roster.ts",
-    "inventory": "tsx scripts/inventory-check.ts"
+    "inventory": "tsx scripts/inventory-check.ts",
+    "harvest": "tsx scripts/harvest-check.ts"
   },
   "engines": {
     "node": ">=20"

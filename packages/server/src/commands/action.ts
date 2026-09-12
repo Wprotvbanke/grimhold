@@ -1,6 +1,7 @@
 import {
   SPELLS,
   beginAction,
+  canDashAtWeight,
   type ActionMessage,
   type BlockMessage,
   type CastMessage,
@@ -23,6 +24,12 @@ export const handleAction: CommandHandler<ActionMessage> = (ctx, payload) => {
   // месте рывать некуда: раньше C на месте съедал стамину и давал только
   // неуязвимость, и выгоднее всего было жать его, никуда не двигаясь.
   if (payload.kind === 'dodge' && !dashDirection(actor.lastIntent)) return [];
+
+  // С полным рюкзаком не рвутся. Рывок теряется раньше скорости — это и есть
+  // цена жадности, и платится она в бою, а не в дороге.
+  if (payload.kind === 'dodge' && !canDashAtWeight(actor.attributes, actor.carriedWeight)) {
+    return [{ type: 'itemError', reason: 'Слишком тяжело для рывка' }];
+  }
 
   // Запоминаем, какой снапшот игрок видел: по нему отматываются цели.
   actor.pendingViewTick = payload.viewTick;

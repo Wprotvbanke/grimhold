@@ -17,6 +17,7 @@ import { createBuildings } from './buildings.js';
 import { createDayNight } from './daynight.js';
 import { createLights } from './lights.js';
 import { createNature, disposeNature } from './nature.js';
+import { createNodes, disposeNodes, type NodeField } from './nodes.js';
 import { populateTavern } from './props.js';
 import { createSky } from './sky.js';
 
@@ -159,6 +160,8 @@ export interface World3D {
    * у всех одновременно.
    */
   update(elapsed: number, worldTime: number, camera: THREE.Camera): void;
+  /** Ресурсные ноды: вид, выбор цели и состояние с сервера. */
+  readonly nodes: NodeField;
   loadedChunks: number;
 }
 
@@ -171,6 +174,7 @@ export function createScene(): World3D {
   const lights = createLights(scene);
   const buildings = createBuildings(scene);
   const nature = createNature();
+  const nodes = createNodes();
   // Обстановка таверны: мебель приезжает отдельными моделями, а не коробками.
   const furniture = populateTavern(scene);
 
@@ -179,6 +183,7 @@ export function createScene(): World3D {
 
   const api: World3D = {
     scene,
+    nodes,
     loadedChunks: 0,
 
     collidersAt: (x, z) => terrain.collidersAt(x, z),
@@ -204,12 +209,16 @@ export function createScene(): World3D {
         // Растительность живёт и выгружается вместе с чанком: раскладка у неё
         // общая с сервером, а вот меши — забота клиента.
         group.add(nature.build(cx, cz));
+        // Ресурсные ноды — там же: раскладка общая с сервером, меши наши.
+        group.add(nodes.build(cx, cz));
         loaded.set(key, group);
         break;
       }
 
       for (const [key, group] of loaded) {
         if (keep.has(key)) continue;
+        const [cx, cz] = key.split(':').map(Number);
+        nodes.forget(cx!, cz!);
         scene.remove(group);
         disposeGroup(group);
         loaded.delete(key);
@@ -304,6 +313,7 @@ function disposeGroup(group: THREE.Group): void {
   // Растительность освобождается отдельно: геометрия у неё общая на весь мир
   // и принадлежит библиотеке, а не этому чанку.
   disposeNature(group);
+  disposeNodes(group);
   group.traverse((node) => {
     const mesh = node as THREE.Mesh;
     if (mesh.isMesh && !(node as THREE.InstancedMesh).isInstancedMesh) mesh.geometry.dispose();

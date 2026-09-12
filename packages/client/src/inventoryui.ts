@@ -1,4 +1,5 @@
 import {
+  DASH_WEIGHT_LIMIT,
   EQUIP_SLOTS,
   HOTBAR_SIZE,
   SLOT_NAMES,
@@ -273,9 +274,21 @@ export class InventoryUi {
 
   private renderWeight(state: InventoryMessage): void {
     const over = state.weight > state.capacity;
+    /**
+     * Рывок пропадает раньше, чем скорость, — и игрок должен видеть, где эта
+     * черта, до того как в неё упрётся. Иначе вес остаётся штрафом, а не
+     * выбором: непонятно, что именно ты теряешь, взяв ещё одно бревно.
+     */
+    const heavy = !over && state.weight > state.capacity * DASH_WEIGHT_LIMIT;
+
     const text = el<HTMLDivElement>('weightText');
-    text.textContent = `Нагрузка: ${state.weight.toFixed(1)} из ${state.capacity} кг${over ? ' — перегруз, идёшь медленнее' : ''}`;
-    text.classList.toggle('over', over);
+    const note = over
+      ? ' — перегруз, идёшь медленнее'
+      : heavy
+        ? ' — тяжело, рывок не выйдет'
+        : '';
+    text.textContent = `Нагрузка: ${state.weight.toFixed(1)} из ${state.capacity} кг${note}`;
+    text.classList.toggle('over', over || heavy);
 
     const fill = el<HTMLElement>('weightFill');
     fill.style.transform = `scaleX(${Math.min(1, state.weight / Math.max(state.capacity, 1))})`;

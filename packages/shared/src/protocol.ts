@@ -20,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -169,6 +169,18 @@ export const UseHotbarSchema = z.object({
   viewTick: z.number().int().nonnegative(),
 });
 
+/**
+ * Удар по ресурсной ноде.
+ *
+ * Клиент шлёт только имя ноды — намерение, а не результат. Что выпало, хватает
+ * ли инструмента, не истощена ли она и не далеко ли до неё, решает сервер:
+ * ноду он восстанавливает по имени тем же генератором, что и клиент.
+ */
+export const HarvestSchema = z.object({
+  t: z.literal('harvest'),
+  nodeId: z.string().max(32),
+});
+
 export const ChatSchema = z.object({
   t: z.literal('chat'),
   channel: z.enum(['local', 'global']),
@@ -205,6 +217,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   DropItemSchema,
   SetHotbarSchema,
   UseHotbarSchema,
+  HarvestSchema,
 ]);
 
 export type RegisterMessage = z.infer<typeof RegisterSchema>;
@@ -223,6 +236,7 @@ export type UseItemMessage = z.infer<typeof UseItemSchema>;
 export type DropItemMessage = z.infer<typeof DropItemSchema>;
 export type SetHotbarMessage = z.infer<typeof SetHotbarSchema>;
 export type UseHotbarMessage = z.infer<typeof UseHotbarSchema>;
+export type HarvestMessage = z.infer<typeof HarvestSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 // ---------- Сервер -> Клиент ----------
@@ -394,6 +408,15 @@ export interface SnapshotMessage {
   self: SelfState;
   entities: EntitySnapshot[];
   projectiles: ProjectileSnapshot[];
+  /**
+   * Имена истощённых ресурсных нод поблизости.
+   *
+   * Шлём **исключения, а не состояние всего мира**: ноды рождаются одним
+   * генератором на обеих сторонах, и клиент знает про каждую всё, кроме одного
+   * — сняли с неё урожай или нет. Нетронутых тысячи, выработанных единицы,
+   * поэтому дешевле перечислить вторые.
+   */
+  depletedNodes: string[];
 }
 
 export interface ErrorMessage {

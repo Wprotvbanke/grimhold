@@ -20,7 +20,7 @@ import { generateNature, type Plant } from '@grimhold/shared';
 const MODEL_URL = '/models/nature.glb';
 
 /** Библиотека образцов: имя узла → его меши с геометрией и материалом. */
-type Library = Map<string, { geometry: THREE.BufferGeometry; material: THREE.Material }[]>;
+export type Library = Map<string, { geometry: THREE.BufferGeometry; material: THREE.Material }[]>;
 
 let library: Library | null = null;
 let loading: Promise<Library | null> | null = null;
@@ -119,6 +119,17 @@ export function disposeNature(group: THREE.Group): void {
     const mesh = node as THREE.InstancedMesh;
     if (mesh.isInstancedMesh) mesh.dispose();
   });
+}
+
+/**
+ * Библиотека моделей — общая с ресурсными нодами.
+ *
+ * Ноды рисуются теми же образцами из того же файла: отдельный пак ради шести
+ * видов был бы лишним запросом и лишними мегабайтами, а разницу между
+ * декорацией и нодой даёт подкраска, см. nodes.ts.
+ */
+export async function plantLibrary(): Promise<Library | null> {
+  return ensureLibrary();
 }
 
 async function ensureLibrary(): Promise<Library | null> {

@@ -4,7 +4,11 @@ import {
   DODGE_COOLDOWN,
   DODGE_SPEED_SCALE,
   SPRINT_SPEED_SCALE,
+  attributesFor,
+  canDashAtWeight,
+  carryCapacity,
   movementSpeedFactor,
+  weightSpeedFactor,
   type SpeedModifiers,
 } from '../src/index.js';
 
@@ -89,5 +93,28 @@ describe('множитель скорости', () => {
   it('рывок на перезарядке — это заметная пауза, а не формальность', () => {
     // Полсекунды не чувствуются; полторы заставляют выбирать момент.
     expect(DODGE_COOLDOWN).toBeGreaterThan(1);
+  });
+
+  /**
+   * Вес обязан быть выбором, а не штрафом. Значит терять надо по порядку:
+   * сначала рывок, и только потом скорость. Если рывок пропадёт вместе
+   * со скоростью или позже неё, цена жадности снова уедет в дорогу, где её
+   * легко перетерпеть, вместо боя, где решение и принимают.
+   */
+  it('рывок теряется раньше скорости', () => {
+    const attributes = attributesFor('human', 'warrior');
+    const capacity = carryCapacity(attributes);
+
+    const light = capacity * 0.5;
+    expect(canDashAtWeight(attributes, light), 'налегке рывок есть').toBe(true);
+    expect(weightSpeedFactor(attributes, light)).toBe(1);
+
+    // Тяжело, но ещё не перегруз: рывка уже нет, скорость ещё цела.
+    const heavy = capacity * 0.95;
+    expect(canDashAtWeight(attributes, heavy), 'под грузом рывок пропал').toBe(false);
+    expect(weightSpeedFactor(attributes, heavy), 'скорость ещё не тронута').toBe(1);
+
+    // И только за пределом начинает падать скорость.
+    expect(weightSpeedFactor(attributes, capacity * 1.5)).toBeLessThan(1);
   });
 });

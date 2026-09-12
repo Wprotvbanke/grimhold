@@ -15,6 +15,9 @@ import {
   mobsForChunk,
   playerAabb,
   step,
+  NODES,
+  findNode,
+  type ResourceNode,
   WORLD_CHUNK_RADIUS,
   type Attributes,
   type CharacterClass,
@@ -91,6 +94,8 @@ export interface Player {
    * отстаёт на целый шаг.
    */
   lastIntent: { forward: number; right: number; jump: boolean };
+  /** Секунд до следующего удара по ресурсной ноде. */
+  harvestCooldown: number;
   /** Помечается при любом изменении; персистентность использует это для батча. */
   dirty: boolean;
 
@@ -184,6 +189,7 @@ export class World {
       pendingInputs: [],
       lastProcessedSeq: -1,
       lastIntent: { forward: 0, right: 0, jump: false },
+      harvestCooldown: 0,
       dirty: true,
       attributes,
       maxima,
@@ -508,7 +514,74 @@ export class World {
     }
     return result;
   }
+
+  // ---------- ресурсные ноды ----------
+
+  /**
+   * Состояние тронутых нод: сколько зарядов осталось и сколько ждать
+   * восстановления. Нетронутых тут нет — их тысячи, и они выводятся
+   * генератором, а хранить стоит только исключения.
+   */
+  private readonly nodeStates = new Map<string, { charges: number; respawnIn: number }>();
+
+  private nodeKey(instanceId: InstanceId, nodeId: string): string {
+    return `${instanceId}|${nodeId}`;
+  }
+
+  /** Сколько ударов нода ещё держит. Нетронутая отвечает своим запасом. */
+  nodeCharges(instanceId: InstanceId, node: ResourceNode): number {
+    return this.nodeStates.get(this.nodeKey(instanceId, node.id))?.charges ?? NODES[node.nodeId].charges;
+  }
+
+  /** Снимает один заряд. Возвращает true, если нода после этого истощилась. */
+  spendNode(instanceId: InstanceId, node: ResourceNode): boolean {
+    const profile = NODES[node.nodeId];
+    const key = this.nodeKey(instanceId, node.id);
+    const left = (this.nodeStates.get(key)?.charges ?? profile.charges) - 1;
+
+    this.nodeStates.set(key, {
+      charges: Math.max(0, left),
+      respawnIn: left <= 0 ? profile.respawn : 0,
+    });
+    return left <= 0;
+  }
+
+  /** Отсчёт восстановления. Восстановившаяся нода просто забывается. */
+  tickNodes(dt: number): void {
+    for (const [key, state] of this.nodeStates) {
+      if (state.respawnIn <= 0) continue;
+      state.respawnIn -= dt;
+      if (state.respawnIn <= 0) this.nodeStates.delete(key);
+    }
+  }
+
+  /**
+   * Истощённые ноды рядом с игроком.
+   *
+   * Радиус шире боевого: ноды стоят на месте, и клиент рисует их на всю
+   * глубину загруженных чанков. Перебираем только тронутые — их единицы.
+   */
+  depletedNodesFor(viewer: Player): string[] {
+    const prefix = `${viewer.instanceId}|`;
+    const origin = viewer.state.pos;
+    const result: string[] = [];
+
+    for (const [key, state] of this.nodeStates) {
+      if (state.charges > 0 || !key.startsWith(prefix)) continue;
+
+      const id = key.slice(prefix.length);
+      const node = findNode(id);
+      if (!node) continue;
+      if (Math.hypot(node.x - origin.x, node.z - origin.z) > NODE_VIEW_RANGE) continue;
+      result.push(id);
+    }
+
+    return result;
+  }
 }
+
+/** Насколько далеко игроку сообщают про истощённые ноды. */
+const NODE_VIEW_RANGE = CHUNK_SIZE * 1.5;
 
 /**
  * Что лежит в панели у новичка. Панель — про быстрый доступ, поэтому туда

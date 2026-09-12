@@ -74,6 +74,7 @@ const DEATH_DELAY = 3;
 export function tickWorld(world: World, dt: number, outbox: Outbox): void {
   world.tick++;
   world.stepNpcs(dt);
+  world.tickNodes(dt);
 
   tickPlayers(world, dt, outbox);
   tickMobs(world, dt, outbox);
@@ -86,6 +87,7 @@ export function tickWorld(world: World, dt: number, outbox: Outbox): void {
 function tickPlayers(world: World, dt: number, outbox: Outbox): void {
   for (const player of world.players.values()) {
     const combat = player.combat;
+    player.harvestCooldown = Math.max(0, player.harvestCooldown - dt);
 
     // Мёртвый не двигается и не действует, только отсчитывает время до подъёма.
     if (!combat.alive) {

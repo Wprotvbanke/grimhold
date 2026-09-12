@@ -93,9 +93,13 @@ interface Layer {
  *
  * Чанк получает свой характер: сосняк, сухостой, кривой лес. Это и рисунок
  * даёт, и работает как ориентир — по виду леса понятно, где ты.
+ *
+ * Обычного дерева, валунов и крупных кустов тут нет намеренно: эти модели
+ * отданы ресурсным нодам ([nodes.ts](nodes.ts)). Иначе игрок не отличит
+ * дерево, которое рубится, от дерева, которое просто стоит, — и будет
+ * колотить топором по декорации.
  */
 const GROVES: PlantId[][] = [
-  ['commontree_1', 'commontree_2', 'commontree_3', 'commontree_4', 'commontree_5'],
   ['pine_1', 'pine_2', 'pine_3', 'pine_4', 'pine_5'],
   ['deadtree_1', 'deadtree_2', 'deadtree_3', 'deadtree_4', 'deadtree_5'],
   ['twistedtree_1', 'twistedtree_2', 'twistedtree_3', 'twistedtree_4', 'twistedtree_5'],
@@ -104,8 +108,8 @@ const GROVES: PlantId[][] = [
 const UNDERGROWTH: Layer = {
   min: 10,
   max: 18,
-  pick: ['bush_common', 'bush_common_flowers', 'plant_1_big', 'plant_7_big', 'fern_1'],
-  variety: 3,
+  pick: ['bush_common', 'fern_1'],
+  variety: 2,
   scale: [0.8, 1.4],
   solid: 0,
   shadow: true,
@@ -158,16 +162,6 @@ const DETAIL: Layer = {
   scale: [0.7, 1.3],
   solid: 0,
   shadow: false,
-};
-
-const STONES: Layer = {
-  min: 2,
-  max: 5,
-  pick: ['rock_medium_1', 'rock_medium_2', 'rock_medium_3'],
-  variety: 2,
-  scale: [0.5, 1.1],
-  solid: 0.7,
-  shadow: true,
 };
 
 /**
@@ -257,7 +251,7 @@ export function generateNature(cx: number, cz: number): Plant[] {
     put(grove[Math.floor(random() * grove.length)]!, [0.55, 1.05], TRUNK_RADIUS, true);
   }
 
-  for (const layer of [UNDERGROWTH, GROUND, DETAIL, STONES]) {
+  for (const layer of [UNDERGROWTH, GROUND, DETAIL]) {
     const kinds = choose(layer.pick, layer.variety);
     const count = layer.min + Math.floor(random() * (layer.max - layer.min + 1));
     for (let i = 0; i < count; i++) {

@@ -1,6 +1,7 @@
 import { type Aabb, boxFromCenter } from './math.js';
 import { TOWN_BOXES, TOWN_SIZE, type LevelBox } from './level.js';
 import { generateNature } from './nature.js';
+import { NODES, generateNodes } from './nodes.js';
 
 /**
  * Чанковый мир.
@@ -135,6 +136,27 @@ function wildernessChunk(cx: number, cz: number): LevelBox[] {
       kind: 'rock',
       hidden: true,
       box: boxFromCenter(plant.x, 1.2, plant.z, width, 2.4, width),
+    });
+  }
+
+  /**
+   * Ресурсные ноды — то же самое: вид на клиенте, телесность здесь.
+   *
+   * Телесны только крупные: дерево, жила, осыпь, глиняный выход. Травы и куст
+   * сквозные — упираться в то, что срезают ножом, было бы издевательством.
+   *
+   * Коробка не исчезает у истощённой ноды: пень и выработанная жила никуда
+   * не деваются, да и зависеть столкновения от состояния сервера не должны —
+   * иначе клиент предсказывал бы движение по другой геометрии.
+   */
+  for (const node of generateNodes(cx, cz)) {
+    const profile = NODES[node.nodeId];
+    if (profile.solid <= 0) continue;
+    const width = profile.solid * 2 * node.scale;
+    boxes.push({
+      kind: 'rock',
+      hidden: true,
+      box: boxFromCenter(node.x, profile.height / 2, node.z, width, profile.height, width),
     });
   }
 

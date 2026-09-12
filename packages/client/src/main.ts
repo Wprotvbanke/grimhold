@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import {
+  DASH_WEIGHT_LIMIT,
   DAY_START,
   INTERP_DELAY_MS,
   MAX_STEP_DT,
   CORPSE_SECONDS,
   MOBS,
+  NODES,
   RACES,
   SKILLS,
+  itemDef,
+  type ItemId,
   TICK_MS,
   eyeHeight,
   sunHeight,
@@ -173,6 +177,13 @@ const controls = new Controls(renderer.domElement, {
     // ощущается вязким. Но по тем же правилам, по которым откажет сервер:
     // хватает ли стамины и вышла ли пауза после прошлого удара. Иначе
     // анимацию можно спамить вхолостую — бьёшь, а урона и траты нет.
+    // Рывок под тяжестью не пройдёт — скажем об этом сразу, а не молча.
+    // Молчаливый отказ игрок читает как залипшую клавишу.
+    if (kind === 'dodge' && !dashAllowed) {
+      ui.system('Слишком тяжело для рывка — сбрось груз');
+      return;
+    }
+
     const stamina = connection.latestSnapshot?.self.stamina ?? 0;
     if (stamina < ViewModel.staminaCost(kind) || !game.hands.beginAction(kind)) return;
 
@@ -183,6 +194,10 @@ const controls = new Controls(renderer.domElement, {
     connection.send({ t: 'block', active });
   },
   onHotbar: (index) => useHotbar(index),
+  onHarvest: () => {
+    if (!game || combatUi.dead || !aimedNode) return;
+    connection.send({ t: 'harvest', nodeId: aimedNode });
+  },
 });
 
 const connection = new Connection(SERVER_URL, {
@@ -223,6 +238,11 @@ const connection = new Connection(SERVER_URL, {
   },
   onInventory: (message) => {
     inventoryUi.update(message);
+    // Что в руке — нужно подсказке у ресурсных нод: киркой жилу берут,
+    // мечом нет, и игрок должен видеть это до того, как замахнётся.
+    mainHandItem = message.equipment.mainHand?.defId ?? null;
+    // Рывок пропадает раньше скорости: вес должен быть выбором, а не штрафом.
+    dashAllowed = message.weight <= message.capacity * DASH_WEIGHT_LIMIT;
     // Перегруз замедляет, и предсказание обязано знать об этом сразу,
     // иначе сервер начнёт дёргать игрока назад на каждом шаге.
     weightFactor = weightSpeedFactorFor(message.weight, message.capacity);
@@ -420,6 +440,7 @@ renderer.setAnimationLoop(() => {
 
     // 5. Мир вокруг подгружается и выгружается по мере движения.
     world.streamChunks(renderPos.x, renderPos.z);
+    updateNodeHint(renderPos.x, renderPos.z);
 
     // 6. Руки: поза берётся из авторитетного состояния, скорость — из предсказания.
     const self = connection.latestSnapshot?.self;
@@ -466,6 +487,42 @@ renderer.setAnimationLoop(() => {
   updateHud(dt);
 });
 
+/**
+ * Что за нода перед игроком и можно ли её взять.
+ *
+ * Цель выбирается на клиенте, но это лишь подсказка: бить или не бить решает
+ * сервер по своим числам. Здесь — только чтобы игрок понимал, куда смотрит.
+ */
+let aimedNode: string | null = null;
+/** Что у игрока в основной руке. Приходит вместе с состоянием вещей. */
+let mainHandItem: string | null = null;
+/** Хватает ли лёгкости на рывок. Считается по тому же правилу, что у сервера. */
+let dashAllowed = true;
+
+const TOOL_NAMES: Record<string, string> = {
+  axe: 'топор',
+  pick: 'кирка',
+  knife: 'нож',
+};
+
+function updateNodeHint(x: number, z: number): void {
+  const node = world.nodes.targetAt(x, z, controls.yaw);
+  aimedNode = node?.id ?? null;
+
+  if (!node || world.nodes.isDepleted(node.id)) {
+    ui.setNodeHint(node ? `${NODES[node.nodeId].name} — пусто` : '', null, false);
+    return;
+  }
+
+  const profile = NODES[node.nodeId];
+  const held = mainHandItem ? itemDef(mainHandItem as ItemId) : null;
+  const ready =
+    !profile.tool ||
+    (held?.toolKind === profile.tool && (held.toolTier ?? 0) >= profile.toolTier);
+
+  ui.setNodeHint(profile.name, profile.tool ? (TOOL_NAMES[profile.tool] ?? profile.tool) : null, ready);
+}
+
 function consumeSnapshot(now: number): void {
   const snapshot = connection.latestSnapshot;
   if (!game || !snapshot || snapshot.tick === lastSnapshotTick) return;
@@ -473,6 +530,9 @@ function consumeSnapshot(now: number): void {
 
   game.predictor.reconcile(snapshot.self, snapshot.ack);
   combatUi.updateVitals(snapshot.self);
+  // Выработанные ноды: клиент знает про них всё, кроме того, взяли ли с них
+  // урожай, — это единственное, что приходит с сервера.
+  world.nodes.setDepleted(snapshot.depletedNodes);
 
   const seen = new Set<string>();
   for (const entity of snapshot.entities) {

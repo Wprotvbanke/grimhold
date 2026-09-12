@@ -7,6 +7,7 @@ import {
   TICK_RATE,
   encode,
   type ChatBroadcast,
+  type LootMessage,
   type ServerMessage,
 } from '@grimhold/shared';
 import { dispatch } from './commands/index.js';
@@ -103,6 +104,11 @@ wss.on('connection', (socket) => {
       if (event.type === 'itemError') {
         session.send({ t: 'itemError', message: String(event.reason) });
       }
+      // Добыча с ноды приходит тем же сообщением, что и лут с трупа: игроку
+      // всё равно, откуда вещь, ему важно увидеть, что она у него.
+      if (event.type === 'loot') {
+        session.send(event.message as LootMessage);
+      }
     }
   });
 
@@ -153,6 +159,7 @@ setInterval(() => {
       self: world.selfStateOf(player),
       entities: world.snapshotFor(player),
       projectiles: world.projectilesFor(player),
+      depletedNodes: world.depletedNodesFor(player),
     });
   }
 }, TICK_MS);

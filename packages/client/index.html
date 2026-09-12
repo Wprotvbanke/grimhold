@@ -311,6 +311,19 @@
         transition: opacity 0.4s;
       }
       #captureHint[hidden] { display: none; }
+
+      /* Подсказка о ресурсной ноде под прицелом: что это и чем добывать.
+         Стоит над прицелом, а не на месте прицела, чтобы не мешать целиться. */
+      #nodeHint {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -64px);
+        z-index: 8; padding: 5px 12px; border-radius: 4px; text-align: center;
+        background: rgba(6, 6, 8, 0.72); border: 1px solid var(--line);
+        color: var(--text); font-size: 13px; pointer-events: none;
+        white-space: nowrap;
+      }
+      #nodeHint[hidden] { display: none; }
+      #nodeHint b { color: var(--gold); font-weight: 500; }
+      #nodeHint span { color: var(--dim); }
     </style>
   </head>
   <body>
@@ -388,6 +401,8 @@
     </div>
 
     <div id="captureHint" hidden></div>
+
+    <div id="nodeHint" hidden></div>
 
     <!-- Экран входа -->
     <div class="screen" id="authScreen">

@@ -27,6 +27,8 @@ export interface ControlsHooks {
   onBlock(active: boolean): void;
   /** Нажата ячейка панели горячих клавиш, индекс 0..5. */
   onHotbar(index: number): void;
+  /** Удар по ресурсной ноде, на которую смотрит игрок. */
+  onHarvest(): void;
 }
 
 export class Controls {
@@ -140,6 +142,14 @@ export class Controls {
         // на месте рвать некуда, и сервер такое намерение всё равно отбросит:
         // проверяем здесь, чтобы руки зря не дёргались и откат не тикал.
         if (this.dashDirection()) this.hooks.onAction('dodge');
+        return;
+      }
+
+      if (event.code === 'KeyE') {
+        event.preventDefault();
+        // Повтор при удержании не глушим: рубить дерево удержанием E — ровно
+        // то, чего ждёшь. Темп всё равно держит сервер своей паузой.
+        this.hooks.onHarvest();
         return;
       }
 
