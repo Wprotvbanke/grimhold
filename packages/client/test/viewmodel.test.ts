@@ -128,6 +128,41 @@ describe('руки от первого лица', () => {
     expect(model.playing).toBe('takeStop');
   });
 
+  it('работа у ноды тянется петлёй, пока не скажет сервер', () => {
+    const model = createModel();
+    settle(model, 1.2, IDLE_STATE);
+
+    // Рубка дерева — две секунды. Руки обязаны работать всё это время.
+    model.beginWork(2);
+    model.update(1 / 60, IDLE_STATE);
+    expect(model.playing).toBe('takeStart');
+
+    settle(model, 2, IDLE_STATE);
+    expect(model.playing).toBe('takeLoop');
+
+    // Сервер сказал «готово» — петля закрывается выходом.
+    model.endWork();
+    settle(model, 0.3, IDLE_STATE);
+    expect(model.playing).toBe('takeStop');
+  });
+
+  it('брошенная работа тоже закрывает петлю, а не обрывает её', () => {
+    const model = createModel();
+    settle(model, 1.2, IDLE_STATE);
+
+    model.beginWork(5);
+    settle(model, 1, IDLE_STATE);
+    expect(model.playing).toBe('takeLoop');
+
+    // Отошёл от ноды на первой секунде из пяти.
+    model.endWork();
+    settle(model, 0.3, IDLE_STATE);
+    expect(model.playing).toBe('takeStop');
+
+    settle(model, 2, IDLE_STATE);
+    expect(model.playing).toBe('idle');
+  });
+
   it('удар начинается сразу по нажатию, не дожидаясь сервера', () => {
     const model = createModel();
     settle(model, 1.2, IDLE_STATE);

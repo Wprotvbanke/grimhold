@@ -293,8 +293,17 @@ const connection = new Connection(SERVER_URL, {
     if (message.open) openInventory();
     inventoryUi.setBank(message);
   },
-  onCrafting: (message) => inventoryUi.setCrafting(message),
-  onGathering: (message) => ui.setGathering(message),
+  onCrafting: (message) => {
+    inventoryUi.setCrafting(message);
+    if (message.recipeId) game?.hands.beginWork(message.remaining);
+    else game?.hands.endWork();
+  },
+  onGathering: (message) => {
+    ui.setGathering(message);
+    // Полоса идёт — руки должны работать, а не висеть неподвижно.
+    if (message.nodeId) game?.hands.beginWork(message.remaining);
+    else game?.hands.endWork();
+  },
   onItemError: (message) => inventoryUi.showError(message),
   onDisconnected: () => {
     if (game) ui.system('Связь потеряна, переподключаюсь…');

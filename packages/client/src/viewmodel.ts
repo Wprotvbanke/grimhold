@@ -268,6 +268,23 @@ export class ViewModel {
     this.taking = this.lengthOf('takeStart') + this.lengthOf('takeLoop');
   }
 
+  /**
+   * Началась работа: рубка ноды или изготовление.
+   *
+   * Тот же клип из трёх частей, что и у подбора, только петля тянется столько,
+   * сколько идёт работа. Конец назначает сервер, поэтому берём с запасом —
+   * `endWork` оборвёт петлю ровно тогда, когда придёт его слово. Без запаса
+   * руки замирали бы на последних кадрах, пока полоса ещё ползёт.
+   */
+  beginWork(seconds: number): void {
+    this.taking = Math.max(this.taking, seconds + 1);
+  }
+
+  /** Работа кончилась или брошена — руки доигрывают выход. */
+  endWork(): void {
+    this.taking = 0;
+  }
+
   /** Хватает ли стамины: те же числа, по которым решает сервер. */
   static staminaCost(kind: 'attack' | 'heavy' | 'dodge'): number {
     return ACTIONS[kind].staminaCost;
@@ -429,7 +446,10 @@ export class ViewModel {
         this.queued = 'blockLoop';
         return 'blockStart';
       }
-      return this.holdFor > 0 ? null : 'blockLoop';
+      if (this.holdFor > 0) return null;
+      // Петля пошла — очередь своё отработала.
+      this.queued = null;
+      return 'blockLoop';
     }
     if (this.blocking) {
       this.blocking = false;
@@ -442,12 +462,20 @@ export class ViewModel {
         this.queued = 'takeLoop';
         return 'takeStart';
       }
-      return this.holdFor > 0 ? null : 'takeLoop';
+      if (this.holdFor > 0) return null;
+      this.queued = null;
+      return 'takeLoop';
     }
     if (this.current === 'takeLoop') return 'takeStop';
 
-    // Клип, который нельзя обрывать, доигрывает: это удар, вход в блок,
-    // выход из него и завершение подбора.
+    /**
+     * Клип, который нельзя обрывать, доигрывает: это удар, вход в блок,
+     * выход из него и завершение работы.
+     *
+     * Очередь тут обязана быть пустой. Когда её забывали очистить при входе
+     * в петлю, она всплывала уже после выхода: руки закрывали работу и тут же
+     * начинали её заново, и так по кругу.
+     */
     if (this.holdFor > 0) return null;
     if (this.queued) {
       const next = this.queued;
