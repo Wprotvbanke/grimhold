@@ -47,10 +47,16 @@ export interface InventoryHandlers {
   onDrop(x: number, y: number): void;
   /** Изготовить по рецепту. Хватает ли сырья — решит сервер. */
   onCraft(recipeId: RecipeId): void;
-  /** Положить вещь из рюкзака в казну. */
-  onDeposit(x: number, y: number): void;
-  /** Забрать вещь из казны. */
-  onWithdraw(x: number, y: number): void;
+  /**
+   * Переложить вещь между рюкзаком и казной.
+   *
+   * Клетка назначения есть только у перетаскивания: щелчок её не знает,
+   * и тогда место ищет сервер.
+   */
+  onDeposit(x: number, y: number, to?: DropTarget): void;
+  onWithdraw(x: number, y: number, to?: DropTarget): void;
+  /** Переложить вещь внутри казны — с точностью до клетки и с поворотом. */
+  onBankArrange(fromX: number, fromY: number, toX: number, toY: number, rotate: boolean): void;
   /** Положить вещь на стол обмена. */
   onTradeOffer(x: number, y: number): void;
   /** Снять со стола своё предложение под номером. */
@@ -68,11 +74,22 @@ export interface InventoryHandlers {
 /** Откуда тянут вещь. От этого зависит, что значит «бросил сюда». */
 type GridKind = 'backpack' | 'bank';
 
+/** Куда именно вещь положили мышью. */
+export interface DropTarget {
+  x: number;
+  y: number;
+  rotate: boolean;
+}
+
 interface DragState {
   item: PlacedItem;
   rotated: boolean;
   node: HTMLElement;
   from: GridKind;
+  /** Откуда начали тянуть — по этому отличают перенос от простого щелчка. */
+  startX: number;
+  startY: number;
+  moved: boolean;
 }
 
 export class InventoryUi {
@@ -103,6 +120,15 @@ export class InventoryUi {
    * Начатая работа. Полосу двигает клиент: сервер присылает длительность
    * один раз, а гнать шкалу тиками — двадцать пакетов в секунду впустую.
    */
+  /** Раскладка казны: нужна подсветке, чтобы знать её размеры. */
+  private bankGrid: Grid | null = null;
+  /**
+   * Последний щелчок был концом переноса, а не щелчком.
+   *
+   * Без этого поворот вещи на месте в казне читался бы как «забрать»: мышь
+   * отпущена над той же клеткой, и браузер честно шлёт click.
+   */
+  private justDragged = false;
   private work: { name: string; duration: number; endsAt: number } | null = null;
   private workTimer = 0;
   private readonly slotNodes = new Map<EquipSlot, HTMLDivElement>();
@@ -189,6 +215,7 @@ export class InventoryUi {
     this.craftCol.hidden = message.open;
     this.helpCol.hidden = message.open;
     if (!message.open) {
+      this.bankGrid = null;
       this.bankCells.replaceChildren();
       for (const node of this.bankWrap.querySelectorAll('.inv-item')) node.remove();
       return;
@@ -288,6 +315,13 @@ export class InventoryUi {
     tick();
   }
 
+  /** Был ли это щелчок, а не конец переноса. Ответ одноразовый. */
+  private takeClick(): boolean {
+    if (!this.justDragged) return true;
+    this.justDragged = false;
+    return false;
+  }
+
   private stopWorkTimer(): void {
     if (this.workTimer) cancelAnimationFrame(this.workTimer);
     this.workTimer = 0;
@@ -310,6 +344,7 @@ export class InventoryUi {
   }
 
   private renderBank(grid: Grid): void {
+    this.bankGrid = grid;
     this.bankCells.style.gridTemplateColumns = `repeat(${grid.width}, 42px)`;
     this.bankCells.replaceChildren();
     for (let y = 0; y < grid.height; y++) {
@@ -327,7 +362,9 @@ export class InventoryUi {
     for (const item of grid.items) {
       const node = this.buildStaticItem(item);
       node.title += '\nЩелчок — забрать';
-      node.addEventListener('click', () => this.handlers.onWithdraw(item.x, item.y));
+      node.addEventListener('click', () => {
+        if (this.takeClick()) this.handlers.onWithdraw(item.x, item.y);
+      });
       this.bankWrap.append(node);
     }
   }
@@ -525,7 +562,7 @@ export class InventoryUi {
     // её оттуда забирают. Правая здесь не годится: браузер открывает по ней
     // своё меню, и договориться с ним нельзя.
     node.addEventListener('click', () => {
-      if (this.bankOpen) this.handlers.onDeposit(item.x, item.y);
+      if (this.takeClick() && this.bankOpen) this.handlers.onDeposit(item.x, item.y);
     });
 
     node.addEventListener('contextmenu', (event) => {
@@ -643,7 +680,16 @@ export class InventoryUi {
     from: GridKind = 'backpack',
   ): void {
     const def = itemDef(item.defId);
-    this.drag = { item, rotated: item.rotated, node, from };
+    this.justDragged = false;
+    this.drag = {
+      item,
+      rotated: item.rotated,
+      node,
+      from,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
     node.classList.add('dragging');
 
     this.ghost.hidden = false;
@@ -654,6 +700,9 @@ export class InventoryUi {
   private wireDrag(): void {
     window.addEventListener('mousemove', (event) => {
       if (!this.drag) return;
+      if (Math.hypot(event.clientX - this.drag.startX, event.clientY - this.drag.startY) > 4) {
+        this.drag.moved = true;
+      }
       this.updateGhost(event.clientX, event.clientY);
       this.highlightTarget(event);
     });
@@ -663,6 +712,7 @@ export class InventoryUi {
 
       const target = this.cellUnder(event);
       const drag = this.drag;
+      this.justDragged = drag.moved || drag.rotated !== drag.item.rotated;
       // Отпустили мимо сетки — это могла быть цель-слот или корзина,
       // у них свои обработчики; здесь просто прекращаем перенос.
       if (target) this.dropOn(drag, target);
@@ -675,6 +725,7 @@ export class InventoryUi {
       if (event.code === 'KeyR') {
         event.preventDefault();
         this.drag.rotated = !this.drag.rotated;
+        this.drag.moved = true;
         this.updateGhostSize();
       }
       if (event.code === 'Escape') this.cancelDrag();
@@ -689,19 +740,19 @@ export class InventoryUi {
    * в конкретную клетку сундука было бы обещанием, которого он не держит.
    */
   private dropOn(drag: DragState, target: { grid: GridKind; x: number; y: number }): void {
+    const rotate = drag.rotated !== drag.item.rotated;
+    const to: DropTarget = { x: target.x, y: target.y, rotate };
+
     if (drag.from === 'backpack' && target.grid === 'backpack') {
-      const rotate = drag.rotated !== drag.item.rotated;
       this.handlers.onMove(drag.item.x, drag.item.y, target.x, target.y, rotate);
       return;
     }
-    if (drag.from === 'backpack' && target.grid === 'bank') {
-      this.handlers.onDeposit(drag.item.x, drag.item.y);
+    if (drag.from === 'bank' && target.grid === 'bank') {
+      this.handlers.onBankArrange(drag.item.x, drag.item.y, target.x, target.y, rotate);
       return;
     }
-    if (drag.from === 'bank' && target.grid === 'backpack') {
-      this.handlers.onWithdraw(drag.item.x, drag.item.y);
-    }
-    // Из казны в казну — ничего: перекладывать там нечего.
+    if (drag.from === 'backpack') this.handlers.onDeposit(drag.item.x, drag.item.y, to);
+    else this.handlers.onWithdraw(drag.item.x, drag.item.y, to);
   }
 
   private updateGhost(clientX: number, clientY: number): void {
@@ -724,24 +775,16 @@ export class InventoryUi {
     const target = this.cellUnder(event);
     if (!target || !this.drag || !this.state) return;
 
-    // Перенос между сетками кладёт вещь туда, где найдётся место, а не в
-    // клетку под курсором. Подсвечивать одну клетку значило бы обещать
-    // лишнее, поэтому светится вся принимающая сетка.
-    if (target.grid !== this.drag.from) {
-      const box = target.grid === 'bank' ? this.bankCells : this.cells;
-      for (const cell of box.querySelectorAll('.cell')) cell.classList.add('hot');
-      return;
-    }
-    if (target.grid === 'bank') return;
+    const grid = target.grid === 'bank' ? this.bankGrid : this.state.backpack;
+    if (!grid) return;
 
     const size = sizeOf(this.drag.item.defId, this.drag.rotated);
-    const grid = this.state.backpack;
     const fits =
       target.x + size.width <= grid.width && target.y + size.height <= grid.height;
 
     for (let dy = 0; dy < size.height; dy++) {
       for (let dx = 0; dx < size.width; dx++) {
-        const cell = this.cellAt(target.x + dx, target.y + dy);
+        const cell = this.cellAt(target.grid, target.x + dx, target.y + dy);
         cell?.classList.add(fits ? 'hot' : 'bad');
       }
     }
@@ -753,8 +796,9 @@ export class InventoryUi {
     }
   }
 
-  private cellAt(x: number, y: number): HTMLElement | null {
-    return this.cells.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+  private cellAt(grid: GridKind, x: number, y: number): HTMLElement | null {
+    const box = grid === 'bank' ? this.bankCells : this.cells;
+    return box.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
   }
 
   private cellUnder(event: MouseEvent): { grid: GridKind; x: number; y: number } | null {

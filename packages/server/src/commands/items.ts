@@ -1,11 +1,10 @@
 import {
   RACES,
+  arrangeInGrid,
   RECIPES,
   addItem,
-  canPlace,
   itemAt,
   itemDef,
-  place,
   removeItem,
   type DropItemMessage,
   type EquipMessage,
@@ -41,52 +40,21 @@ function refuse(reason: string): GameEvent[] {
 
 export const handleMoveItem: CommandHandler<MoveItemMessage> = (ctx, payload) => {
   const player = ctx.actor;
-  const item = itemAt(player.inventory, payload.fromX, payload.fromY);
-  if (!item) return refuse('Здесь ничего нет');
-
-  const rotated = payload.rotate ? !item.rotated : item.rotated;
-
-  // Себя самого при проверке игнорируем: иначе предмет не смог бы сдвинуться
-  // на соседнюю клетку, пересекающуюся с его нынешним местом.
-  if (!canPlace(player.inventory, item.defId, payload.toX, payload.toY, rotated, item)) {
-    // Попытка положить одну стопку на другую — складываем.
-    const target = itemAt(player.inventory, payload.toX, payload.toY);
-    if (target && target !== item && target.defId === item.defId) {
-      return stackOnto(player, item, target);
-    }
-    return refuse('Сюда не влезает');
-  }
-
-  const without = removeItem(player.inventory, item);
-  const moved = place(without, item.defId, item.count, payload.toX, payload.toY, rotated);
-  if (!moved) return refuse('Сюда не влезает');
+  // Правила раскладки общие с казной и живут в shared/inventory.ts.
+  const moved = arrangeInGrid(
+    player.inventory,
+    payload.fromX,
+    payload.fromY,
+    payload.toX,
+    payload.toY,
+    payload.rotate,
+  );
+  if (typeof moved === 'string') return refuse(moved);
 
   player.inventory = moved;
   refreshLoadout(player);
   return changed();
 };
-
-/** Складывает одну стопку в другую, не превышая предела. */
-function stackOnto(player: Player, source: PlacedItem, target: PlacedItem): GameEvent[] {
-  const def = itemDef(source.defId);
-  if (def.stack <= 1) return refuse('Этот предмет не складывается');
-
-  const room = def.stack - target.count;
-  if (room <= 0) return refuse('Стопка полна');
-
-  const moved = Math.min(room, source.count);
-  const items = player.inventory.items
-    .map((entry) => {
-      if (entry === target) return { ...entry, count: entry.count + moved };
-      if (entry === source) return { ...entry, count: entry.count - moved };
-      return entry;
-    })
-    .filter((entry) => entry.count > 0);
-
-  player.inventory = { ...player.inventory, items };
-  refreshLoadout(player);
-  return changed();
-}
 
 export const handleEquip: CommandHandler<EquipMessage> = (ctx, payload) => {
   const player = ctx.actor;

@@ -137,8 +137,12 @@ const inventoryUi = new InventoryUi({
   onUse: (x, y) => connection.send({ t: 'useItem', x, y }),
   onDrop: (x, y) => connection.send({ t: 'dropItem', x, y }),
   onCraft: (recipeId) => connection.send({ t: 'craft', recipeId }),
-  onDeposit: (x, y) => connection.send({ t: 'bankMove', dir: 'deposit', x, y }),
-  onWithdraw: (x, y) => connection.send({ t: 'bankMove', dir: 'withdraw', x, y }),
+  onDeposit: (x, y, to) =>
+    connection.send({ t: 'bankMove', dir: 'deposit', x, y, toX: to?.x, toY: to?.y, rotate: to?.rotate }),
+  onWithdraw: (x, y, to) =>
+    connection.send({ t: 'bankMove', dir: 'withdraw', x, y, toX: to?.x, toY: to?.y, rotate: to?.rotate }),
+  onBankArrange: (x, y, toX, toY, rotate) =>
+    connection.send({ t: 'bankMove', dir: 'arrange', x, y, toX, toY, rotate }),
   onTradeOffer: (x, y) => connection.send({ t: 'tradeOffer', x, y }),
   onTradeWithdraw: (index) => connection.send({ t: 'tradeWithdraw', index }),
   onTradeLock: (locked) => connection.send({ t: 'tradeLock', locked }),

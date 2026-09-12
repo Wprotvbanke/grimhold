@@ -7,11 +7,12 @@
  *   1. издалека сундук не открывается;
  *   2. у казны открывается, и приходит её содержимое;
  *   3. вещь уходит из рюкзака в казну и весит там ноль;
- *   4. положенное на месте после перезахода — и после смены персонажа тоже,
+ *   4. в сундуке можно двигать и поворачивать вещи, как в рюкзаке;
+ *   5. положенное на месте после перезахода — и после смены персонажа тоже,
  *      хранилище общее на аккаунт;
- *   5. забранное возвращается в рюкзак.
+ *   6. забранное возвращается в рюкзак.
  */
-import { BANK, INPUT_DT, TICK_RATE, countOf, type Grid } from '@grimhold/shared';
+import { BANK, INPUT_DT, TICK_RATE, countOf, sizeOf, type Grid } from '@grimhold/shared';
 import { TestClient, sleep } from './testClient.js';
 
 const failures: string[] = [];
@@ -101,7 +102,38 @@ async function main(): Promise<void> {
   );
   check(client.inventory!.weight < weightBefore, 'сложенное в казну не весит');
 
-  console.log('\n4. Казна общая на аккаунт и переживает перезаход');
+  console.log('\n4. В казне можно наводить порядок');
+  const lying = client.bank?.grid.items.find((entry) => entry.defId === defId);
+  if (lying) {
+    // Двигаем вещь в дальний угол и поворачиваем — как перетаскиванием мышью.
+    // Угол считаем по размеру уже повёрнутой вещи, иначе она честно не влезет.
+    const turned = sizeOf(lying.defId, !lying.rotated);
+    const corner = {
+      x: client.bank!.grid.width - turned.width,
+      y: client.bank!.grid.height - turned.height,
+    };
+    client.errors.length = 0;
+    client.send({
+      t: 'bankMove',
+      dir: 'arrange',
+      x: lying.x,
+      y: lying.y,
+      toX: corner.x,
+      toY: corner.y,
+      rotate: true,
+    });
+    await sleep(400);
+
+    const settled = client.bank?.grid.items.find((entry) => entry.defId === defId);
+    check(
+      settled?.x === corner.x && settled?.y === corner.y,
+      'вещь встала в выбранную клетку',
+      client.errors[0] ?? `${settled?.x},${settled?.y}`,
+    );
+    check(settled?.rotated === !lying.rotated, 'и повернулась');
+  }
+
+  console.log('\n5. Казна общая на аккаунт и переживает перезаход');
   const stored = inBank(client.bank?.grid, defId);
   client.close();
   await sleep(700);
@@ -115,7 +147,7 @@ async function main(): Promise<void> {
   await sleep(400);
   check(inBank(other.bank?.grid, defId) === stored, 'вещь на месте у второго персонажа', `${inBank(other.bank?.grid, defId)} шт.`);
 
-  console.log('\n5. Забранное возвращается в рюкзак');
+  console.log('\n6. Забранное возвращается в рюкзак');
   const cell = other.bank?.grid.items.find((entry) => entry.defId === defId);
   const had = countOf(other.inventory!.backpack, defId);
   if (cell) {

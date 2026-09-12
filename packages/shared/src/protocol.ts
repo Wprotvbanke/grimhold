@@ -20,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -206,17 +206,21 @@ export const CloseBankSchema = z.object({
 });
 
 /**
- * Переложить вещь между рюкзаком и казной.
+ * Переложить вещь между рюкзаком и казной или внутри казны.
  *
- * Координаты — только клетка источника: куда ляжет вещь, решает сервер первым
- * свободным местом. Раскладку в казне игрок не наводит, ему важно, что вещь
- * там, а не где именно.
+ * Клетка назначения необязательна: щелчок её не знает, и тогда место ищет
+ * сервер. Перетаскивание знает — и тогда вещь ложится именно туда, вместе
+ * с поворотом. Казна раскладывается по тем же правилам, что и рюкзак:
+ * хранилище, в котором нельзя навести порядок, быстро превращается в свалку.
  */
 export const BankMoveSchema = z.object({
   t: z.literal('bankMove'),
-  dir: z.enum(['deposit', 'withdraw']),
+  dir: z.enum(['deposit', 'withdraw', 'arrange']),
   x: z.number().int().min(0).max(15),
   y: z.number().int().min(0).max(15),
+  toX: z.number().int().min(0).max(15).optional(),
+  toY: z.number().int().min(0).max(15).optional(),
+  rotate: z.boolean().optional(),
 });
 
 /**

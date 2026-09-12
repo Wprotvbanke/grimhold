@@ -1,12 +1,16 @@
 import {
   BANK,
   addItem,
+  arrangeInGrid,
   itemAt,
   itemDef,
+  place,
   removeItem,
   type BankMoveMessage,
   type CloseBankMessage,
+  type Grid,
   type OpenBankMessage,
+  type PlacedItem,
 } from '@grimhold/shared';
 import { refreshLoadout } from '../world.js';
 import type { CommandHandler, GameEvent } from './types.js';
@@ -60,6 +64,24 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
     return [{ type: 'bank' }, ...refuse('Ты отошёл от казны')];
   }
 
+  // Раскладка внутри сундука идёт по тем же правилам, что и в рюкзаке.
+  if (payload.dir === 'arrange') {
+    if (payload.toX === undefined || payload.toY === undefined) return [];
+
+    const arranged = arrangeInGrid(
+      player.bank,
+      payload.x,
+      payload.y,
+      payload.toX,
+      payload.toY,
+      payload.rotate ?? false,
+    );
+    if (typeof arranged === 'string') return refuse(arranged);
+
+    player.bank = arranged;
+    return [{ type: 'bank' }, { type: 'bankSave' }];
+  }
+
   const from = payload.dir === 'deposit' ? player.inventory : player.bank;
   const to = payload.dir === 'deposit' ? player.bank : player.inventory;
 
@@ -68,20 +90,16 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
 
   // Сначала находим место, и только потом убираем вещь с прежнего: иначе
   // полное хранилище съедало бы предмет молча.
-  const added = addItem(to, item.defId, item.count);
-  if (added.leftover > 0) {
-    return refuse(
-      payload.dir === 'deposit' ? 'В казне нет места' : 'В рюкзаке нет места',
-    );
-  }
+  const placed = putInto(to, item, payload);
+  if (typeof placed === 'string') return refuse(placed);
 
   const rest = removeItem(from, item);
   if (payload.dir === 'deposit') {
     player.inventory = rest;
-    player.bank = added.grid;
+    player.bank = placed;
   } else {
     player.bank = rest;
-    player.inventory = added.grid;
+    player.inventory = placed;
   }
 
   // Вес меняется в обе стороны: вынул из казны — понёс.
@@ -94,3 +112,32 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
   );
   return moved();
 };
+
+/**
+ * Кладёт вещь в принимающую сетку.
+ *
+ * Клетка указана — значит игрок притащил вещь мышью именно туда, и класть
+ * куда-то ещё было бы самоуправством. Не указана — щелчок, и место ищет
+ * сервер: у щелчка нет точки назначения.
+ */
+function putInto(
+  grid: Grid,
+  item: PlacedItem,
+  payload: BankMoveMessage,
+): Grid | string {
+  if (payload.toX !== undefined && payload.toY !== undefined) {
+    const rotated = payload.rotate ?? false ? !item.rotated : item.rotated;
+    const exact = place(grid, item.defId, item.count, payload.toX, payload.toY, rotated);
+    if (exact) return exact;
+
+    // Под курсором могла оказаться такая же стопка — складываем.
+    const target = itemAt(grid, payload.toX, payload.toY);
+    if (!target || target.defId !== item.defId) return 'Сюда не влезает';
+  }
+
+  const added = addItem(grid, item.defId, item.count);
+  if (added.leftover > 0) {
+    return payload.dir === 'deposit' ? 'В казне нет места' : 'В рюкзаке нет места';
+  }
+  return added.grid;
+}

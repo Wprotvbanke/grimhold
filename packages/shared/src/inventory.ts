@@ -200,6 +200,64 @@ export function addItem(
   return { grid: { ...grid, items }, leftover: remaining };
 }
 
+/**
+ * Перекладывание внутри одной сетки: с точностью до клетки, с поворотом
+ * и со складыванием стопок.
+ *
+ * Живёт здесь, а не в обработчике рюкзака, потому что по этим же правилам
+ * раскладывают вещи в казне. Два экземпляра одних правил разошлись бы, и
+ * вещь, которая влезает в рюкзаке, однажды перестала бы влезать в сундуке.
+ *
+ * Возвращает новую сетку или строку с причиной отказа.
+ */
+export function arrangeInGrid(
+  grid: Grid,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  rotate: boolean,
+): Grid | string {
+  const item = itemAt(grid, fromX, fromY);
+  if (!item) return 'Здесь ничего нет';
+
+  const rotated = rotate ? !item.rotated : item.rotated;
+
+  // Себя самого при проверке игнорируем: иначе предмет не смог бы сдвинуться
+  // на соседнюю клетку, пересекающуюся с его нынешним местом.
+  if (!canPlace(grid, item.defId, toX, toY, rotated, item)) {
+    // Попытка положить одну стопку на другую — складываем.
+    const target = itemAt(grid, toX, toY);
+    if (target && target !== item && target.defId === item.defId) {
+      return stackOnto(grid, item, target);
+    }
+    return 'Сюда не влезает';
+  }
+
+  const moved = place(removeItem(grid, item), item.defId, item.count, toX, toY, rotated);
+  return moved ?? 'Сюда не влезает';
+}
+
+/** Складывает одну стопку в другую, не превышая предела. */
+function stackOnto(grid: Grid, source: PlacedItem, target: PlacedItem): Grid | string {
+  const def = itemDef(source.defId);
+  if (def.stack <= 1) return 'Этот предмет не складывается';
+
+  const room = def.stack - target.count;
+  if (room <= 0) return 'Стопка полна';
+
+  const moved = Math.min(room, source.count);
+  const items = grid.items
+    .map((entry) => {
+      if (entry === target) return { ...entry, count: entry.count + moved };
+      if (entry === source) return { ...entry, count: entry.count - moved };
+      return entry;
+    })
+    .filter((entry) => entry.count > 0);
+
+  return { ...grid, items };
+}
+
 /** Убирает указанное количество предметов. Возвращает null, если столько нет. */
 export function takeItem(grid: Grid, defId: ItemId, count: number): Grid | null {
   if (countOf(grid, defId) < count) return null;
