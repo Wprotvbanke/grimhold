@@ -1,0 +1,18 @@
+	KayKit : Dungeon Remastered (1.0)
+
+	Автор: Kay Lousberg (www.kaylousberg.com)
+	Источник: https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0
+	Скачано: 11.09.2026
+
+			------------------------------
+
+	Лицензия: Creative Commons Zero (CC0 1.0)
+	http://creativecommons.org/publicdomain/zero/1.0/
+
+	Свободно для личных, учебных и коммерческих проектов; указание авторства
+	не требуется. Указано добровольно.
+
+			------------------------------
+
+	Взяты только те предметы, что стоят в таверне. Остальной пак не тянем:
+	каждая модель грузится клиентом по сети.

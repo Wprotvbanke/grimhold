@@ -1,0 +1,8 @@
+Текстуры зданий: Kenney (kenney.nl), лицензия CC0 1.0 Universal.
+
+«This content is free to use in personal, educational and commercial projects.
+Written permission not required, support us by crediting or donating (voluntary).»
+
+Пак модульных текстур для средневекового города: стены, кровля, двери, окна,
+фахверк. Панели рассчитаны на модульную сборку — один файл это одна панель
+стены, а не бесшовный тайл.
