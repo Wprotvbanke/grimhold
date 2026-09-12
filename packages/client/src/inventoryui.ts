@@ -521,12 +521,16 @@ export class InventoryUi {
 
     // Правая кнопка кладёт вещь в казну, но только пока сундук открыт:
     // иначе она была бы кнопкой без последствий.
+    // Пока открыт сундук, щелчок кладёт вещь в казну — той же кнопкой, какой
+    // её оттуда забирают. Правая здесь не годится: браузер открывает по ней
+    // своё меню, и договориться с ним нельзя.
+    node.addEventListener('click', () => {
+      if (this.bankOpen) this.handlers.onDeposit(item.x, item.y);
+    });
+
     node.addEventListener('contextmenu', (event) => {
       event.preventDefault();
-      // Открытыми одновременно сундук и стол не бывают, но если случится —
-      // казна вперёд: она безопаснее, и ошибка там ничего не стоит.
-      if (this.bankOpen) this.handlers.onDeposit(item.x, item.y);
-      else if (this.tradeOpen) this.handlers.onTradeOffer(item.x, item.y);
+      if (!this.bankOpen && this.tradeOpen) this.handlers.onTradeOffer(item.x, item.y);
     });
 
     node.addEventListener('mousedown', (event) => {
@@ -536,6 +540,9 @@ export class InventoryUi {
 
     node.addEventListener('dblclick', (event) => {
       event.preventDefault();
+      // У сундука тот же щелчок уже значит «положить»: надевать вещь заодно
+      // с отправкой её в казну — не то, чего ждёшь.
+      if (this.bankOpen) return;
       // Надеваемое надевается, съедобное используется — угадывать не надо,
       // это видно по определению предмета.
       if (def.slot) this.handlers.onEquip(item.x, item.y);
