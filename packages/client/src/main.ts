@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  BANK,
   DASH_WEIGHT_LIMIT,
   DAY_START,
   INTERP_DELAY_MS,
@@ -136,7 +137,12 @@ const inventoryUi = new InventoryUi({
   onUse: (x, y) => connection.send({ t: 'useItem', x, y }),
   onDrop: (x, y) => connection.send({ t: 'dropItem', x, y }),
   onCraft: (recipeId) => connection.send({ t: 'craft', recipeId }),
+  onDeposit: (x, y) => connection.send({ t: 'bankMove', dir: 'deposit', x, y }),
+  onWithdraw: (x, y) => connection.send({ t: 'bankMove', dir: 'withdraw', x, y }),
   onClose: () => {
+    // Закрыл рюкзак — закрыл и сундук: держать казну открытой из диких земель
+    // сервер всё равно не даст.
+    if (bankOpen) connection.send({ t: 'closeBank' });
     controls.suspended = false;
     if (game && !combatUi.dead) ui.setResumeHint(!controls.locked);
   },
@@ -196,8 +202,14 @@ const controls = new Controls(renderer.domElement, {
   },
   onHotbar: (index) => useHotbar(index),
   onHarvest: () => {
-    if (!game || combatUi.dead || !aimedNode) return;
-    connection.send({ t: 'harvest', nodeId: aimedNode });
+    if (!game || combatUi.dead) return;
+    // E — единственная клавиша взаимодействия. У казны она открывает сундук,
+    // в лесу бьёт по ноде: игроку не нужно помнить две.
+    if (atVault()) {
+      connection.send({ t: 'openBank' });
+      return;
+    }
+    if (aimedNode) connection.send({ t: 'harvest', nodeId: aimedNode });
   },
 });
 
@@ -247,6 +259,10 @@ const connection = new Connection(SERVER_URL, {
     // Перегруз замедляет, и предсказание обязано знать об этом сразу,
     // иначе сервер начнёт дёргать игрока назад на каждом шаге.
     weightFactor = weightSpeedFactorFor(message.weight, message.capacity);
+  },
+  onBank: (message) => {
+    bankOpen = message.open;
+    inventoryUi.setBank(message);
   },
   onItemError: (message) => inventoryUi.showError(message),
   onDisconnected: () => {
@@ -499,6 +515,15 @@ renderer.setAnimationLoop(() => {
  * сервер по своим числам. Здесь — только чтобы игрок понимал, куда смотрит.
  */
 let aimedNode: string | null = null;
+/** Открыт ли сундук казны. Ответ приходит с сервера, клиент его не решает. */
+let bankOpen = false;
+
+/** Стоит ли игрок у казны. Та же проверка есть на сервере — она и решает. */
+function atVault(): boolean {
+  const self = connection.latestSnapshot?.self;
+  if (!self) return false;
+  return Math.hypot(self.x - BANK.x, self.z - BANK.z) <= BANK.range;
+}
 /** Что у игрока в основной руке. Приходит вместе с состоянием вещей. */
 let mainHandItem: string | null = null;
 /** Хватает ли лёгкости на рывок. Считается по тому же правилу, что у сервера. */
@@ -511,6 +536,13 @@ const TOOL_NAMES: Record<string, string> = {
 };
 
 function updateNodeHint(x: number, z: number): void {
+  // Казна перебивает ноду: в городе нод нет, а подсказка нужна одна.
+  if (Math.hypot(x - BANK.x, z - BANK.z) <= BANK.range) {
+    aimedNode = null;
+    ui.setNodeHint('Казна', null, true, 'открыть');
+    return;
+  }
+
   const node = world.nodes.targetAt(x, z, controls.yaw);
   aimedNode = node?.id ?? null;
 

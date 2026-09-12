@@ -12,6 +12,7 @@ import {
   type EquipSlot,
   type Equipment,
   type Grid,
+  type BankMessage,
   type InventoryMessage,
   type PlacedItem,
 } from '@grimhold/shared';
@@ -44,6 +45,10 @@ export interface InventoryHandlers {
   onDrop(x: number, y: number): void;
   /** Изготовить по рецепту. Хватает ли сырья — решит сервер. */
   onCraft(recipeId: RecipeId): void;
+  /** Положить вещь из рюкзака в казну. */
+  onDeposit(x: number, y: number): void;
+  /** Забрать вещь из казны. */
+  onWithdraw(x: number, y: number): void;
   /** Закрытие рюкзака возвращает управление игрой. */
   onClose(): void;
 }
@@ -62,11 +67,18 @@ export class InventoryUi {
   private readonly discard = el<HTMLDivElement>('discard');
   private readonly ghost = el<HTMLDivElement>('dragGhost');
   private readonly errorLine = el<HTMLParagraphElement>('itemError');
+  private readonly bankCol = el<HTMLDivElement>('bankCol');
+  private readonly bankCells = el<HTMLDivElement>('bankCells');
+  private readonly bankWrap = el<HTMLDivElement>('bankWrap');
+  private readonly craftCol = el<HTMLDivElement>('craftCol');
+  private readonly helpCol = el<HTMLDivElement>('helpCol');
 
   private state: InventoryMessage | null = null;
   /** Раса персонажа: от неё зависит, какие рецепты вообще показывать. */
   private race: Race | null = null;
   private drag: DragState | null = null;
+  /** Открыт ли сундук. От этого зависит, кладёт ли правая кнопка вещь в казну. */
+  private bankOpen = false;
   private readonly slotNodes = new Map<EquipSlot, HTMLDivElement>();
   private readonly hotbarNodes: HTMLDivElement[] = [];
 
@@ -125,6 +137,48 @@ export class InventoryUi {
   setRace(race: Race): void {
     this.race = race;
     if (this.state) this.renderCrafting(this.state);
+  }
+
+  /**
+   * Содержимое казны.
+   *
+   * Колонка появляется только когда сундук открыт: банк — не часть рюкзака,
+   * а место в городе, и показывать его издалека значило бы врать.
+   */
+  setBank(message: BankMessage): void {
+    this.bankOpen = message.open;
+    this.bankCol.hidden = !message.open;
+    // Казна велика, и впятером колонки не помещаются даже в широкий экран.
+    // У сундука ремесло и справка не нужны — человек пришёл убрать добычу.
+    this.craftCol.hidden = message.open;
+    this.helpCol.hidden = message.open;
+    if (!message.open) {
+      this.bankCells.replaceChildren();
+      for (const node of this.bankWrap.querySelectorAll('.inv-item')) node.remove();
+      return;
+    }
+
+    // Сундук открывают из мира, а не из рюкзака: панель поднимаем сами.
+    if (!this.open) this.show();
+    this.renderBank(message.grid);
+  }
+
+  private renderBank(grid: Grid): void {
+    this.bankCells.style.gridTemplateColumns = `repeat(${grid.width}, 42px)`;
+    this.bankCells.replaceChildren();
+    for (let i = 0; i < grid.width * grid.height; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      this.bankCells.append(cell);
+    }
+
+    for (const node of this.bankWrap.querySelectorAll('.inv-item')) node.remove();
+    for (const item of grid.items) {
+      const node = this.buildStaticItem(item);
+      node.title += '\nЩелчок — забрать';
+      node.addEventListener('click', () => this.handlers.onWithdraw(item.x, item.y));
+      this.bankWrap.append(node);
+    }
   }
 
   /**
@@ -284,7 +338,8 @@ export class InventoryUi {
     for (const item of grid.items) this.wrap.append(this.buildItemNode(item));
   }
 
-  private buildItemNode(item: PlacedItem): HTMLElement {
+  /** Вид предмета без поведения: одинаков и в рюкзаке, и в казне. */
+  private buildStaticItem(item: PlacedItem): HTMLElement {
     const def = itemDef(item.defId);
     const size = sizeOf(item.defId, item.rotated);
 
@@ -303,6 +358,20 @@ export class InventoryUi {
       count.textContent = String(item.count);
       node.append(count);
     }
+
+    return node;
+  }
+
+  private buildItemNode(item: PlacedItem): HTMLElement {
+    const def = itemDef(item.defId);
+    const node = this.buildStaticItem(item);
+
+    // Правая кнопка кладёт вещь в казну, но только пока сундук открыт:
+    // иначе она была бы кнопкой без последствий.
+    node.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      if (this.bankOpen) this.handlers.onDeposit(item.x, item.y);
+    });
 
     node.addEventListener('mousedown', (event) => {
       event.preventDefault();

@@ -24,7 +24,8 @@
     "roster": "tsx scripts/roster.ts",
     "inventory": "tsx scripts/inventory-check.ts",
     "harvest": "tsx scripts/harvest-check.ts",
-    "craft": "tsx scripts/craft-check.ts"
+    "craft": "tsx scripts/craft-check.ts",
+    "bank": "tsx scripts/bank-check.ts"
   },
   "engines": {
     "node": ">=20"

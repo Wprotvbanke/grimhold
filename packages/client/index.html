@@ -190,9 +190,9 @@
       #inventory[hidden] { display: none; }
 
       .inv-panel {
-        /* Колонок стало четыре — на узком экране они переносятся, а не режутся. */
+        /* Колонок до четырёх — на узком экране они переносятся, а не режутся. */
         display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap;
-        max-width: min(1180px, 96vw);
+        max-width: min(1300px, 96vw);
         background: var(--panel); border: 1px solid var(--line);
         border-radius: 6px; padding: 18px;
       }
@@ -258,6 +258,13 @@
       .recipe-inputs { font-size: 11px; color: var(--dim); }
       .recipe-inputs .lack { color: #c06a5c; }
       .recipe-race { font-size: 10px; letter-spacing: 0.08em; color: var(--gold); }
+
+      /* Казна: та же сетка, но вещи в ней не таскают — их кладут и забирают
+         щелчком. Перетаскивание между двумя сетками добавило бы целый режим
+         ради того, что и так делается одним движением. */
+      #bankCol[hidden], #craftCol[hidden], #helpCol[hidden] { display: none; }
+      #bankWrap .inv-item { cursor: pointer; }
+      #bankWrap .cell { background: #0e1014; }
 
       #dragGhost {
         position: fixed; z-index: 20; pointer-events: none; opacity: 0.85;
@@ -397,7 +404,19 @@
           <p id="itemError"></p>
         </div>
 
-        <div class="inv-col">
+        <div class="inv-col" id="bankCol" hidden>
+          <div class="inv-title">Казна</div>
+          <div class="grid-wrap" id="bankWrap">
+            <div class="grid-cells" id="bankCells"></div>
+          </div>
+          <p class="inv-hint">
+            Щелчок по вещи в казне — забрать, правая кнопка по вещи в рюкзаке —
+            положить. Здесь ничего не пропадёт со смертью, и хранилище общее
+            на все твои персонажи.
+          </p>
+        </div>
+
+        <div class="inv-col" id="craftCol">
           <div class="inv-title">Ремесло</div>
           <div id="craftList"></div>
           <p class="inv-hint" id="craftHint">
@@ -406,7 +425,7 @@
           </p>
         </div>
 
-        <div class="inv-col">
+        <div class="inv-col" id="helpCol">
           <div class="inv-title">Как это работает</div>
           <p class="inv-hint">
             Перетаскивай вещи мышью. <b>R</b> во время переноса поворачивает предмет.<br /><br />

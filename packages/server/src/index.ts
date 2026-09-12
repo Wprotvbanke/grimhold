@@ -105,6 +105,17 @@ wss.on('connection', (socket) => {
       if (event.type === 'inventory') {
         session.send(world.inventoryMessage(player));
       }
+      // Содержимое казны уходит только пока сундук открыт: закрытый банк
+      // клиенту не нужен, а лежит в нём самое ценное.
+      if (event.type === 'bank') {
+        session.send({ t: 'bank', open: player.bankOpen, grid: player.bank });
+      }
+      // Операция с ценностями — пишем немедленно, иначе падение сервера
+      // откатит перекладывание и породит дюп.
+      if (event.type === 'bankSave') {
+        storage.saveBank(player.accountId, player.bank);
+        persistence.flushPlayer(player, 'банк');
+      }
       if (event.type === 'itemError') {
         session.send({ t: 'itemError', message: String(event.reason) });
       }

@@ -20,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -192,6 +192,33 @@ export const HarvestSchema = z.object({
   nodeId: z.string().max(32),
 });
 
+/**
+ * Подойти к городской казне и открыть её.
+ *
+ * Расстояние проверяет сервер: клиент шлёт намерение, а не факт «я у сундука».
+ */
+export const OpenBankSchema = z.object({
+  t: z.literal('openBank'),
+});
+
+export const CloseBankSchema = z.object({
+  t: z.literal('closeBank'),
+});
+
+/**
+ * Переложить вещь между рюкзаком и казной.
+ *
+ * Координаты — только клетка источника: куда ляжет вещь, решает сервер первым
+ * свободным местом. Раскладку в казне игрок не наводит, ему важно, что вещь
+ * там, а не где именно.
+ */
+export const BankMoveSchema = z.object({
+  t: z.literal('bankMove'),
+  dir: z.enum(['deposit', 'withdraw']),
+  x: z.number().int().min(0).max(15),
+  y: z.number().int().min(0).max(15),
+});
+
 export const ChatSchema = z.object({
   t: z.literal('chat'),
   channel: z.enum(['local', 'global']),
@@ -230,6 +257,9 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   UseHotbarSchema,
   HarvestSchema,
   CraftSchema,
+  OpenBankSchema,
+  CloseBankSchema,
+  BankMoveSchema,
 ]);
 
 export type RegisterMessage = z.infer<typeof RegisterSchema>;
@@ -250,6 +280,9 @@ export type SetHotbarMessage = z.infer<typeof SetHotbarSchema>;
 export type UseHotbarMessage = z.infer<typeof UseHotbarSchema>;
 export type HarvestMessage = z.infer<typeof HarvestSchema>;
 export type CraftMessage = z.infer<typeof CraftSchema>;
+export type OpenBankMessage = z.infer<typeof OpenBankSchema>;
+export type CloseBankMessage = z.infer<typeof CloseBankSchema>;
+export type BankMoveMessage = z.infer<typeof BankMoveSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 // ---------- Сервер -> Клиент ----------
@@ -362,6 +395,16 @@ export interface InventoryMessage {
   weaponDamage: number;
 }
 
+/**
+ * Содержимое казны. Приходит только когда сундук открыт: закрытый банк клиенту
+ * не нужен, а вещи в нём — самое ценное, что есть у игрока.
+ */
+export interface BankMessage {
+  t: 'bank';
+  open: boolean;
+  grid: Grid;
+}
+
 /** Почему действие с вещью не прошло. Клиент показывает это игроку. */
 export interface ItemErrorMessage {
   t: 'itemError';
@@ -448,6 +491,7 @@ export type ServerMessage =
   | LifeMessage
   | LootMessage
   | InventoryMessage
+  | BankMessage
   | ItemErrorMessage
   | ErrorMessage;
 

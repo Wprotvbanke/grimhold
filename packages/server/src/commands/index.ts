@@ -1,5 +1,6 @@
 import type { ClientMessage } from '@grimhold/shared';
 import { handleAction, handleBlock, handleCast } from './action.js';
+import { handleBankMove, handleCloseBank, handleOpenBank } from './bank.js';
 import { handleChat } from './chat.js';
 import { handleCraft } from './craft.js';
 import { handleHarvest } from './harvest.js';
@@ -53,6 +54,12 @@ export function dispatch(ctx: CommandContext, message: ClientMessage): GameEvent
       return handleHarvest(ctx, message);
     case 'craft':
       return handleCraft(ctx, message);
+    case 'openBank':
+      return handleOpenBank(ctx, message);
+    case 'closeBank':
+      return handleCloseBank(ctx, message);
+    case 'bankMove':
+      return handleBankMove(ctx, message);
     default:
       return [];
   }

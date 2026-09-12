@@ -138,7 +138,11 @@ export class Session {
       return;
     }
 
-    const player = this.world.spawnPlayer(character);
+    // Казна общая на аккаунт, поэтому берётся не из персонажа, а рядом с ним.
+    const player = this.world.spawnPlayer({
+      ...character,
+      bank: this.storage.getBank(this.accountId),
+    });
     this.player = player;
     this.onEnterWorld(this, player);
 

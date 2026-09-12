@@ -122,13 +122,13 @@ export class Ui {
    * пака, что и декорации, и отличить рудную жилу от валуна на глаз нельзя.
    * Пустая строка убирает подсказку.
    */
-  setNodeHint(name: string, tool: string | null, ready: boolean): void {
+  setNodeHint(name: string, tool: string | null, ready: boolean, verb = 'добыть'): void {
     if (!name) {
       this.nodeHint.hidden = true;
       return;
     }
 
-    const how = ready ? '<b>E</b> — добыть' : `<span>нужен в руке: ${tool}</span>`;
+    const how = ready ? `<b>E</b> — ${verb}` : `<span>нужен в руке: ${tool}</span>`;
     this.nodeHint.innerHTML = `${name} · ${how}`;
     this.nodeHint.hidden = false;
   }

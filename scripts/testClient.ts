@@ -9,6 +9,7 @@ import {
   type CharacterSummary,
   type ClientMessage,
   type CombatEvent,
+  type BankMessage,
   type InventoryMessage,
   type LifeMessage,
   type LootMessage,
@@ -41,6 +42,8 @@ export class TestClient {
   readonly loot: LootMessage[] = [];
   /** Последнее состояние вещей: сервер шлёт его целиком при каждом изменении. */
   inventory: InventoryMessage | null = null;
+  /** Последнее состояние казны: приходит только пока сундук открыт. */
+  bank: BankMessage | null = null;
   readonly errors: string[] = [];
   onSnapshot?: (snapshot: SnapshotMessage) => void;
 
@@ -135,6 +138,9 @@ export class TestClient {
         break;
       case 'inventory':
         this.inventory = message;
+        break;
+      case 'bank':
+        this.bank = message;
         break;
       case 'itemError':
         this.errors.push(message.message);

@@ -37,6 +37,7 @@ import {
   type RecipeId,
   carryCapacity,
   createBackpack,
+  createBank,
   createHotbar,
   createMoveState,
   equipmentArmor,
@@ -119,6 +120,15 @@ export interface Player {
   spellCooldowns: Partial<Record<SpellId, number>>;
   /** Рюкзак: раскладку хранит и проверяет сервер, клиент только рисует. */
   inventory: Grid;
+  /**
+   * Городская казна — общая на аккаунт, а не на персонажа.
+   *
+   * Грузится один раз при входе в мир: строчка в базе, зато не нужен поход
+   * в хранилище посреди тика. Пишется немедленно при каждой операции.
+   */
+  bank: Grid;
+  /** Открыт ли сундук. Пока открыт, клиент получает содержимое казны. */
+  bankOpen: boolean;
   equipment: Equipment;
   knownRecipes: RecipeId[];
   hotbar: Hotbar;
@@ -164,6 +174,7 @@ export class World {
     instanceId: string;
     playtimeSeconds: number;
     inventory?: Grid;
+    bank?: Grid;
     equipment?: Equipment;
     knownRecipes?: RecipeId[];
     hotbar?: Hotbar;
@@ -209,6 +220,8 @@ export class World {
       deadFor: 0,
       spellCooldowns: {},
       inventory: character.inventory ?? createBackpack(),
+      bank: character.bank ?? createBank(),
+      bankOpen: false,
       equipment: character.equipment ?? {},
       knownRecipes: character.knownRecipes ?? [],
       hotbar: character.hotbar ?? defaultHotbar(character.characterClass),
