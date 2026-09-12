@@ -301,6 +301,31 @@ export class World {
     this.history.forget(id);
   }
 
+  /**
+   * Переносит игрока в другой инстанс.
+   *
+   * Инстанс живёт сразу в трёх местах: у игрока, у его бойца и в истории
+   * позиций. Разойдись они — и человек окажется невидимым для одних и
+   * уязвимым для других: снапшоты соберутся по одному полю, попадания
+   * проверятся по другому.
+   *
+   * История позиций чистится: отматывать цель в инстанс, из которого она
+   * ушла, бессмысленно, а попасть по ней оттуда — уже дыра.
+   */
+  moveToInstance(player: Player, instanceId: InstanceId, spawn: { x: number; y: number; z: number }): void {
+    player.instanceId = instanceId;
+    player.combat.instanceId = instanceId;
+
+    player.state.pos = { ...spawn };
+    player.state.vel = { x: 0, y: 0, z: 0 };
+    player.combat.pos = player.state.pos;
+
+    // Ввод, накопленный в прежнем месте, к новому отношения не имеет.
+    player.pendingInputs.length = 0;
+    this.history.forget(player.id);
+    player.dirty = true;
+  }
+
   findByCharacterId(characterId: string): Player | null {
     for (const player of this.players.values()) {
       if (player.characterId === characterId) return player;

@@ -8,7 +8,8 @@ import {
   fullVitals,
 } from '@grimhold/shared';
 import { flagFor, forgiveForMob, markAggressor, mayAttack, punishKill } from '../src/pvp.js';
-import { resolveMelee } from '../src/combat.js';
+import { resolveCone, resolveMelee } from '../src/combat.js';
+import { createProjectile, stepProjectile } from '../src/projectile.js';
 import { PositionHistory } from '../src/history.js';
 import type { Combatant } from '../src/combatant.js';
 
@@ -199,5 +200,51 @@ describe('флаги', () => {
     forgiveForMob(attacker);
     expect(attacker.karma).toBe(0);
     expect(flagFor(attacker)).toBe('white');
+  });
+});
+
+describe('заклинания слушаются тех же правил', () => {
+  /** Заклинатель смотрит в -Z, цель прямо перед ним. */
+  function duel(casterZ: number, targetZ: number) {
+    const caster = makeCombatant({ id: 'a', name: 'Маг', pos: { x: 0, y: 0, z: casterZ } });
+    const target = makeCombatant({ id: 'b', name: 'Прохожий', pos: { x: 0, y: 0, z: targetZ } });
+    return { caster, target };
+  }
+
+  it('стужа в городе не берёт', () => {
+    // Дыра, на которую уже наступили: конусные заклинания шли мимо правила,
+    // и в городе нельзя было ударить мечом, но можно было заморозить.
+    const { caster, target } = duel(0, -2);
+
+    const outcome = resolveCone(caster, 'frostbite', [caster, target], 1);
+    expect(target.vitals.health).toBe(fullVitals(target.attributes).health);
+    expect(outcome.refusals[0]?.reason).toMatch(/город/i);
+  });
+
+  it('за воротами стужа работает', () => {
+    const { caster, target } = duel(OUTSIDE, OUTSIDE - 2);
+
+    resolveCone(caster, 'frostbite', [caster, target], 1);
+    expect(target.vitals.health).toBeLessThan(fullVitals(target.attributes).health);
+  });
+
+  it('снаряд в городе не долетает', () => {
+    const { caster, target } = duel(0, -3);
+    const bolt = createProjectile('p1', caster, 'ember', 0, 1);
+
+    // Даём снаряду дойти: он не должен ни попасть, ни ранить.
+    for (let i = 0; i < 20; i++) stepProjectile(bolt, 1 / 20, [caster, target], []);
+    expect(target.vitals.health).toBe(fullVitals(target.attributes).health);
+  });
+
+  it('за воротами снаряд попадает', () => {
+    const { caster, target } = duel(OUTSIDE, OUTSIDE - 3);
+    const bolt = createProjectile('p1', caster, 'ember', 0, 1);
+
+    let hit = false;
+    for (let i = 0; i < 20 && !hit; i++) {
+      hit = stepProjectile(bolt, 1 / 20, [caster, target], []) !== null;
+    }
+    expect(target.vitals.health).toBeLessThan(fullVitals(target.attributes).health);
   });
 });

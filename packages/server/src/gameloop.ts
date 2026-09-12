@@ -30,6 +30,7 @@ import {
 } from '@grimhold/shared';
 import { craftingMessage, finishCraft } from './commands/craft.js';
 import { flagFor, forgiveForMob } from './pvp.js';
+import { OVERWORLD } from './world.js';
 import { finishHarvest, gatheringMessage, outOfReach } from './commands/harvest.js';
 import {
   applyDodgeImpulse,
@@ -200,7 +201,7 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
        */
       if (player.wantsRespawn && canRespawn(player)) {
         player.wantsRespawn = false;
-        outbox.life.push({ playerId: player.id, message: respawnPlayer(player) });
+        outbox.life.push({ playerId: player.id, message: respawnPlayer(world, player) });
         // Воскрешение меняет положение и здоровье — пишем немедленно.
         outbox.criticalSaves.push(player);
       }
@@ -556,7 +557,7 @@ function handleDeath(
  * обиднее, чем с любой вещью из рюкзака, и разница между «сходил в набег»
  * и «сходил удачно» становится ощутимой.
  */
-function punishRedDeath(player: Player, outbox: Outbox): void {
+export function punishRedDeath(player: Player, outbox: Outbox): void {
   if (flagFor(player.combat) !== 'red') return;
 
   for (const id of Object.keys(player.skills) as SkillId[]) {
@@ -613,7 +614,7 @@ export function canRespawn(player: Player): boolean {
   return !player.combat.alive && player.deadFor >= DEATH_DELAY;
 }
 
-export function respawnPlayer(player: Player): LifeMessage {
+export function respawnPlayer(world: World, player: Player): LifeMessage {
   player.combat.alive = true;
   player.combat.vitals.health = player.maxima.health;
   player.combat.vitals.stamina = player.maxima.stamina;
@@ -626,10 +627,15 @@ export function respawnPlayer(player: Player): LifeMessage {
   // оставшийся флаг поднял бы игрока сразу после следующей смерти.
   player.wantsRespawn = false;
 
-  player.state.pos = { ...SPAWN_POINT };
-  player.state.vel = { x: 0, y: 0, z: 0 };
-  player.combat.pos = player.state.pos;
-  player.dirty = true;
+  /**
+   * Воскрешение возвращает **и в город, и в мир**.
+   *
+   * Раньше оно двигало только координаты, а инстанс оставляло прежним. Пока
+   * инстанс один, разницы нет; с подземельями это значило бы воскреснуть
+   * внутри подземелья на городских координатах — то есть в пустоте, потому
+   * что города там нет.
+   */
+  world.moveToInstance(player, OVERWORLD, SPAWN_POINT);
 
   return { t: 'life', event: 'respawned', spawn: SPAWN_POINT };
 }

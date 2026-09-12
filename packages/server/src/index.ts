@@ -88,7 +88,7 @@ wss.on('connection', (socket) => {
     // Воскрешение — не боевое действие, обрабатывается отдельно.
     if (result.data.t === 'respawn') {
       if (canRespawn(player)) {
-        const message = respawnPlayer(player);
+        const message = respawnPlayer(world, player);
         persistence.flushPlayer(player, 'воскрешение');
         session.send(message);
       } else if (!player.combat.alive) {
