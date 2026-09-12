@@ -28,7 +28,8 @@
     "bank": "tsx scripts/bank-check.ts",
     "trade": "tsx scripts/trade-check.ts",
     "pvp": "tsx scripts/pvp-check.ts",
-    "dungeon": "tsx scripts/dungeon-check.ts"
+    "dungeon": "tsx scripts/dungeon-check.ts",
+    "load": "tsx scripts/load-check.ts"
   },
   "engines": {
     "node": ">=20"
