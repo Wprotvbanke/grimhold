@@ -257,14 +257,23 @@ export class ChunkedWorld {
   }
 
   /** Координаты чанков, которые должны быть загружены вокруг точки. */
+  /**
+   * Какие чанки держать загруженными вокруг точки.
+   *
+   * Никаких правил о границах здесь нет и быть не может: где земля кончается,
+   * знает **источник**, а не поток. Однажды тут стояла проверка `isInsideWorld`
+   * — правило обычного мира, — и подземелье, уехавшее за его край, осталось
+   * без единого чанка: ни пола, ни стен. Игрок падал в пустоту и видел небо,
+   * а выглядело это как «инстанса вообще нет».
+   *
+   * Пустой чанк обходится в пустую группу и ничего не стоит.
+   */
   static chunksAround(x: number, z: number, radius = CHUNK_LOAD_RADIUS): ChunkCoord[] {
     const { cx, cz } = worldToChunk(x, z);
     const result: ChunkCoord[] = [];
     for (let dz = -radius; dz <= radius; dz++) {
       for (let dx = -radius; dx <= radius; dx++) {
-        const nx = cx + dx;
-        const nz = cz + dz;
-        if (isInsideWorld(nx, nz)) result.push({ cx: nx, cz: nz });
+        result.push({ cx: cx + dx, cz: cz + dz });
       }
     }
     return result;

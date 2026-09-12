@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ChunkedWorld } from '../src/chunks.js';
 import { isSafe } from '../src/level.js';
 import {
   DUNGEON_CENTER,
@@ -100,5 +101,36 @@ describe('подземелье стоит в стороне от мира', () =
     expect(ring).toBeDefined();
     expect(ring!.box.minX).toBeLessThan(DUNGEON_EXIT.x);
     expect(ring!.box.maxX).toBeGreaterThan(DUNGEON_EXIT.x);
+  });
+});
+
+describe('поток чанков не знает о границах мира', () => {
+  /**
+   * Здесь стояла проверка `isInsideWorld` — правило **обычного** мира,
+   * попавшее в общий поток чанков. Подземелье уехало за его край и осталось
+   * без единого чанка: у клиента не было ни пола, ни стен, он проваливался
+   * в пустоту и видел небо. Сервер при этом стоял твёрдо — расходились
+   * только предсказание и правда, и выглядело это как «инстанса нет».
+   */
+  it('вокруг подземелья чанки есть', () => {
+    const around = ChunkedWorld.chunksAround(DUNGEON_ENTRY.x, DUNGEON_ENTRY.z);
+    expect(around.length).toBeGreaterThan(0);
+    expect(around).toContainEqual({ cx: DUNGEON_ORIGIN_CHUNK, cz: DUNGEON_ORIGIN_CHUNK });
+  });
+
+  it('и земля под ними настоящая', () => {
+    const terrain = new ChunkedWorld(generateDungeonChunk(11));
+    const colliders = terrain.collidersAt(DUNGEON_ENTRY.x, DUNGEON_ENTRY.z);
+
+    // Пол должен оказаться прямо под точкой входа, иначе игрок падает.
+    const under = colliders.find(
+      (box) =>
+        box.minX <= DUNGEON_ENTRY.x &&
+        box.maxX >= DUNGEON_ENTRY.x &&
+        box.minZ <= DUNGEON_ENTRY.z &&
+        box.maxZ >= DUNGEON_ENTRY.z &&
+        box.maxY <= DUNGEON_ENTRY.y + 0.01,
+    );
+    expect(under).toBeDefined();
   });
 });

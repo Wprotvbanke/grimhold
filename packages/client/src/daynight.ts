@@ -249,14 +249,24 @@ export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
        * а туман красится в цвет неба, которого из зала не видно.
        */
       if (api.underground) {
-        hemisphere.color.setHex(0x2a2a33);
-        hemisphere.groundColor.setHex(0x15120f);
-        hemisphere.intensity = 0.5;
-        ambient.intensity = 0.22;
+        /**
+         * Пока это не темнота, а полумрак.
+         *
+         * Первая попытка была честно тёмной — и зал приняли за несуществующий:
+         * ни стен, ни пола, ни текстур. Свет должен показывать, что место
+         * есть, иначе игрок ищет не выход, а поломку. Настоящая темнота
+         * придёт вместе с факелом в руке, и тогда эти числа упадут.
+         */
+        hemisphere.color.setHex(0x4a4658);
+        hemisphere.groundColor.setHex(0x2e2823);
+        hemisphere.intensity = 1.1;
+        ambient.intensity = 0.5;
         sun.intensity = 0;
-        fog.color.setHex(0x0b0a0c);
-        fog.near = 6;
-        fog.far = 42;
+        // Туман отодвинут: в зале шестьдесят на шестьдесят стена напротив
+        // обязана быть видна, иначе непонятно даже, что ты в помещении.
+        fog.color.setHex(0x141118);
+        fog.near = 22;
+        fog.far = 95;
         scene.background = fog.color;
         api.daylight = false;
         return;

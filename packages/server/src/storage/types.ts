@@ -57,6 +57,11 @@ export interface CharacterSave {
   hotbar: Hotbar;
   karma: number;
   purpleFor: number;
+  /**
+   * Где персонаж находится. Без этого он сохранялся с координатами
+   * подземелья, но в обычном мире — то есть в пустоте под городом.
+   */
+  instanceId: string;
 }
 
 export interface Storage {

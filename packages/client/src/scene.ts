@@ -299,7 +299,12 @@ export function createScene(): World3D {
       const nearTown = Math.hypot(camera.position.x, camera.position.z) < CHUNK_SIZE;
       buildings.group.visible = nearTown;
       furniture.visible = nearTown;
-      lights.group.visible = nearTown;
+      /**
+       * Огонь нужен и в городе, и под землёй — значит группу не прячем там,
+       * где он есть. Городские факелы при этом не мешают: пул выбирает
+       * ближайшие, а город из подземелья за восемь километров.
+       */
+      lights.group.visible = nearTown || underground;
 
       // Насколько светло снаружи: по этому числу гаснет уличный огонь
       // и загорается свет в окнах. Плавно, а не щелчком на рассвете.

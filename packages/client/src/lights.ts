@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { LAMP_HEIGHT, TAVERN, TOWN_LAMPS } from '@grimhold/shared';
+import {
+  DUNGEON_LAMPS,
+  DUNGEON_LAMP_HEIGHT,
+  LAMP_HEIGHT,
+  TAVERN,
+  TOWN_LAMPS,
+} from '@grimhold/shared';
 
 /**
  * Искусственный свет: фонари, факелы, костры, очаг таверны.
@@ -154,6 +160,19 @@ export function createLights(scene: THREE.Scene): WorldLights {
       phase: index * 2.1,
       outdoor: false,
     });
+  }
+
+  /**
+   * Факелы подземелья.
+   *
+   * Тот же огонь, что в городе, только не гаснет днём: под землёй дня нет.
+   * Лампы им достаются из общего пула — он выбирает ближайшие, а город
+   * в восьми километрах и в выбор не попадает никогда.
+   */
+  for (const [index, spot] of DUNGEON_LAMPS.entries()) {
+    const flame = makeTorch(group, spot.x, DUNGEON_LAMP_HEIGHT, spot.z, index + TORCHES.length);
+    flame.outdoor = false;
+    flames.push(flame);
   }
 
   void loadModels(group, flames);

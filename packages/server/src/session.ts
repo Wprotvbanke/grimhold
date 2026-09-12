@@ -3,6 +3,9 @@ import {
   MAX_CHARACTERS,
   PROTOCOL_VERSION,
   SPAWN_POINT,
+  isDungeon,
+  isInsideWorld,
+  worldToChunk,
   TICK_RATE,
   encode,
   type CharacterSummary,
@@ -12,7 +15,7 @@ import {
 import { hashPassword, verifyPassword } from './auth.js';
 import type { Persistence } from './persistence.js';
 import type { Storage, CharacterRecord } from './storage/types.js';
-import type { Player, World } from './world.js';
+import { OVERWORLD, type Player, type World } from './world.js';
 
 /**
  * Жизненный цикл соединения: регистрация, вход, выбор персонажа, игра.
@@ -138,9 +141,35 @@ export class Session {
       return;
     }
 
+    /**
+     * Вышел из игры внизу — вернулся в город.
+     *
+     * Подземелье живёт в памяти сервера и умирает вместе с сессией: вернуть
+     * человека в зал, которого больше нет, значит поставить его в пустоту.
+     * Так и случалось: координаты сохранялись подземельные, а инстанс — нет,
+     * и персонаж появлялся под городом и падал.
+     *
+     * Забег при этом считается прерванным. Это честно: подземелье — вылазка,
+     * а не место жительства.
+     */
+    const at = worldToChunk(character.x, character.z);
+    const lost = !isDungeon(character.instanceId) && !isInsideWorld(at.cx, at.cz);
+
+    const home =
+      isDungeon(character.instanceId) || lost
+        ? { ...character, instanceId: OVERWORLD, ...SPAWN_POINT }
+        : character;
+
+    if (lost) {
+      // Самопочинка. Персонажа за краем мира быть не должно, и если он там
+      // оказался — это след чужой ошибки, а не его выбор. Возвращаем в город
+      // вместо того, чтобы уронить в пустоту.
+      console.log(`[мир] ${character.name} был вне мира, возвращён в город`);
+    }
+
     // Казна общая на аккаунт, поэтому берётся не из персонажа, а рядом с ним.
     const player = this.world.spawnPlayer({
-      ...character,
+      ...home,
       bank: this.storage.getBank(this.accountId),
     });
     this.player = player;
@@ -159,7 +188,7 @@ export class Session {
     this.send({
       t: 'world',
       instanceId: player.instanceId,
-      spawn: { x: character.x, y: character.y, z: character.z },
+      spawn: { x: player.state.pos.x, y: player.state.pos.y, z: player.state.pos.z },
     });
     // Рюкзак нужен игроку сразу, а не после первого изменения.
     this.send(this.world.inventoryMessage(player));

@@ -282,7 +282,7 @@ export class SqliteStorage implements Storage {
       `UPDATE characters
           SET x = ?, y = ?, z = ?, yaw = ?, last_seen_at = ?, playtime_seconds = ?,
               inventory = ?, equipment = ?, known_recipes = ?, hotbar = ?,
-              karma = ?, purple_for = ?
+              karma = ?, purple_for = ?, instance_id = ?
         WHERE id = ?`,
     );
 
@@ -302,6 +302,7 @@ export class SqliteStorage implements Storage {
           JSON.stringify(save.hotbar),
           save.karma,
           save.purpleFor,
+          save.instanceId,
           save.id,
         );
       }
