@@ -13,21 +13,18 @@
 |---|---|---|
 | `public/models/dwarf.glb` | [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 |
 | `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com) | CC0 |
-| `public/models/tavern/*.glb` | [KayKit Dungeon Remastered](https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0) | CC0 |
-
-`public/models/tavern/` больше не используется: обстановку таверны заменил
-`tavern_props.glb`. Восемьсот килобайт лежат в сборке впустую — папку можно
-удалить, пак при нужде качается заново по ссылке выше.
+| `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
+| `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
-| `public/models/skeleton_walk.fbx` | Mixamo (Adobe), клип Walking | по условиям Mixamo |
-| `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
-| `public/models/skeleton.glb` | [Quaternius](https://poly.pizza/m/DM4QScSmbS) | CC0 |
-| `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
 | `public/models/nature.glb` | от владельца проекта, собран `scripts/prepare-nature.ts` | уточнить |
 | `public/models/lights.glb` | от владельца проекта, собран `scripts/prepare-lights.ts` | уточнить |
 | `public/models/tavern_props.glb` | от владельца проекта, собран `scripts/prepare-tavern.ts` | уточнить |
 | `public/textures/sky.webp` | от владельца проекта, извлечена `scripts/prepare-sky.ts` | уточнить |
+
+Убраны за ненадобностью и лежат в истории git: пак таверны KayKit (заменён
+`tavern_props.glb`), скелет Quaternius (заменён человеческим) и клип ходьбы
+Mixamo. Если понадобятся — качаются заново по ссылкам выше.
 
 ## Обработка тяжёлых моделей
 

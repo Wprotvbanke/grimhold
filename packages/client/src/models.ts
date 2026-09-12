@@ -4,7 +4,6 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MOBS, RACES, type MobId, type Race } from '@grimhold/shared';
-import { applyPs1Look } from './ps1.js';
 import { alignHips, attackClip, boneMap, deathClip, hurtClip, idleClip, walkClip } from './stopmotion.js';
 
 /**
@@ -25,11 +24,6 @@ const RACE_MODELS: Partial<Record<Race, string>> = {
 const MOB_MODELS: Partial<Record<MobId, string>> = {
   skeleton: '/models/skeleton_human.glb',
 };
-
-
-
-/** Каким моделям давать обработку в духе King's Field. */
-const PS1_MODELS = new Set<string>();
 
 /**
  * Разворот модели вокруг вертикали.
@@ -146,8 +140,6 @@ async function loadSource(url: string): Promise<THREE.Group> {
     pending = loader.loadAsync(url).then((gltf) => {
       const own = url === MOB_MODELS.skeleton ? skeletonClips(gltf) : gltf.animations;
       clips.set(url, own);
-      // Обработка делается один раз на исходнике: клоны её унаследуют.
-      if (PS1_MODELS.has(url)) applyPs1Look(gltf.scene);
       return gltf.scene;
     });
     cache.set(url, pending);
