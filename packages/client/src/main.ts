@@ -139,6 +139,11 @@ const inventoryUi = new InventoryUi({
   onCraft: (recipeId) => connection.send({ t: 'craft', recipeId }),
   onDeposit: (x, y) => connection.send({ t: 'bankMove', dir: 'deposit', x, y }),
   onWithdraw: (x, y) => connection.send({ t: 'bankMove', dir: 'withdraw', x, y }),
+  onTradeOffer: (x, y) => connection.send({ t: 'tradeOffer', x, y }),
+  onTradeWithdraw: (index) => connection.send({ t: 'tradeWithdraw', index }),
+  onTradeLock: (locked) => connection.send({ t: 'tradeLock', locked }),
+  onTradeRespond: (accept) => connection.send({ t: 'tradeRespond', accept }),
+  onTradeCancel: () => connection.send({ t: 'tradeCancel' }),
   onClose: () => {
     // Закрыл рюкзак — закрыл и сундук: держать казну открытой из диких земель
     // сервер всё равно не даст.
@@ -211,6 +216,16 @@ const controls = new Controls(renderer.domElement, {
     }
     if (aimedNode) connection.send({ t: 'harvest', nodeId: aimedNode });
   },
+  onTrade: () => {
+    if (!game || combatUi.dead || tradeOpen) return;
+    const target = playerInFront();
+    if (!target) {
+      ui.system('Рядом никого нет — подойди ближе и смотри на человека');
+      return;
+    }
+    connection.send({ t: 'tradeInvite', targetId: target.id });
+    ui.system(`Предложил обмен: ${target.name ?? 'игрок'}`);
+  },
 });
 
 const connection = new Connection(SERVER_URL, {
@@ -259,6 +274,11 @@ const connection = new Connection(SERVER_URL, {
     // Перегруз замедляет, и предсказание обязано знать об этом сразу,
     // иначе сервер начнёт дёргать игрока назад на каждом шаге.
     weightFactor = weightSpeedFactorFor(message.weight, message.capacity);
+  },
+  onTrade: (message) => {
+    tradeOpen = message.stage === 'open' || message.stage === 'invited';
+    inventoryUi.setTrade(message);
+    if (message.note) ui.system(message.note);
   },
   onBank: (message) => {
     bankOpen = message.open;
@@ -517,6 +537,10 @@ renderer.setAnimationLoop(() => {
 let aimedNode: string | null = null;
 /** Открыт ли сундук казны. Ответ приходит с сервера, клиент его не решает. */
 let bankOpen = false;
+/** Идёт ли разговор об обмене — приглашение или сам стол. */
+let tradeOpen = false;
+/** На каком расстоянии клиент вообще предлагает обмен. Сервер строже. */
+const TRADE_REACH = 5;
 
 /** Стоит ли игрок у казны. Та же проверка есть на сервере — она и решает. */
 function atVault(): boolean {
@@ -534,6 +558,39 @@ const TOOL_NAMES: Record<string, string> = {
   pick: 'кирка',
   knife: 'нож',
 };
+
+/**
+ * Кто перед игроком.
+ *
+ * Выбор собеседника — дело клиента, потому что «смотрю на него» есть только
+ * на экране. Далеко ли до него и не занят ли он, решит сервер: здесь мы
+ * ошибёмся разве что в пользу отказа.
+ */
+function playerInFront(): EntitySnapshot | null {
+  const snapshot = connection.latestSnapshot;
+  if (!snapshot) return null;
+
+  const self = snapshot.self;
+  const forwardX = -Math.sin(controls.yaw);
+  const forwardZ = -Math.cos(controls.yaw);
+
+  let best: EntitySnapshot | null = null;
+  let bestScore = 0.4; // косинус: примерно 66° в каждую сторону
+  for (const entity of snapshot.entities) {
+    if (entity.kind !== 'player' || !entity.alive) continue;
+    const dx = entity.x - self.x;
+    const dz = entity.z - self.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > TRADE_REACH || distance < 0.01) continue;
+
+    const score = (dx * forwardX + dz * forwardZ) / distance;
+    if (score > bestScore) {
+      bestScore = score;
+      best = entity;
+    }
+  }
+  return best;
+}
 
 function updateNodeHint(x: number, z: number): void {
   // Казна перебивает ноду: в городе нод нет, а подсказка нужна одна.

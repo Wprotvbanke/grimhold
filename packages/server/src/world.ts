@@ -33,6 +33,7 @@ import {
   type Equipment,
   type Grid,
   type Hotbar,
+  type ItemId,
   type InventoryMessage,
   type RecipeId,
   carryCapacity,
@@ -68,6 +69,21 @@ export const OVERWORLD: InstanceId = 'overworld';
 
 /** Дальше этого мобы не думают: считать ИИ для пустых чанков незачем. */
 const MOB_ACTIVE_RANGE = 90;
+
+/**
+ * Стол обмена. Один объект на двоих: обе стороны смотрят на одно и то же
+ * состояние, иначе подтверждение ничего не значит.
+ */
+export interface Trade {
+  a: Player;
+  b: Player;
+  offerA: { itemId: ItemId; count: number }[];
+  offerB: { itemId: ItemId; count: number }[];
+  lockA: boolean;
+  lockB: boolean;
+  /** Приглашённый согласился сесть за стол. До этого класть нечего. */
+  accepted: boolean;
+}
 
 export interface Player {
   id: string;
@@ -129,6 +145,8 @@ export interface Player {
   bank: Grid;
   /** Открыт ли сундук. Пока открыт, клиент получает содержимое казны. */
   bankOpen: boolean;
+  /** Стол обмена, если игрок за ним сидит. Общий объект с собеседником. */
+  trade: Trade | null;
   equipment: Equipment;
   knownRecipes: RecipeId[];
   hotbar: Hotbar;
@@ -222,6 +240,7 @@ export class World {
       inventory: character.inventory ?? createBackpack(),
       bank: character.bank ?? createBank(),
       bankOpen: false,
+      trade: null,
       equipment: character.equipment ?? {},
       knownRecipes: character.knownRecipes ?? [],
       hotbar: character.hotbar ?? defaultHotbar(character.characterClass),

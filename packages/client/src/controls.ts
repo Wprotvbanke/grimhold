@@ -29,6 +29,8 @@ export interface ControlsHooks {
   onHotbar(index: number): void;
   /** Удар по ресурсной ноде, на которую смотрит игрок. */
   onHarvest(): void;
+  /** Предложить обмен тому, на кого смотрит игрок. */
+  onTrade(): void;
 }
 
 export class Controls {
@@ -142,6 +144,12 @@ export class Controls {
         // на месте рвать некуда, и сервер такое намерение всё равно отбросит:
         // проверяем здесь, чтобы руки зря не дёргались и откат не тикал.
         if (this.dashDirection()) this.hooks.onAction('dodge');
+        return;
+      }
+
+      if (event.code === 'KeyT') {
+        event.preventDefault();
+        if (!event.repeat) this.hooks.onTrade();
         return;
       }
 

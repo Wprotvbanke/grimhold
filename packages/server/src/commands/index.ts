@@ -13,6 +13,14 @@ import {
   handleUseItem,
 } from './items.js';
 import { handleInput } from './input.js';
+import {
+  handleTradeCancel,
+  handleTradeInvite,
+  handleTradeLock,
+  handleTradeOffer,
+  handleTradeRespond,
+  handleTradeWithdraw,
+} from './trade.js';
 import type { CommandContext, GameEvent } from './types.js';
 
 export * from './types.js';
@@ -60,6 +68,18 @@ export function dispatch(ctx: CommandContext, message: ClientMessage): GameEvent
       return handleCloseBank(ctx, message);
     case 'bankMove':
       return handleBankMove(ctx, message);
+    case 'tradeInvite':
+      return handleTradeInvite(ctx, message);
+    case 'tradeRespond':
+      return handleTradeRespond(ctx, message);
+    case 'tradeOffer':
+      return handleTradeOffer(ctx, message);
+    case 'tradeWithdraw':
+      return handleTradeWithdraw(ctx, message);
+    case 'tradeLock':
+      return handleTradeLock(ctx, message);
+    case 'tradeCancel':
+      return handleTradeCancel(ctx, message);
     default:
       return [];
   }

@@ -266,6 +266,30 @@
       #bankWrap .inv-item { cursor: pointer; }
       #bankWrap .cell { background: #0e1014; }
 
+      /* Стол обмена: две колонки строками, а не сеткой. Раскладка чужого
+         рюкзака здесь не при чём, важно что и сколько. */
+      #tradeCol[hidden] { display: none; }
+      .trade-table { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 340px; }
+      .trade-head {
+        font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--dim); margin-bottom: 4px;
+      }
+      .trade-head.locked { color: #9bae6a; }
+      .trade-list {
+        min-height: 180px; display: flex; flex-direction: column; gap: 3px;
+        border: 1px solid var(--line); border-radius: 3px; padding: 5px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .trade-row {
+        font-size: 11px; color: #ddd3ba; padding: 3px 5px; border-radius: 2px;
+        background: #2f2a22; border: 1px solid #5b5140;
+      }
+      .trade-list.own .trade-row { cursor: pointer; }
+      .trade-list.own .trade-row:hover { border-color: var(--gold); }
+      .trade-buttons { display: flex; gap: 8px; }
+      .trade-buttons button { font-size: 11px; padding: 3px 10px; width: auto; }
+      .trade-buttons button.on { background: #3f5030; border-color: #6f8a54; }
+
       #dragGhost {
         position: fixed; z-index: 20; pointer-events: none; opacity: 0.85;
         border: 1px solid var(--gold); border-radius: 3px; background: #3a3328;
@@ -413,6 +437,28 @@
             Щелчок по вещи в казне — забрать, правая кнопка по вещи в рюкзаке —
             положить. Здесь ничего не пропадёт со смертью, и хранилище общее
             на все твои персонажи.
+          </p>
+        </div>
+
+        <div class="inv-col" id="tradeCol" hidden>
+          <div class="inv-title" id="tradeTitle">Обмен</div>
+          <div class="trade-table">
+            <div class="trade-side">
+              <div class="trade-head" id="tradeMineHead">Твоё</div>
+              <div class="trade-list" id="tradeMine"></div>
+            </div>
+            <div class="trade-side">
+              <div class="trade-head" id="tradeTheirsHead">Его</div>
+              <div class="trade-list" id="tradeTheirs"></div>
+            </div>
+          </div>
+          <div class="trade-buttons">
+            <button id="tradeLock">Подтвердить</button>
+            <button id="tradeCancel">Уйти</button>
+          </div>
+          <p class="inv-hint" id="tradeNote">
+            Правая кнопка по вещи в рюкзаке — положить на стол, щелчок по своей
+            строке — забрать. Любое изменение снимает оба подтверждения.
           </p>
         </div>
 

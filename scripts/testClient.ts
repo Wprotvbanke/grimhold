@@ -10,6 +10,7 @@ import {
   type ClientMessage,
   type CombatEvent,
   type BankMessage,
+  type TradeMessage,
   type InventoryMessage,
   type LifeMessage,
   type LootMessage,
@@ -44,6 +45,8 @@ export class TestClient {
   inventory: InventoryMessage | null = null;
   /** Последнее состояние казны: приходит только пока сундук открыт. */
   bank: BankMessage | null = null;
+  /** Последнее состояние стола обмена. */
+  trade: TradeMessage | null = null;
   readonly errors: string[] = [];
   onSnapshot?: (snapshot: SnapshotMessage) => void;
 
@@ -141,6 +144,9 @@ export class TestClient {
         break;
       case 'bank':
         this.bank = message;
+        break;
+      case 'trade':
+        this.trade = message;
         break;
       case 'itemError':
         this.errors.push(message.message);

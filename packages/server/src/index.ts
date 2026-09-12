@@ -12,10 +12,11 @@ import {
 } from '@grimhold/shared';
 import { dispatch } from './commands/index.js';
 import { canRespawn, emptyOutbox, respawnPlayer, tickWorld } from './gameloop.js';
+import { endTrade, tradeMessages } from './commands/trade.js';
 import { Persistence } from './persistence.js';
 import { Session } from './session.js';
 import { SqliteStorage } from './storage/sqlite.js';
-import { World } from './world.js';
+import { World, type Trade } from './world.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
@@ -116,6 +117,26 @@ wss.on('connection', (socket) => {
         storage.saveBank(player.accountId, player.bank);
         persistence.flushPlayer(player, 'банк');
       }
+      // Стол обмена видят оба — и после завершения тоже: обеим сторонам
+      // надо сказать, чем всё кончилось.
+      if (event.type === 'trade') {
+        const trade = event.trade as Trade;
+        for (const entry of tradeMessages(trade, {
+          closed: Boolean(event.closed),
+          done: Boolean(event.done),
+          note: event.note as string | undefined,
+        })) {
+          sendTo(entry.playerId, entry.message);
+        }
+        // Состоявшийся обмен — операция с ценностями: пишем обоих немедленно,
+        // иначе падение сервера оставит вещь у обоих сразу.
+        if (event.done) {
+          for (const side of [trade.a, trade.b]) {
+            sendTo(side.id, world.inventoryMessage(side));
+            persistence.flushPlayer(side, 'обмен');
+          }
+        }
+      }
       if (event.type === 'itemError') {
         session.send({ t: 'itemError', message: String(event.reason) });
       }
@@ -129,6 +150,16 @@ wss.on('connection', (socket) => {
 
   socket.on('close', () => {
     const id = session.player?.id;
+    // Ушедший из игры уходит и от стола: иначе собеседник остался бы ждать
+    // подтверждения от того, кого уже нет.
+    const trade = session.player?.trade;
+    if (trade) {
+      const name = session.player?.name ?? 'Собеседник';
+      endTrade(trade);
+      for (const entry of tradeMessages(trade, { closed: true, note: `${name} вышел из игры` })) {
+        sendTo(entry.playerId, entry.message);
+      }
+    }
     session.disconnect();
     if (id) sockets.delete(id);
   });

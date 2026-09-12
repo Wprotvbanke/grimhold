@@ -20,7 +20,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -219,6 +219,52 @@ export const BankMoveSchema = z.object({
   y: z.number().int().min(0).max(15),
 });
 
+/**
+ * Прямой обмен между игроками.
+ *
+ * Предложение — это обещание, а не залог: вещи остаются в рюкзаке, и что они
+ * на месте, сервер проверяет в момент сделки. Иначе пришлось бы возвращать
+ * отложенное при каждом разрыве связи, а место под возврат к тому моменту
+ * могло быть уже занято.
+ */
+export const TradeInviteSchema = z.object({
+  t: z.literal('tradeInvite'),
+  targetId: z.string().max(48),
+});
+
+export const TradeRespondSchema = z.object({
+  t: z.literal('tradeRespond'),
+  accept: z.boolean(),
+});
+
+/** Положить вещь из рюкзака на стол. Координаты — клетка рюкзака. */
+export const TradeOfferSchema = z.object({
+  t: z.literal('tradeOffer'),
+  x: z.number().int().min(0).max(15),
+  y: z.number().int().min(0).max(15),
+});
+
+/** Забрать со стола своё предложение под номером. */
+export const TradeWithdrawSchema = z.object({
+  t: z.literal('tradeWithdraw'),
+  index: z.number().int().min(0).max(31),
+});
+
+/**
+ * Подтвердить или снять подтверждение.
+ *
+ * Любое изменение любой из сторон снимает оба: иначе подтвердивший первым
+ * соглашался бы на то, чего не видел.
+ */
+export const TradeLockSchema = z.object({
+  t: z.literal('tradeLock'),
+  locked: z.boolean(),
+});
+
+export const TradeCancelSchema = z.object({
+  t: z.literal('tradeCancel'),
+});
+
 export const ChatSchema = z.object({
   t: z.literal('chat'),
   channel: z.enum(['local', 'global']),
@@ -260,6 +306,12 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   OpenBankSchema,
   CloseBankSchema,
   BankMoveSchema,
+  TradeInviteSchema,
+  TradeRespondSchema,
+  TradeOfferSchema,
+  TradeWithdrawSchema,
+  TradeLockSchema,
+  TradeCancelSchema,
 ]);
 
 export type RegisterMessage = z.infer<typeof RegisterSchema>;
@@ -283,6 +335,12 @@ export type CraftMessage = z.infer<typeof CraftSchema>;
 export type OpenBankMessage = z.infer<typeof OpenBankSchema>;
 export type CloseBankMessage = z.infer<typeof CloseBankSchema>;
 export type BankMoveMessage = z.infer<typeof BankMoveSchema>;
+export type TradeInviteMessage = z.infer<typeof TradeInviteSchema>;
+export type TradeRespondMessage = z.infer<typeof TradeRespondSchema>;
+export type TradeOfferMessage = z.infer<typeof TradeOfferSchema>;
+export type TradeWithdrawMessage = z.infer<typeof TradeWithdrawSchema>;
+export type TradeLockMessage = z.infer<typeof TradeLockSchema>;
+export type TradeCancelMessage = z.infer<typeof TradeCancelSchema>;
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 // ---------- Сервер -> Клиент ----------
@@ -405,6 +463,30 @@ export interface BankMessage {
   grid: Grid;
 }
 
+/** Одна строка на столе обмена. */
+export interface TradeEntry {
+  itemId: string;
+  name: string;
+  count: number;
+}
+
+/**
+ * Состояние стола обмена. Приходит обеим сторонам при любом изменении:
+ * оба должны видеть одно и то же, иначе подтверждение ничего не значит.
+ */
+export interface TradeMessage {
+  t: 'trade';
+  stage: 'invited' | 'open' | 'done' | 'closed';
+  /** Имя собеседника — с кем именно идёт разговор. */
+  partner: string;
+  mine: TradeEntry[];
+  theirs: TradeEntry[];
+  myLock: boolean;
+  theirLock: boolean;
+  /** Чем кончилось: «обмен состоялся», «он отказался» и так далее. */
+  note?: string;
+}
+
 /** Почему действие с вещью не прошло. Клиент показывает это игроку. */
 export interface ItemErrorMessage {
   t: 'itemError';
@@ -492,6 +574,7 @@ export type ServerMessage =
   | LootMessage
   | InventoryMessage
   | BankMessage
+  | TradeMessage
   | ItemErrorMessage
   | ErrorMessage;
 

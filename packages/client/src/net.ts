@@ -2,6 +2,7 @@ import {
   PROTOCOL_VERSION,
   encode,
   type BankMessage,
+  type TradeMessage,
   type ChatBroadcast,
   type CharacterSummary,
   type CombatEvent,
@@ -28,6 +29,7 @@ export interface ConnectionHandlers {
   onLoot?(message: LootMessage): void;
   onInventory?(message: InventoryMessage): void;
   onBank?(message: BankMessage): void;
+  onTrade?(message: TradeMessage): void;
   onItemError?(message: string): void;
   onDisconnected?(): void;
 }
@@ -93,6 +95,9 @@ export class Connection {
           break;
         case 'bank':
           this.handlers.onBank?.(message);
+          break;
+        case 'trade':
+          this.handlers.onTrade?.(message);
           break;
         case 'itemError':
           this.handlers.onItemError?.(message.message);

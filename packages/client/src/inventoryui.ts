@@ -13,6 +13,7 @@ import {
   type Equipment,
   type Grid,
   type BankMessage,
+  type TradeMessage,
   type InventoryMessage,
   type PlacedItem,
 } from '@grimhold/shared';
@@ -49,6 +50,16 @@ export interface InventoryHandlers {
   onDeposit(x: number, y: number): void;
   /** Забрать вещь из казны. */
   onWithdraw(x: number, y: number): void;
+  /** Положить вещь на стол обмена. */
+  onTradeOffer(x: number, y: number): void;
+  /** Снять со стола своё предложение под номером. */
+  onTradeWithdraw(index: number): void;
+  /** Подтвердить сделку или снять подтверждение. */
+  onTradeLock(locked: boolean): void;
+  /** Согласиться сесть за стол или отказаться. */
+  onTradeRespond(accept: boolean): void;
+  /** Уйти от стола. */
+  onTradeCancel(): void;
   /** Закрытие рюкзака возвращает управление игрой. */
   onClose(): void;
 }
@@ -70,6 +81,7 @@ export class InventoryUi {
   private readonly bankCol = el<HTMLDivElement>('bankCol');
   private readonly bankCells = el<HTMLDivElement>('bankCells');
   private readonly bankWrap = el<HTMLDivElement>('bankWrap');
+  private readonly tradeCol = el<HTMLDivElement>('tradeCol');
   private readonly craftCol = el<HTMLDivElement>('craftCol');
   private readonly helpCol = el<HTMLDivElement>('helpCol');
 
@@ -79,6 +91,9 @@ export class InventoryUi {
   private drag: DragState | null = null;
   /** Открыт ли сундук. От этого зависит, кладёт ли правая кнопка вещь в казну. */
   private bankOpen = false;
+  /** Идёт ли обмен. Правая кнопка кладёт на стол, если сундук закрыт. */
+  private tradeOpen = false;
+  private myLock = false;
   private readonly slotNodes = new Map<EquipSlot, HTMLDivElement>();
   private readonly hotbarNodes: HTMLDivElement[] = [];
 
@@ -86,6 +101,15 @@ export class InventoryUi {
     this.buildSlots();
     this.buildHotbar();
     this.wireDrag();
+
+    el<HTMLButtonElement>('tradeLock').addEventListener('click', () => {
+      if (this.tradeOpen) this.handlers.onTradeLock(!this.myLock);
+      else this.handlers.onTradeRespond(true);
+    });
+    el<HTMLButtonElement>('tradeCancel').addEventListener('click', () => {
+      if (this.tradeOpen) this.handlers.onTradeCancel();
+      else this.handlers.onTradeRespond(false);
+    });
 
     this.discard.addEventListener('mouseup', () => {
       if (this.drag) this.handlers.onDrop(this.drag.item.x, this.drag.item.y);
@@ -161,6 +185,71 @@ export class InventoryUi {
     // Сундук открывают из мира, а не из рюкзака: панель поднимаем сами.
     if (!this.open) this.show();
     this.renderBank(message.grid);
+  }
+
+  /**
+   * Стол обмена.
+   *
+   * Как и казна, живёт колонкой в рюкзаке: вещи всё равно берутся оттуда,
+   * а отдельное окно поверх рюкзака пришлось бы двигать мышью.
+   */
+  setTrade(message: TradeMessage): void {
+    const closed = message.stage === 'closed' || message.stage === 'done';
+    this.tradeOpen = message.stage === 'open';
+    this.myLock = message.myLock;
+    this.tradeCol.hidden = closed;
+    this.craftCol.hidden = !closed;
+    this.helpCol.hidden = !closed;
+
+    if (closed) {
+      if (message.note) this.showError(message.note);
+      return;
+    }
+
+    if (!this.open) this.show();
+
+    el<HTMLDivElement>('tradeTitle').textContent = `Обмен · ${message.partner}`;
+    const lock = el<HTMLButtonElement>('tradeLock');
+    const cancel = el<HTMLButtonElement>('tradeCancel');
+
+    // До согласия стола ещё нет: те же две кнопки отвечают на приглашение.
+    if (message.stage === 'invited') {
+      lock.textContent = 'Принять';
+      cancel.textContent = 'Отказаться';
+      lock.classList.remove('on');
+    } else {
+      lock.textContent = message.myLock ? 'Подтверждено' : 'Подтвердить';
+      cancel.textContent = 'Уйти';
+      lock.classList.toggle('on', message.myLock);
+    }
+
+    const mineHead = el<HTMLDivElement>('tradeMineHead');
+    const theirsHead = el<HTMLDivElement>('tradeTheirsHead');
+    mineHead.textContent = message.myLock ? 'Твоё · подтверждено' : 'Твоё';
+    theirsHead.textContent = message.theirLock
+      ? `${message.partner} · подтвердил`
+      : message.partner;
+    mineHead.classList.toggle('locked', message.myLock);
+    theirsHead.classList.toggle('locked', message.theirLock);
+
+    this.fillTradeList(el<HTMLDivElement>('tradeMine'), message.mine, true);
+    this.fillTradeList(el<HTMLDivElement>('tradeTheirs'), message.theirs, false);
+  }
+
+  private fillTradeList(list: HTMLDivElement, entries: TradeMessage['mine'], own: boolean): void {
+    list.classList.toggle('own', own);
+    list.replaceChildren();
+
+    entries.forEach((entry, index) => {
+      const row = document.createElement('div');
+      row.className = 'trade-row';
+      row.textContent = entry.count > 1 ? `${entry.name} ×${entry.count}` : entry.name;
+      if (own) {
+        row.title = 'Щелчок — снять со стола';
+        row.addEventListener('click', () => this.handlers.onTradeWithdraw(index));
+      }
+      list.append(row);
+    });
   }
 
   private renderBank(grid: Grid): void {
@@ -370,7 +459,10 @@ export class InventoryUi {
     // иначе она была бы кнопкой без последствий.
     node.addEventListener('contextmenu', (event) => {
       event.preventDefault();
+      // Открытыми одновременно сундук и стол не бывают, но если случится —
+      // казна вперёд: она безопаснее, и ошибка там ничего не стоит.
       if (this.bankOpen) this.handlers.onDeposit(item.x, item.y);
+      else if (this.tradeOpen) this.handlers.onTradeOffer(item.x, item.y);
     });
 
     node.addEventListener('mousedown', (event) => {
