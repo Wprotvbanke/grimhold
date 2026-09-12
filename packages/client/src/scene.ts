@@ -3,6 +3,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import {
   CHUNK_SIZE,
   ChunkedWorld,
+  dungeonSeed,
+  generateDungeonChunk,
+  isDungeon,
   MOBS,
   RACES,
   SPELLS,
@@ -153,6 +156,13 @@ export interface World3D {
   /** Подгружает и выгружает чанки вокруг наблюдателя. */
   streamChunks(x: number, z: number): void;
   /**
+   * Переехать в другой инстанс: сменить землю под ногами.
+   *
+   * Геометрия не приходит по сети — она выводится из имени инстанса тем же
+   * генератором, что и у сервера. Клиенту достаточно знать, где он.
+   */
+  setInstance(instanceId: string): void;
+  /**
    * Живая часть картинки: ход солнца, мерцание огня, свет в окнах.
    *
    * `worldTime` — время суток из общих часов (0 — полночь). Оно приходит
@@ -178,8 +188,21 @@ export function createScene(): World3D {
   // Обстановка таверны: мебель приезжает отдельными моделями, а не коробками.
   const furniture = populateTavern(scene);
 
-  const terrain = new ChunkedWorld();
+  let instanceId = 'overworld';
+  let underground = false;
+  let terrain = new ChunkedWorld();
   const loaded = new Map<string, THREE.Group>();
+
+  /** Снимает всё построенное: при переезде старая земля не нужна. */
+  function dropChunks(): void {
+    for (const [key, group] of loaded) {
+      const [cx, cz] = key.split(':').map(Number);
+      nodes.forget(cx!, cz!);
+      scene.remove(group);
+      disposeGroup(group);
+    }
+    loaded.clear();
+  }
 
   const api: World3D = {
     scene,
@@ -187,6 +210,22 @@ export function createScene(): World3D {
     loadedChunks: 0,
 
     collidersAt: (x, z) => terrain.collidersAt(x, z),
+
+    setInstance(next) {
+      if (next === instanceId) return;
+
+      instanceId = next;
+      underground = isDungeon(next);
+      // Небо, солнце и туман переключаются вместе с землёй: светило сквозь
+      // потолок — это тени ниоткуда и туман цвета неба, которого не видно.
+      daynight.underground = underground;
+      sky.mesh.visible = !underground;
+      terrain = new ChunkedWorld(
+        underground ? generateDungeonChunk(dungeonSeed(next)) : undefined,
+      );
+      dropChunks();
+      api.loadedChunks = 0;
+    },
 
     streamChunks(x, z) {
       const needed = ChunkedWorld.chunksAround(x, z);
@@ -206,11 +245,16 @@ export function createScene(): World3D {
         if (loaded.has(key)) continue;
 
         const group = buildChunkMesh(scene, terrain.getChunk(cx, cz));
-        // Растительность живёт и выгружается вместе с чанком: раскладка у неё
-        // общая с сервером, а вот меши — забота клиента.
-        group.add(nature.build(cx, cz));
-        // Ресурсные ноды — там же: раскладка общая с сервером, меши наши.
-        group.add(nodes.build(cx, cz));
+        // Под землёй не растёт ни леса, ни руды: раскладка диких земель
+        // к подземелью отношения не имеет, и строить её там — деревья
+        // посреди зала.
+        if (!underground) {
+          // Растительность живёт и выгружается вместе с чанком: раскладка
+          // у неё общая с сервером, а вот меши — забота клиента.
+          group.add(nature.build(cx, cz));
+          // Ресурсные ноды — там же: раскладка общая, меши наши.
+          group.add(nodes.build(cx, cz));
+        }
         loaded.set(key, group);
         break;
       }

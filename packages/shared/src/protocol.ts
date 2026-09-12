@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -279,6 +279,20 @@ export const TradeCancelSchema = z.object({
   t: z.literal('tradeCancel'),
 });
 
+/**
+ * Спуститься в подземелье или выйти из него.
+ *
+ * Клиент шлёт только намерение: стоит ли он у люка, свободно ли место, куда
+ * его поставить — решает сервер.
+ */
+export const EnterDungeonSchema = z.object({
+  t: z.literal('enterDungeon'),
+});
+
+export const LeaveDungeonSchema = z.object({
+  t: z.literal('leaveDungeon'),
+});
+
 export const ChatSchema = z.object({
   t: z.literal('chat'),
   channel: z.enum(['local', 'global']),
@@ -320,6 +334,8 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   OpenBankSchema,
   CloseBankSchema,
   BankMoveSchema,
+  EnterDungeonSchema,
+  LeaveDungeonSchema,
   TradeInviteSchema,
   TradeRespondSchema,
   TradeOfferSchema,
@@ -349,6 +365,8 @@ export type CraftMessage = z.infer<typeof CraftSchema>;
 export type OpenBankMessage = z.infer<typeof OpenBankSchema>;
 export type CloseBankMessage = z.infer<typeof CloseBankSchema>;
 export type BankMoveMessage = z.infer<typeof BankMoveSchema>;
+export type EnterDungeonMessage = z.infer<typeof EnterDungeonSchema>;
+export type LeaveDungeonMessage = z.infer<typeof LeaveDungeonSchema>;
 export type TradeInviteMessage = z.infer<typeof TradeInviteSchema>;
 export type TradeRespondMessage = z.infer<typeof TradeRespondSchema>;
 export type TradeOfferMessage = z.infer<typeof TradeOfferSchema>;
@@ -548,6 +566,19 @@ export interface GatheringMessage {
   note?: string;
 }
 
+/**
+ * Где игрок находится: имя инстанса и куда его поставили.
+ *
+ * Клиенту это нужно, чтобы строить правильную землю под ногами: раскладка
+ * подземелья выводится из зерна в имени инстанса, как дикие земли выводятся
+ * из координат чанка. Поэтому по сети едет имя, а не геометрия.
+ */
+export interface WorldMessage {
+  t: 'world';
+  instanceId: string;
+  spawn: { x: number; y: number; z: number };
+}
+
 /** Почему действие с вещью не прошло. Клиент показывает это игроку. */
 export interface ItemErrorMessage {
   t: 'itemError';
@@ -641,6 +672,7 @@ export type ServerMessage =
   | TradeMessage
   | CraftingMessage
   | GatheringMessage
+  | WorldMessage
   | ItemErrorMessage
   | ErrorMessage;
 

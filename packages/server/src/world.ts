@@ -19,6 +19,9 @@ import {
   findNode,
   type ResourceNode,
   WORLD_CHUNK_RADIUS,
+  dungeonSeed,
+  generateDungeonChunk,
+  isDungeon,
   type Attributes,
   type CharacterClass,
   type EntitySnapshot,
@@ -376,7 +379,12 @@ export class World {
   private terrainOf(instanceId: InstanceId): ChunkedWorld {
     let terrain = this.terrain.get(instanceId);
     if (!terrain) {
-      terrain = new ChunkedWorld();
+      // Земля выводится из имени инстанса: подземелье — из зерна в нём,
+      // всё остальное — обычные дикие земли. Так клиент строит ту же
+      // геометрию, зная только, где он.
+      terrain = new ChunkedWorld(
+        isDungeon(instanceId) ? generateDungeonChunk(dungeonSeed(instanceId)) : undefined,
+      );
       this.terrain.set(instanceId, terrain);
     }
     return terrain;

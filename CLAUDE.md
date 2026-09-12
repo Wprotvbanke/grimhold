@@ -16,8 +16,8 @@ TypeScript и three.js. Meridian 59 как основа, PvP-флаги как �
 `packages/shared` (общий код), `packages/server`, `packages/client`, `scripts`.
 
 **Состояние:** вехи 1–4 закрыты (фундамент, мультиплеер с базой, бой и мобы,
-инвентарь с ремеслом). Веха 5 закрыта: безопасные зоны, флаги и карма
-(группы перенесены в веху 6). Дальше подземелья. Осталось две вехи из семи.
+инвентарь с ремеслом, PvP с зонами и флагами). Идёт веха 6 — подземелья:
+спуск и выход работают, дальше этажи, сундуки, темнота, босс и группы.
 
 Мир при этом уже одет: небо, смена дня и ночи, уличный огонь, лес и постройки
 города — см. разделы ниже.
@@ -34,7 +34,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 |---|---|
 | `npm run check` | тесты и типы всех пакетов и скриптов |
 | `npm test` · `npx vitest run <файл>` | юнит-тесты целиком или один файл |
-| `npm run e2e` · `combat` · `pvp` · `inventory` · `harvest` · `craft` · `bank` · `trade` · `netcode` · `gate` | сквозные проверки |
+| `npm run e2e` · `combat` · `pvp` · `dungeon` · `inventory` · `harvest` · `craft` · `bank` · `trade` · `netcode` · `gate` | сквозные проверки |
 | `npx tsx scripts/prepare-*.ts` | пересобрать ассеты — см. [docs/assets.md](docs/assets.md) |
 | `npx tsx scripts/screenshot.ts` | снимок игры браузером против запущенного `dev` |
 | `npm run roster` | сводка по населению мира |
@@ -66,6 +66,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/hands.md](docs/hands.md) | руки от первого лица: клипы, посадка в кадре, разведение |
 | [docs/npc.md](docs/npc.md) | мобы, погоня, характеристики, жители города |
 | [docs/pvp.md](docs/pvp.md) | кто кого может бить: безопасные зоны, флаги |
+| [docs/dungeon.md](docs/dungeon.md) | подземелья: инстансы, спуск, выход, геометрия |
 | [docs/blocks.md](docs/blocks.md) | ставишь декорацию, трогаешь мир коробками |
 | [docs/buildings.md](docs/buildings.md) | строишь здание, текстуры построек, таверна |
 | [docs/loot.md](docs/loot.md) | предметы, добыча с мобов, рюкзак, вес, экипировка |

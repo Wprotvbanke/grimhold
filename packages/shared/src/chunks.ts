@@ -206,17 +206,29 @@ function wildernessChunk(cx: number, cz: number): LevelBox[] {
  * Одна и та же реализация работает и на сервере, и в предсказании клиента —
  * иначе физика разошлась бы на границах чанков.
  */
+/**
+ * Откуда берётся содержимое чанка.
+ *
+ * Подземелье — это тот же мир с другим `instanceId` и другой землёй под
+ * ногами. Раньше генератор был вшит намертво, и у любого инстанса получались
+ * одни и те же дикие земли; теперь источник подставляется снаружи, а всё
+ * остальное — кэш, коллизии, поток чанков — работает как работало.
+ */
+export type ChunkSource = (cx: number, cz: number) => LevelBox[];
+
 export class ChunkedWorld {
   private readonly chunks = new Map<string, LevelBox[]>();
   /** Кэш массива коллизий для последнего запрошенного набора чанков. */
   private lastKey = '';
   private lastColliders: Aabb[] = [];
 
+  constructor(private readonly source: ChunkSource = generateChunk) {}
+
   getChunk(cx: number, cz: number): LevelBox[] {
     const key = chunkKey(cx, cz);
     let chunk = this.chunks.get(key);
     if (!chunk) {
-      chunk = generateChunk(cx, cz);
+      chunk = this.source(cx, cz);
       this.chunks.set(key, chunk);
     }
     return chunk;

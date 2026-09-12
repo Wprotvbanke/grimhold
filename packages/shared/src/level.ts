@@ -241,6 +241,23 @@ export const BANK = {
   height: 1.1,
 } as const;
 
+/**
+ * Спуск в подземелье — люк на городской площади.
+ *
+ * Стоит в городе намеренно: вход всегда доступен, и бесплатный стартовый набор
+ * делает его доступным даже тому, кто всё потерял. Искать вход по диким землям
+ * значило бы наказывать за неудачу прошлого забега.
+ */
+export const DUNGEON_GATE = {
+  x: 8,
+  z: 2,
+  /** С какого расстояния открывается спуск. */
+  range: 3,
+  width: 2.6,
+  depth: 2.6,
+  height: 0.6,
+} as const;
+
 export const TOWN_BOXES: readonly LevelBox[] = [
   // Мостовая города. Верх на y = 0.
   { kind: 'floor', box: boxFromCenter(0, -0.5, 0, TOWN_SIZE, 1, TOWN_SIZE) },
@@ -270,6 +287,19 @@ export const TOWN_BOXES: readonly LevelBox[] = [
   {
     kind: 'brick',
     box: boxFromCenter(BANK.x, BANK.height / 2, BANK.z, BANK.width, BANK.height, BANK.depth),
+  },
+
+  // Спуск в подземелье: низкий каменный оклад люка.
+  {
+    kind: 'brick',
+    box: boxFromCenter(
+      DUNGEON_GATE.x,
+      DUNGEON_GATE.height / 2,
+      DUNGEON_GATE.z,
+      DUNGEON_GATE.width,
+      DUNGEON_GATE.height,
+      DUNGEON_GATE.depth,
+    ),
   },
 
   // Ступени и помост.

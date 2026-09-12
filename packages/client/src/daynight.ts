@@ -146,6 +146,14 @@ export interface DayNight {
   readonly sun: THREE.DirectionalLight;
   /** Светло ли сейчас снаружи: по этому фонари гаснут и зажигаются. */
   daylight: boolean;
+  /**
+   * Под землёй нет ни солнца, ни неба.
+   *
+   * Пока это лишь тусклый ровный свет, чтобы в зале было что разглядеть:
+   * настоящая темнота с факелами — отдельная механика вехи 6, и включать её
+   * раньше, чем появится переносной огонь, значит отдать игроку чёрный экран.
+   */
+  underground: boolean;
   update(time: number, camera: THREE.Camera): void;
 }
 
@@ -231,8 +239,29 @@ export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
   const api: DayNight = {
     sun,
     daylight: true,
+    underground: false,
 
     update(time, camera) {
+      /**
+       * Под землёй небо и солнце выключены целиком.
+       *
+       * Иначе светило продолжает бить сквозь потолок — тени ложатся ниоткуда,
+       * а туман красится в цвет неба, которого из зала не видно.
+       */
+      if (api.underground) {
+        hemisphere.color.setHex(0x2a2a33);
+        hemisphere.groundColor.setHex(0x15120f);
+        hemisphere.intensity = 0.5;
+        ambient.intensity = 0.22;
+        sun.intensity = 0;
+        fog.color.setHex(0x0b0a0c);
+        fog.near = 6;
+        fog.far = 42;
+        scene.background = fog.color;
+        api.daylight = false;
+        return;
+      }
+
       const palette = paletteAt(time);
       haze.setHex(palette.haze);
 

@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import {
   BANK,
+  DUNGEON_EXIT,
+  DUNGEON_EXIT_RANGE,
+  DUNGEON_GATE,
   FLAG_COLORS,
   DASH_WEIGHT_LIMIT,
   DAY_START,
@@ -216,8 +219,16 @@ const controls = new Controls(renderer.domElement, {
     if (!game || combatUi.dead) return;
     // E — единственная клавиша взаимодействия. У казны она открывает сундук,
     // в лесу бьёт по ноде: игроку не нужно помнить две.
-    if (aimedVault) {
+    if (aimedPlace === 'vault') {
       connection.send({ t: 'openBank' });
+      return;
+    }
+    if (aimedPlace === 'descent') {
+      connection.send({ t: 'enterDungeon' });
+      return;
+    }
+    if (aimedPlace === 'portal') {
+      connection.send({ t: 'leaveDungeon' });
       return;
     }
     if (aimedNode) connection.send({ t: 'harvest', nodeId: aimedNode });
@@ -298,6 +309,21 @@ const connection = new Connection(SERVER_URL, {
     inventoryUi.setCrafting(message);
     if (message.recipeId) game?.hands.beginWork(message.remaining);
     else game?.hands.endWork();
+  },
+  onWorld: (message) => {
+    /**
+     * Переезд между мирами.
+     *
+     * Предсказание надо посадить в новую точку до первого же кадра: иначе
+     * оно секунду тянет игрока обратно, в место, которого в этом инстансе
+     * нет, — и человек видит, как его выдёргивает из зала в пустоту.
+     */
+    world.setInstance(message.instanceId);
+    if (game) {
+      game.predictor.teleport(message.spawn);
+      world.streamChunks(message.spawn.x, message.spawn.z);
+    }
+    undergroundNow = message.instanceId !== 'overworld';
   },
   onGathering: (message) => {
     ui.setGathering(message);
@@ -572,19 +598,15 @@ renderer.setAnimationLoop(() => {
 let aimedNode: string | null = null;
 /** Открыт ли сундук казны. Ответ приходит с сервера, клиент его не решает. */
 let bankOpen = false;
+/** Внизу ли игрок. От этого зависит, что предлагает клавиша взаимодействия. */
+let undergroundNow = false;
+/** На что нацелен игрок из рукотворного: казна, спуск, портал. */
+let aimedPlace: 'vault' | 'descent' | 'portal' | null = null;
 /** Идёт ли разговор об обмене — приглашение или сам стол. */
 let tradeOpen = false;
 /** На каком расстоянии клиент вообще предлагает обмен. Сервер строже. */
 const TRADE_REACH = 5;
 
-/**
- * Смотрит ли игрок на казну прямо сейчас.
- *
- * Ставится там же, где рисуется подсказка: клавиша обязана делать ровно то,
- * что обещано на экране, иначе `E` то открывает сундук, то рубит дерево
- * в зависимости от того, чего игрок не видит.
- */
-let aimedVault = false;
 /** Что у игрока в основной руке. Приходит вместе с состоянием вещей. */
 let mainHandItem: string | null = null;
 /** Хватает ли лёгкости на рывок. Считается по тому же правилу, что у сервера. */
@@ -651,11 +673,30 @@ function updateNodeHint(x: number, z: number): void {
 
   // Казна перебивает ноду: в городе нод нет, а подсказка нужна одна.
   // Дальность считаем от ног, как сервер, а направление — по лучу из глаза.
-  aimedVault =
-    Math.hypot(x - BANK.x, z - BANK.z) <= BANK.range && aimRay.intersectsBox(bankBox);
-  if (aimedVault) {
+  /**
+   * Рукотворные цели идут перед нодами: под землёй нод нет вовсе, а в городе
+   * их нет тем более. Подсказка при этом одна — и клавиша одна.
+   */
+  aimedPlace = null;
+  if (undergroundNow) {
+    if (Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) <= DUNGEON_EXIT_RANGE) {
+      aimedPlace = 'portal';
+      aimedNode = null;
+      ui.setNodeHint('Портал наверх', null, true, 'выйти');
+      return;
+    }
+  } else if (
+    Math.hypot(x - BANK.x, z - BANK.z) <= BANK.range &&
+    aimRay.intersectsBox(bankBox)
+  ) {
+    aimedPlace = 'vault';
     aimedNode = null;
     ui.setNodeHint('Казна', null, true, 'открыть');
+    return;
+  } else if (Math.hypot(x - DUNGEON_GATE.x, z - DUNGEON_GATE.z) <= DUNGEON_GATE.range) {
+    aimedPlace = 'descent';
+    aimedNode = null;
+    ui.setNodeHint('Спуск в подземелье', null, true, 'спуститься');
     return;
   }
 

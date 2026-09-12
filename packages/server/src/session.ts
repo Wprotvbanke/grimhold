@@ -154,6 +154,13 @@ export class Session {
       character: toSummary(character),
       spawn: { x: character.x, y: character.y, z: character.z },
     });
+    // Где он оказался. Персонаж мог выйти из игры внизу, и земля под ногами
+    // должна собраться сразу правильная, а не «город, а потом разберёмся».
+    this.send({
+      t: 'world',
+      instanceId: player.instanceId,
+      spawn: { x: character.x, y: character.y, z: character.z },
+    });
     // Рюкзак нужен игроку сразу, а не после первого изменения.
     this.send(this.world.inventoryMessage(player));
     console.log(`[мир] вошёл ${character.name}`);

@@ -13,6 +13,7 @@ export * from './mobs.js';
 export * from './movement.js';
 export * from './level.js';
 export * from './chunks.js';
+export * from './dungeon.js';
 export * from './daytime.js';
 export * from './nature.js';
 export * from './nodes.js';

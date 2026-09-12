@@ -74,6 +74,24 @@ export class Predictor {
     this.modifiers = modifiers;
   }
 
+  /**
+   * Игрока перенесли: подземелье, воскрешение, портал.
+   *
+   * Это не поправка, а разрыв. Непринятые вводы относятся к прежнему месту
+   * и переигрывать их здесь бессмысленно, а видимая ошибка обязана обнулиться:
+   * иначе она секунду тянет картинку туда, откуда игрока уже забрали.
+   */
+  teleport(to: { x: number; y: number; z: number }): void {
+    this.state.pos = { ...to };
+    this.state.vel = { x: 0, y: 0, z: 0 };
+    this.pending.length = 0;
+    this.sentAt.clear();
+    this.error.x = 0;
+    this.error.y = 0;
+    this.error.z = 0;
+    this.stats.correction = 0;
+  }
+
   /** Расовая скорость: множители состояния накладываются поверх неё. */
   private readonly baseSpeedScale: number;
 

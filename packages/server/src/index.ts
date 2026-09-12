@@ -146,6 +146,17 @@ wss.on('connection', (socket) => {
       if (event.type === 'gathering') {
         session.send(gatheringMessage(player, event.note as string | undefined));
       }
+      // Игрок сменил инстанс: клиенту надо перестроить землю под ногами.
+      if (event.type === 'world') {
+        session.send({
+          t: 'world',
+          instanceId: player.instanceId,
+          spawn: { ...player.state.pos },
+        });
+      }
+      if (event.type === 'criticalSave') {
+        persistence.flushPlayer(player, 'переход между мирами');
+      }
       if (event.type === 'itemError') {
         session.send({ t: 'itemError', message: String(event.reason) });
       }

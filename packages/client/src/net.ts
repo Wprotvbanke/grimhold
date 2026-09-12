@@ -4,6 +4,7 @@ import {
   type BankMessage,
   type CraftingMessage,
   type GatheringMessage,
+  type WorldMessage,
   type TradeMessage,
   type ChatBroadcast,
   type CharacterSummary,
@@ -34,6 +35,7 @@ export interface ConnectionHandlers {
   onTrade?(message: TradeMessage): void;
   onCrafting?(message: CraftingMessage): void;
   onGathering?(message: GatheringMessage): void;
+  onWorld?(message: WorldMessage): void;
   onItemError?(message: string): void;
   onDisconnected?(): void;
 }
@@ -108,6 +110,9 @@ export class Connection {
           break;
         case 'gathering':
           this.handlers.onGathering?.(message);
+          break;
+        case 'world':
+          this.handlers.onWorld?.(message);
           break;
         case 'itemError':
           this.handlers.onItemError?.(message.message);

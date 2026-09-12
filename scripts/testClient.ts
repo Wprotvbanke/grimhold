@@ -12,6 +12,7 @@ import {
   type BankMessage,
   type CraftingMessage,
   type GatheringMessage,
+  type WorldMessage,
   type TradeMessage,
   type InventoryMessage,
   type LifeMessage,
@@ -53,6 +54,8 @@ export class TestClient {
   crafting: CraftingMessage | null = null;
   /** Последнее состояние добычи: начало и конец работы у ноды. */
   gathering: GatheringMessage | null = null;
+  /** Где игрок находится: имя инстанса и точка появления. */
+  world: WorldMessage | null = null;
   readonly errors: string[] = [];
   onSnapshot?: (snapshot: SnapshotMessage) => void;
 
@@ -159,6 +162,9 @@ export class TestClient {
         break;
       case 'gathering':
         this.gathering = message;
+        break;
+      case 'world':
+        this.world = message;
         break;
       case 'itemError':
         this.errors.push(message.message);
