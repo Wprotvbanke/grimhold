@@ -57,8 +57,8 @@ npm run dev         # сервер ws://localhost:8080, клиент http://loca
 Убедиться можно только сборкой с нуля, в стороне от рабочей папки:
 
 ```bash
-git clone <адрес> /tmp/grimhold-проверка
-cd /tmp/grimhold-проверка && npm ci && npm run check
+git clone <адрес> /tmp/grimhold-verify
+cd /tmp/grimhold-verify && npm ci && npm run check
 npm run build -w @grimhold/client
 ```
 
