@@ -18,20 +18,58 @@ import type { LevelBox } from './level.js';
 
 export const DUNGEON_PREFIX = 'dungeon.';
 
+/**
+ * Где подземелье лежит в координатах.
+ *
+ * Далеко от мира — и это **не косметика, а способ починить целый класс ошибок**.
+ * Все проверки места в игре считаются по координатам: безопасная зона города,
+ * расстояние до казны, показ городских построек. Инстанс изолирует сущности,
+ * но не координаты, и подземелье, стоящее на месте города, наследует его
+ * правила: внизу нельзя было драться, казна открывалась из зала, а посреди
+ * подземелья стояла таверна.
+ *
+ * Уведённое подземелье делает все эти проверки верными само собой — включая
+ * те, которых ещё не написали. Полагаться на расстояние надёжнее, чем на
+ * память: забытую проверку не видно, она просто тихо работает неправильно.
+ *
+ * Мир занимает ±224 метра, так что пересечься не с чем.
+ */
+export const DUNGEON_ORIGIN_CHUNK = 128;
+
 /** Сколько чанков в ширину занимает этаж. Один — этого хватает первому срезу. */
 export const DUNGEON_RADIUS = 0;
+
+/** Середина этажа в мировых координатах. */
+export const DUNGEON_CENTER = {
+  x: DUNGEON_ORIGIN_CHUNK * CHUNK_SIZE,
+  z: DUNGEON_ORIGIN_CHUNK * CHUNK_SIZE,
+};
 
 /** Высота зала: в потолок упираться не должно, но и неба тут нет. */
 const HALL_HEIGHT = 4;
 const WALL = 1;
 
 /** Где игрок появляется, войдя вниз. */
-export const DUNGEON_ENTRY = { x: 0, y: 0.1, z: 24 };
+export const DUNGEON_ENTRY = {
+  x: DUNGEON_CENTER.x,
+  y: 0.1,
+  z: DUNGEON_CENTER.z + 24,
+};
 
-/** Портал наружу. Стоит в дальнем конце: выход надо заслужить дорогой. */
-export const DUNGEON_EXIT = { x: 0, z: -24 };
-/** С какого расстояния портал откликается. */
-export const DUNGEON_EXIT_RANGE = 2.6;
+/** Портал наружу. Стоит у дальней стены: выход надо заслужить дорогой. */
+export const DUNGEON_EXIT = {
+  x: DUNGEON_CENTER.x,
+  z: DUNGEON_CENTER.z - 27,
+};
+/**
+ * С какого расстояния портал откликается.
+ *
+ * Чуть шире самой метки: она скромная, и упираться в неё носом, чтобы нажать,
+ * было бы наказанием за то, что её нашли.
+ */
+export const DUNGEON_EXIT_RANGE = 3.4;
+/** Радиус кольца на полу — по нему же клиент ставит свет. */
+export const DUNGEON_EXIT_MARK = 2.2;
 
 export function isDungeon(instanceId: string): boolean {
   return instanceId.startsWith(DUNGEON_PREFIX);
@@ -68,9 +106,11 @@ export function generateDungeonChunk(seed: number): ChunkSource {
   return (cx: number, cz: number): LevelBox[] => {
     // Этаж один и конечен: за его пределами ничего нет, и туда не выйти —
     // край закрыт стеной, как и край мира.
-    if (Math.abs(cx) > DUNGEON_RADIUS || Math.abs(cz) > DUNGEON_RADIUS) return [];
+    const dx = cx - DUNGEON_ORIGIN_CHUNK;
+    const dz = cz - DUNGEON_ORIGIN_CHUNK;
+    if (Math.abs(dx) > DUNGEON_RADIUS || Math.abs(dz) > DUNGEON_RADIUS) return [];
 
-    const random = mulberry32(seed ^ ((cx * 73856093) ^ (cz * 19349663)));
+    const random = mulberry32(seed ^ ((dx * 73856093) ^ (dz * 19349663)));
     const { x: originX, z: originZ } = chunkCenter(cx, cz);
     const half = CHUNK_SIZE / 2;
     const boxes: LevelBox[] = [];
@@ -117,6 +157,55 @@ export function generateDungeonChunk(seed: number): ChunkSource {
       });
     }
 
+    addExitMark(boxes);
     return boxes;
   };
+}
+
+/**
+ * Метка выхода: ниша в стене и кольцо на полу.
+ *
+ * Портал был невидим — просто точка на полу, — и игрок в первом же забеге
+ * заблудился в собственном зале. Ниша нужна не для красоты: стена, которая
+ * расступается, читается как выход издалека, а кольцо говорит, где именно
+ * встать. Свет над кольцом ставит клиент.
+ */
+function addExitMark(boxes: LevelBox[]): void {
+  const { x, z } = DUNGEON_EXIT;
+
+  // Ниша: пол и потолок уходят за линию стены, образуя карман.
+  boxes.push({
+    kind: 'brick',
+    box: boxFromCenter(x, -0.5, z - 2.5, DUNGEON_EXIT_MARK * 3, 1, 6),
+  });
+  boxes.push({
+    kind: 'brick',
+    box: boxFromCenter(x, HALL_HEIGHT + 0.5, z - 2.5, DUNGEON_EXIT_MARK * 3, 1, 6),
+  });
+  // Боковины кармана, чтобы он был карманом, а не дырой в стене.
+  for (const side of [-1, 1]) {
+    boxes.push({
+      kind: 'brick',
+      box: boxFromCenter(
+        x + side * DUNGEON_EXIT_MARK * 1.5,
+        HALL_HEIGHT / 2,
+        z - 2.5,
+        WALL,
+        HALL_HEIGHT,
+        6,
+      ),
+    });
+  }
+  // Задняя стенка кармана: сквозь портал не проходят, в него входят.
+  boxes.push({
+    kind: 'brick',
+    box: boxFromCenter(x, HALL_HEIGHT / 2, z - 5.5, DUNGEON_EXIT_MARK * 3, HALL_HEIGHT, WALL),
+  });
+
+  // Кольцо на полу. Низкое и непреграждающее: по нему ходят, а не спотыкаются.
+  boxes.push({
+    kind: 'ruin',
+    noCollide: true,
+    box: boxFromCenter(x, 0.06, z, DUNGEON_EXIT_MARK * 2, 0.12, DUNGEON_EXIT_MARK * 2),
+  });
 }

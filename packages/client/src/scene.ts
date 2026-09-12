@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import {
   CHUNK_SIZE,
   ChunkedWorld,
+  DUNGEON_EXIT,
   dungeonSeed,
   generateDungeonChunk,
   isDungeon,
@@ -188,6 +189,17 @@ export function createScene(): World3D {
   // Обстановка таверны: мебель приезжает отдельными моделями, а не коробками.
   const furniture = populateTavern(scene);
 
+  /**
+   * Свет над кольцом портала.
+   *
+   * Заводится сразу и навсегда, гасится силой, а не удалением: число источников
+   * вшито в шейдер, и добавить лампу посреди игры — значит пересобрать все
+   * материалы сцены разом. На этом уже спотыкались, см. performance.md.
+   */
+  const portalLight = new THREE.PointLight(0x7fc9d8, 0, 16, 2);
+  portalLight.position.set(DUNGEON_EXIT.x, 2.2, DUNGEON_EXIT.z);
+  scene.add(portalLight);
+
   let instanceId = 'overworld';
   let underground = false;
   let terrain = new ChunkedWorld();
@@ -220,6 +232,8 @@ export function createScene(): World3D {
       // потолок — это тени ниоткуда и туман цвета неба, которого не видно.
       daynight.underground = underground;
       sky.mesh.visible = !underground;
+      // Портал светится только там, где он есть.
+      portalLight.intensity = underground ? 9 : 0;
       terrain = new ChunkedWorld(
         underground ? generateDungeonChunk(dungeonSeed(next)) : undefined,
       );

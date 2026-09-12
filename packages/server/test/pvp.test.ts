@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DUNGEON_ENTRY,
   KARMA_PER_KILL,
   KARMA_PER_MOB,
   PURPLE_SECONDS,
@@ -246,5 +247,27 @@ describe('заклинания слушаются тех же правил', () 
       hit = stepProjectile(bolt, 1 / 20, [caster, target], []) !== null;
     }
     expect(target.vitals.health).toBeLessThan(fullVitals(target.attributes).health);
+  });
+});
+
+describe('под землёй правила города не действуют', () => {
+  /**
+   * По замыслу вехи 6 в подземелье все всем враги. Пока зал стоял на месте
+   * города, он наследовал его безопасную зону — драться внизу было нельзя,
+   * и заметить это можно было только спустившись.
+   */
+  it('в подземелье удар проходит', () => {
+    const attacker = makeCombatant({
+      id: 'a',
+      instanceId: 'dungeon.7f3a',
+      pos: { x: DUNGEON_ENTRY.x, y: 0, z: DUNGEON_ENTRY.z },
+    });
+    const target = makeCombatant({
+      id: 'b',
+      instanceId: 'dungeon.7f3a',
+      pos: { x: DUNGEON_ENTRY.x + 1, y: 0, z: DUNGEON_ENTRY.z },
+    });
+
+    expect(mayAttack(attacker, target).ok).toBe(true);
   });
 });

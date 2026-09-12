@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { isSafe } from '../src/level.js';
 import {
+  DUNGEON_CENTER,
   DUNGEON_ENTRY,
   DUNGEON_EXIT,
+  DUNGEON_ORIGIN_CHUNK,
   dungeonInstance,
   dungeonSeed,
   generateDungeonChunk,
@@ -30,19 +33,19 @@ describe('имя инстанса несёт зерно', () => {
 
 describe('этаж', () => {
   it('одно зерно — один и тот же зал', () => {
-    const a = generateDungeonChunk(42)(0, 0);
-    const b = generateDungeonChunk(42)(0, 0);
+    const a = generateDungeonChunk(42)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
+    const b = generateDungeonChunk(42)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 
   it('разные зёрна — разные залы', () => {
-    const a = generateDungeonChunk(1)(0, 0);
-    const b = generateDungeonChunk(2)(0, 0);
+    const a = generateDungeonChunk(1)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
+    const b = generateDungeonChunk(2)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
     expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
   });
 
   it('есть пол под ногами и потолок над головой', () => {
-    const boxes = generateDungeonChunk(7)(0, 0);
+    const boxes = generateDungeonChunk(7)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
     const floor = boxes.find((entry) => entry.box.maxY <= 0.01 && entry.box.minY < 0);
     const ceiling = boxes.find((entry) => entry.box.minY > 3);
 
@@ -51,7 +54,7 @@ describe('этаж', () => {
   });
 
   it('вход и портал стоят на полу этажа', () => {
-    const boxes = generateDungeonChunk(7)(0, 0);
+    const boxes = generateDungeonChunk(7)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
     const floor = boxes.find((entry) => entry.box.maxY <= 0.01 && entry.box.minY < 0)!;
 
     for (const point of [DUNGEON_ENTRY, DUNGEON_EXIT]) {
@@ -63,7 +66,39 @@ describe('этаж', () => {
   });
 
   it('за краем этажа пусто — туда не выйти', () => {
-    expect(generateDungeonChunk(7)(2, 0)).toHaveLength(0);
-    expect(generateDungeonChunk(7)(0, -3)).toHaveLength(0);
+    expect(generateDungeonChunk(7)(DUNGEON_ORIGIN_CHUNK + 2, DUNGEON_ORIGIN_CHUNK)).toHaveLength(0);
+    expect(generateDungeonChunk(7)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK - 3)).toHaveLength(0);
+  });
+});
+
+describe('подземелье стоит в стороне от мира', () => {
+  /**
+   * Это не косметика. Все проверки места в игре считаются по координатам, и
+   * подземелье на месте города наследовало его правила: внизу нельзя было
+   * драться, казна открывалась из зала, посреди подземелья стояла таверна.
+   */
+  it('вход и портал вне безопасной зоны города', () => {
+    expect(isSafe(DUNGEON_ENTRY.x, DUNGEON_ENTRY.z)).toBe(false);
+    expect(isSafe(DUNGEON_EXIT.x, DUNGEON_EXIT.z)).toBe(false);
+  });
+
+  it('и далеко от нуля, где стоит весь город', () => {
+    // Мир занимает ±224 метра: пересечься не с чем.
+    expect(Math.hypot(DUNGEON_CENTER.x, DUNGEON_CENTER.z)).toBeGreaterThan(1000);
+  });
+
+  it('зал строится вокруг своего начала, а не вокруг нуля', () => {
+    const source = generateDungeonChunk(7);
+    expect(source(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK).length).toBeGreaterThan(0);
+    expect(source(0, 0)).toHaveLength(0);
+  });
+
+  it('у портала есть метка, через которую можно пройти', () => {
+    const boxes = generateDungeonChunk(7)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
+    const ring = boxes.find((entry) => entry.noCollide);
+
+    expect(ring).toBeDefined();
+    expect(ring!.box.minX).toBeLessThan(DUNGEON_EXIT.x);
+    expect(ring!.box.maxX).toBeGreaterThan(DUNGEON_EXIT.x);
   });
 });
