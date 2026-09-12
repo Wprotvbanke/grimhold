@@ -88,6 +88,10 @@ wss.on('connection', (socket) => {
         const message = respawnPlayer(player);
         persistence.flushPlayer(player, 'воскрешение');
         session.send(message);
+      } else if (!player.combat.alive) {
+        // Срок лежания ещё не вышел — просьбу запоминаем, а не выбрасываем:
+        // поднимет игрока тик, как только время придёт.
+        player.wantsRespawn = true;
       }
       return;
     }

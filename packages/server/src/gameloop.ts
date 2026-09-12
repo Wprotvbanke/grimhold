@@ -93,6 +93,21 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     if (!combat.alive) {
       player.deadFor += dt;
       player.pendingInputs.length = 0;
+
+      /**
+       * Ранняя просьба о воскрешении не пропадает, а ждёт срока.
+       *
+       * Раньше сервер её молча отбрасывал, если игрок нажимал кнопку в первые
+       * три секунды. Клиент к тому моменту уже убирал экран смерти, и человек
+       * оставался ходить мёртвым: невидимый для других, без возможности бить
+       * и с нулём здоровья. Отказ без ответа — худший вид отказа.
+       */
+      if (player.wantsRespawn && canRespawn(player)) {
+        player.wantsRespawn = false;
+        outbox.life.push({ playerId: player.id, message: respawnPlayer(player) });
+        // Воскрешение меняет положение и здоровье — пишем немедленно.
+        outbox.criticalSaves.push(player);
+      }
       continue;
     }
 
@@ -459,6 +474,9 @@ export function respawnPlayer(player: Player): LifeMessage {
   player.combat.wardRemaining = 0;
   player.combat.slowRemaining = 0;
   player.deadFor = 0;
+  // Просьбу гасим здесь, в одном месте на оба пути воскрешения: иначе
+  // оставшийся флаг поднял бы игрока сразу после следующей смерти.
+  player.wantsRespawn = false;
 
   player.state.pos = { ...SPAWN_POINT };
   player.state.vel = { x: 0, y: 0, z: 0 };

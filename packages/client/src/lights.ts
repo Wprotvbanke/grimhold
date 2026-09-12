@@ -99,6 +99,15 @@ const TAVERN_LIGHTS: { x: number; y: number; z: number; color: number; intensity
  */
 const LIGHT_POOL = 6;
 
+/**
+ * Фора тому, кто уже держит лампу.
+ *
+ * Новый претендент должен быть заметно нужнее, а не на волос — иначе набор
+ * дёргается от малейшего шага в сторону. Треть разницы глаз не замечает,
+ * а мигание прекращает.
+ */
+const KEEP_BONUS = 1.35;
+
 export interface WorldLights {
   /**
    * Весь огонь одной группой.
@@ -160,6 +169,9 @@ export function createLights(scene: THREE.Scene): WorldLights {
   const lit: { flame: Flame; power: number; weight: number }[] = [];
   let litCount = 0;
   const eye = new THREE.Vector3();
+  /** Кто держал лампу в прошлом кадре — за это полагается фора. */
+  let holding = new Set<Flame>();
+  let nextHolding = new Set<Flame>();
 
   return {
     group,
@@ -177,30 +189,55 @@ export function createLights(scene: THREE.Scene): WorldLights {
           0.12 * Math.sin(elapsed * 11 + flame.phase) +
           0.06 * Math.sin(elapsed * 23.5 + flame.phase * 2.3);
 
-        const power = flame.base * flicker * (flame.outdoor ? outdoorScale : 1);
+        // Ровная яркость, без мерцания: по ней решается, кому достанется
+        // лампа. Само мерцание идёт поверх, уже выбранному источнику.
+        const steady = flame.base * (flame.outdoor ? outdoorScale : 1);
+        const power = steady * flicker;
 
         if (flame.glow) {
-          flame.glow.visible = power > 0.01;
+          flame.glow.visible = steady > 0.01;
           flame.glow.scale.setScalar(0.9 + flicker * 0.18);
         }
-        if (power <= 0.01) continue;
+        if (steady <= 0.01) continue;
 
-        // Вес: чем ярче и ближе, тем нужнее. Квадрат расстояния — потому что
-        // так же спадает и сам свет.
         const dx = eye.x - flame.x;
         const dy = eye.y - flame.y;
         const dz = eye.z - flame.z;
-        const distance = Math.max(0.25, dx * dx + dy * dy + dz * dz);
+        const squared = dx * dx + dy * dy + dz * dz;
 
+        // Дальше своей дальности затухания источник не освещает ничего.
+        // Такие в отбор не пускаем вовсе: иначе они занимают лампы, ничего
+        // не давая, и вытесняют те, что реально видно.
+        if (squared > flame.range * flame.range) continue;
+
+        /**
+         * Вес: чем ярче и ближе, тем нужнее. Квадрат расстояния — потому что
+         * так же спадает и сам свет.
+         *
+         * Считается по **ровной** яркости и с форой тому, кто держал лампу
+         * в прошлом кадре. Без этого два огня на схожем расстоянии менялись
+         * местами по десять раз в секунду, и издали это выглядело как
+         * включение и выключение фонарика. Вблизи ближний побеждал с запасом,
+         * и мигание пропадало — отсюда и было ощущение, что дело в дистанции.
+         */
         const slot = (lit[litCount] ??= { flame, power: 0, weight: 0 });
         litCount++;
         slot.flame = flame;
         slot.power = power;
-        slot.weight = power / distance;
+        slot.weight = (steady / Math.max(0.25, squared)) * (holding.has(flame) ? KEEP_BONUS : 1);
       }
 
       // Сортируем только заполненную часть: хвост — это записи прошлого кадра.
       const chosenLights = lit.slice(0, litCount).sort((a, b) => b.weight - a.weight);
+
+      // Меняем местами наборы, а не создаём новый: это кадр за кадром.
+      nextHolding.clear();
+      for (let i = 0; i < pool.length && i < chosenLights.length; i++) {
+        nextHolding.add(chosenLights[i]!.flame);
+      }
+      const swap = holding;
+      holding = nextHolding;
+      nextHolding = swap;
 
       for (const [index, light] of pool.entries()) {
         const chosen = chosenLights[index];

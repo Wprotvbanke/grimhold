@@ -34,8 +34,15 @@ export class CombatUi {
   constructor(onRespawn: () => void) {
     // Захват мыши браузер отдаёт только по жесту пользователя, поэтому
     // запрашиваем его прямо в обработчике клика, а не когда придёт ответ сервера.
-    el<HTMLButtonElement>('respawnBtn').addEventListener('click', () => {
-      this.deathScreen.hidden = true;
+    //
+    // А вот экран смерти по клику НЕ убираем — только по подтверждению
+    // с сервера. Когда убирали сразу, ранний клик оставлял игрока ходить
+    // мёртвым: сервер держит срок лежания, для остальных ты невидим, бить
+    // нельзя, здоровье ноль, а экрана, объясняющего это, уже нет.
+    const button = el<HTMLButtonElement>('respawnBtn');
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      button.textContent = 'Поднимаешься…';
       onRespawn();
     });
   }
@@ -133,6 +140,11 @@ export class CombatUi {
     el<HTMLParagraphElement>('deathCause').textContent = killerName
       ? `Тебя убил: ${killerName}`
       : 'Ты не пережил этот день';
+
+    const button = el<HTMLButtonElement>('respawnBtn');
+    button.disabled = false;
+    button.textContent = 'Вернуться в город';
+
     this.deathScreen.hidden = false;
   }
 

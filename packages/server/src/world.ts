@@ -96,6 +96,14 @@ export interface Player {
   lastIntent: { forward: number; right: number; jump: boolean };
   /** Секунд до следующего удара по ресурсной ноде. */
   harvestCooldown: number;
+  /**
+   * Игрок попросил воскресить, но срок лежания ещё не вышел.
+   *
+   * Просьба не отбрасывается, а ждёт своего часа: раньше ранний клик пропадал
+   * молча, клиент к тому времени уже убирал экран смерти, и игрок оставался
+   * ходить мёртвым — его не видели, он не мог бить, здоровье оставалось нулём.
+   */
+  wantsRespawn: boolean;
   /** Помечается при любом изменении; персистентность использует это для батча. */
   dirty: boolean;
 
@@ -190,6 +198,7 @@ export class World {
       lastProcessedSeq: -1,
       lastIntent: { forward: 0, right: 0, jump: false },
       harvestCooldown: 0,
+      wantsRespawn: false,
       dirty: true,
       attributes,
       maxima,
