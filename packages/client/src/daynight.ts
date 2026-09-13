@@ -202,6 +202,52 @@ export function paletteAt(time: number): Palette {
 /** Насколько далеко от игрока светило: карта теней строится вокруг него. */
 const SUN_DISTANCE = 60;
 
+/**
+ * Охват карты теней в метрах и её разрешение.
+ *
+ * Лежат здесь, а не только в настройках светила, потому что по ним считается
+ * размер пикселя тени — а к нему приходится **выравнивать** положение карты.
+ */
+const SHADOW_SPAN = 64;
+const SHADOW_MAP = 1024;
+
+/**
+ * Размер одного пикселя теневой карты в метрах — шесть с половиной сантиметров.
+ *
+ * Карта ездит за игроком, и если возить её за точной позицией, сетка пикселей
+ * сдвигается на доли пикселя каждый кадр: края всех теней в кадре начинают
+ * мелко ползти и мерцать. Стоя этого не видно — картинка не движется, — а
+ * в движении читается как дрожь всего мира, хотя дрожат только тени.
+ *
+ * Лечится тем, что карта переставляется **шагами в целый пиксель**: тогда
+ * тень и её пиксельная сетка едут вместе, и края стоят как влитые.
+ */
+const SHADOW_TEXEL = SHADOW_SPAN / SHADOW_MAP;
+
+/**
+ * Ставит карту теней на сетку её же пикселей.
+ *
+ * Округление идёт **в плоскости, перпендикулярной лучу света**, а не по осям
+ * мира: сетка пикселей лежит именно там, и округление по миру её не поймает.
+ * `frame` — вспомогательная рамка с ориентацией светила.
+ */
+export function snapToShadowGrid(
+  frame: THREE.Object3D,
+  towardSun: THREE.Vector3,
+  wanted: THREE.Vector3,
+  out: THREE.Vector3,
+): void {
+  frame.position.set(0, 0, 0);
+  frame.lookAt(towardSun);
+  frame.updateMatrixWorld(true);
+
+  out.copy(wanted);
+  frame.worldToLocal(out);
+  out.x = Math.round(out.x / SHADOW_TEXEL) * SHADOW_TEXEL;
+  out.y = Math.round(out.y / SHADOW_TEXEL) * SHADOW_TEXEL;
+  frame.localToWorld(out);
+}
+
 export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
   const hemisphere = new THREE.HemisphereLight(0xbcd0e8, 0x6b5f4c, 1.6);
   scene.add(hemisphere);
@@ -216,13 +262,13 @@ export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
    * лучше и стоят вчетверо дешевле.
    */
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 130;
-  sun.shadow.camera.left = -32;
-  sun.shadow.camera.right = 32;
-  sun.shadow.camera.top = 32;
-  sun.shadow.camera.bottom = -32;
+  sun.shadow.camera.left = -SHADOW_SPAN / 2;
+  sun.shadow.camera.right = SHADOW_SPAN / 2;
+  sun.shadow.camera.top = SHADOW_SPAN / 2;
+  sun.shadow.camera.bottom = -SHADOW_SPAN / 2;
   sun.shadow.bias = -0.0008;
   scene.add(sun);
   scene.add(sun.target);
@@ -235,6 +281,11 @@ export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
   scene.background = new THREE.Color(0x5a6b82);
 
   const haze = new THREE.Color();
+  // Рамка и точка для выравнивания тени: считается каждый кадр, поэтому
+  // временные объекты заводятся один раз.
+  const shadowFrame = new THREE.Object3D();
+  const shadowAnchor = new THREE.Vector3();
+  const towardSun = new THREE.Vector3();
 
   const api: DayNight = {
     sun,
@@ -310,9 +361,17 @@ export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
       // это был фриз на полсекунды. Ночью тени и так почти не видно: светило
       // слабое, и они растворяются сами.
 
-      // Карту теней возим за игроком: она покрывает сотню метров, а мир больше.
-      sun.target.position.copy(camera.position);
-      sun.position.add(camera.position);
+      /**
+       * Карту теней возим за игроком: она покрывает шесть десятков метров,
+       * а мир больше. Но ставим её не в точную позицию игрока, а на ближайший
+       * узел её собственной пиксельной сетки — иначе края теней ползут
+       * на доли пикселя каждый кадр, и в движении дрожит вся картинка.
+       */
+      towardSun.copy(sun.position);
+      snapToShadowGrid(shadowFrame, towardSun, camera.position, shadowAnchor);
+
+      sun.target.position.copy(shadowAnchor);
+      sun.position.add(shadowAnchor);
 
       api.daylight = height > 0;
       sky.update(time, haze, camera);

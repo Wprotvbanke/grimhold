@@ -51,6 +51,7 @@ import {
   createBagMesh,
   createProjectileMesh,
   createScene,
+  setAnisotropy,
   mobTagHeight,
   tagHeight,
 } from './scene.js';
@@ -85,6 +86,10 @@ renderer.toneMappingExposure = 1.15;
 // Руки рисуются вторым проходом поверх мира, поэтому очисткой управляем сами.
 renderer.autoClear = false;
 document.body.appendChild(renderer.domElement);
+
+// Потолок анизотропии — у видеокарты свой; берём её предел, а не число
+// из головы: на ходу слабая фильтрация земли читается как дрожь картинки.
+setAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
 const world = createScene();
 const scene = world.scene;

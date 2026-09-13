@@ -46,6 +46,29 @@ export const TILE_METERS = 2.5;
 const textures = new THREE.TextureLoader();
 
 /**
+ * Анизотропная фильтрация: сколько выборок делать на вытянутых по перспективе
+ * пикселях.
+ *
+ * Земля уходит к горизонту почти плашмя, и без этого её тайлы в движении
+ * рябят — на ходу это читается как дрожь всей картинки, хотя дрожит только
+ * фильтрация. Число берётся у видеокарты (`renderer.capabilities`), потому что
+ * потолок у разных машин разный, а платить за выборки сверх её предела нельзя.
+ *
+ * Значение проставляется и уже загруженным картам: материалы заводятся при
+ * первом обращении к модулю, а рендерер появляется позже.
+ */
+let anisotropy = 4;
+const loaded: THREE.Texture[] = [];
+
+export function setAnisotropy(limit: number): void {
+  anisotropy = Math.max(1, Math.floor(limit));
+  for (const texture of loaded) {
+    texture.anisotropy = anisotropy;
+    texture.needsUpdate = true;
+  }
+}
+
+/**
  * Текстура поверхности. Повтор задаётся не здесь, а развёрткой каждой коробки:
  * одна общая текстура на все поверхности этого вида, иначе на каждый камень
  * пришлось бы заводить свою копию.
@@ -69,8 +92,10 @@ function surface(file: string, tint = 0xffffff, pixelated = false): THREE.MeshSt
   map.wrapS = THREE.RepeatWrapping;
   map.wrapT = THREE.RepeatWrapping;
   map.colorSpace = THREE.SRGBColorSpace;
-  // Анизотропия нужна полу: без неё земля вдали превращается в кашу.
-  map.anisotropy = 4;
+  // Анизотропия нужна полу: без неё земля вдали превращается в кашу,
+  // а в движении рябит.
+  map.anisotropy = anisotropy;
+  loaded.push(map);
 
   return new THREE.MeshStandardMaterial({ map, color: tint, roughness: 0.95 });
 }
