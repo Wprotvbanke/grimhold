@@ -82,7 +82,23 @@ export class Predictor {
     acting: false,
     slowFactor: 1,
     weightFactor: 1,
+    exhausted: false,
   };
+
+  /**
+   * Осталось ли чем бежать.
+   *
+   * Клиент не считает стамину сам — она приходит с сервером, — но **условие
+   * бега** обязан проверять тот же, что и сервер. Пока он этого не делал,
+   * пустая стамина давала разлад в каждом кадре: клиент предсказывал бег,
+   * сервер отвечал шагом, реконсилиация тянула назад, и руки мигали между
+   * бегом и ходьбой.
+   */
+  private stamina = 1;
+
+  setStamina(value: number): void {
+    this.stamina = value;
+  }
 
   setModifiers(modifiers: Omit<SpeedModifiers, 'sprinting'>): void {
     this.modifiers = modifiers;
@@ -231,6 +247,8 @@ export class Predictor {
       input.sprint &&
       !this.modifiers.blocking &&
       !this.modifiers.acting &&
+      !this.modifiers.exhausted &&
+      this.stamina > 0 &&
       (input.forward !== 0 || input.right !== 0);
 
     const factor = movementSpeedFactor({ ...this.modifiers, sprinting });

@@ -3,6 +3,7 @@ import {
   BLOCK_SPEED_SCALE,
   DODGE_COOLDOWN,
   DODGE_SPEED_SCALE,
+  EXHAUSTED_SPEED_SCALE,
   SPRINT_SPEED_SCALE,
   attributesFor,
   canDashAtWeight,
@@ -29,11 +30,25 @@ const NEUTRAL: SpeedModifiers = {
   acting: false,
   slowFactor: 1,
   weightFactor: 1,
+  exhausted: false,
 };
 
 describe('множитель скорости', () => {
   it('в покое равен единице', () => {
     expect(movementSpeedFactor(NEUTRAL)).toBe(1);
+  });
+
+  it('выдохшийся идёт медленнее обычного', () => {
+    expect(movementSpeedFactor({ ...NEUTRAL, exhausted: true })).toBeCloseTo(
+      EXHAUSTED_SPEED_SCALE,
+      5,
+    );
+  });
+
+  it('и бежать не может, даже если держит Shift', () => {
+    // Иначе усталость отменялась бы простым «не отпускай кнопку».
+    const running = movementSpeedFactor({ ...NEUTRAL, exhausted: true, sprinting: true });
+    expect(running).toBeCloseTo(EXHAUSTED_SPEED_SCALE, 5);
   });
 
   it('бег ускоряет', () => {

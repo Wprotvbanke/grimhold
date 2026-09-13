@@ -119,6 +119,7 @@ export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: stri
     blocking: false,
     invulnerable: 0,
     sinceStaminaUse: 0,
+    exhaustedFor: 0,
     wardArmor: 0,
     wardRemaining: 0,
     slowFactor: 1,

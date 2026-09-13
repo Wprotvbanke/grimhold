@@ -140,7 +140,25 @@ export interface SpeedModifiers {
   slowFactor: number;
   /** Штраф за перегруз: 1, если вес в пределах. */
   weightFactor: number;
+  /** Выдохся: стамина кончилась на бегу, и ноги ещё не отошли. */
+  exhausted: boolean;
 }
+
+/**
+ * Усталость после бега досуха.
+ *
+ * Кончившаяся стамина раньше просто отменяла бег, и переход был обрывом:
+ * скорость менялась в один кадр, а игрок продолжал держать Shift. Клиент при
+ * этом не знал про стамину вовсе и продолжал предсказывать бег — сервер
+ * отказывал, предсказание откатывалось, и руки дёргались между бегом и шагом
+ * по десять раз в секунду.
+ *
+ * Усталость чинит и то и другое. Это не только заплатка на анимацию: выдохся —
+ * значит уязвим, и в бою это цена за то, что бежал без оглядки.
+ */
+export const EXHAUSTION_SECONDS = 3;
+/** Насколько медленнее обычного шага идёт выдохшийся. */
+export const EXHAUSTED_SPEED_SCALE = 0.6;
 
 export function movementSpeedFactor(modifiers: SpeedModifiers): number {
   let scale = modifiers.slowFactor * modifiers.weightFactor;
@@ -151,6 +169,8 @@ export function movementSpeedFactor(modifiers: SpeedModifiers): number {
   if (modifiers.gliding) return scale * DODGE_GLIDE_SCALE;
 
   if (modifiers.blocking) scale *= BLOCK_SPEED_SCALE;
+  // Выдохшийся не бежит и идёт медленнее обычного: ноги отходят три секунды.
+  else if (modifiers.exhausted) scale *= EXHAUSTED_SPEED_SCALE;
   else if (modifiers.sprinting) scale *= SPRINT_SPEED_SCALE;
 
   if (modifiers.acting) scale *= 0.35;

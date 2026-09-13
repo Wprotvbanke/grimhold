@@ -758,7 +758,17 @@ renderer.setAnimationLoop((frameTime: number) => {
       acting: Boolean(authoritative?.action) && authoritative?.action !== 'dodge',
       slowFactor: 1,
       weightFactor: weightFactor,
+      // Выдохшийся не бежит. Клиент обязан знать это сам: иначе он предсказывает
+      // бег, которого сервер уже не даёт, и картинка дёргается.
+      exhausted: (authoritative?.exhausted ?? 0) > 0,
     });
+    game.predictor.setStamina(authoritative?.stamina ?? 1);
+
+    // Сказать вслух, почему ноги вдруг не слушаются. Один раз на усталость:
+    // повторять каждый кадр — значит забить чат.
+    const winded = (authoritative?.exhausted ?? 0) > 0;
+    if (winded && !wasWinded) ui.system('Ты выдохся — надо отдышаться');
+    wasWinded = winded;
 
     for (const input of game.predictor.collectInputs(dt, controls.sample())) {
       connection.send({ t: 'input', ...input });
@@ -912,6 +922,8 @@ let tradeOpen = false;
 /** На каком расстоянии клиент вообще предлагает обмен. Сервер строже. */
 const TRADE_REACH = 5;
 
+/** Был ли игрок выдохшимся в прошлом кадре — по этому говорится о усталости. */
+let wasWinded = false;
 /** Что у игрока в основной руке. Приходит вместе с состоянием вещей. */
 let mainHandItem: string | null = null;
 /** Что во второй: по нему выбирается вид своего света — факел или «Светоч». */

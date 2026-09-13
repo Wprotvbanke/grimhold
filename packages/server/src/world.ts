@@ -457,6 +457,7 @@ export class World {
         blocking: false,
         invulnerable: 0,
         sinceStaminaUse: 99,
+        exhaustedFor: 0,
         wardArmor: 0,
         wardRemaining: 0,
         slowFactor: 1,
@@ -751,6 +752,7 @@ export class World {
       action: combat.action?.kind,
       phase: combat.action?.phase,
       invulnerable: round(combat.invulnerable),
+      exhausted: round(combat.exhaustedFor),
       // Светит либо заклинание, либо факел — клиенту важно только «сколько
       // ещё». Берём больший остаток: гасить свет, пока горит второй источник,
       // было бы враньём.

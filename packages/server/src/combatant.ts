@@ -51,6 +51,13 @@ export interface Combatant {
   invulnerable: number;
   /** Секунд с последней траты стамины: до паузы она не восстанавливается. */
   sinceStaminaUse: number;
+  /**
+   * Сколько ещё отходить после бега досуха.
+   *
+   * Живёт у бойца, а не у игрока: выдохнуться может любой, кто тратит стамину,
+   * и правило одно на всех.
+   */
+  exhaustedFor: number;
   /** Временная прибавка к броне от заклинания и сколько ей осталось. */
   wardArmor: number;
   wardRemaining: number;
@@ -148,6 +155,7 @@ export function tickCombatant(
   combatant.dodgeCooldown = Math.max(0, combatant.dodgeCooldown - dt);
   combatant.swingCooldown = Math.max(0, combatant.swingCooldown - dt);
   combatant.sinceStaminaUse += dt;
+  combatant.exhaustedFor = Math.max(0, combatant.exhaustedFor - dt);
 
   let enteredActive = false;
   let finished = false;

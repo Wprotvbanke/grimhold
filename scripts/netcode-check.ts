@@ -49,7 +49,9 @@ async function main(): Promise<void> {
       acting: Boolean(snapshot.self.action) && snapshot.self.action !== 'dodge',
       slowFactor: 1,
       weightFactor: 1,
+      exhausted: snapshot.self.exhausted > 0,
     });
+    predictor.setStamina(snapshot.self.stamina);
 
     // Снапшот тоже идёт до нас половину RTT.
     setTimeout(() => {

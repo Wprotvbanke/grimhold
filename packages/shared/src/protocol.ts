@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 22;
+export const PROTOCOL_VERSION = 23;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -720,6 +720,14 @@ export interface SelfState {
   phase?: ActionPhase;
   /** Оставшаяся неуязвимость рывка, секунды. */
   invulnerable: number;
+  /**
+   * Сколько ещё отходить после бега досуха, секунды.
+   *
+   * Клиенту это нужно **до** того, как он нарисует шаг: без этого он
+   * предсказывает бег, которого сервер уже не даёт, и картинка дёргается
+   * между бегом и ходьбой.
+   */
+  exhausted: number;
   /**
    * Сколько ещё светит то, что светит, — секунды.
    *

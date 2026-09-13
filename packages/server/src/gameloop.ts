@@ -9,6 +9,7 @@ import {
   SPAWN_POINT,
   SPELLS,
   SPRINT_DRAIN,
+  EXHAUSTION_SECONDS,
   addItem,
   createBackpack,
   createSack,
@@ -367,12 +368,14 @@ function applyMovement(world: World, player: Player, dt: number): void {
   const batch = player.pendingInputs.splice(0, MAX_INPUTS_PER_TICK);
 
   for (const input of batch) {
-    // Бежать можно только налегке и не в бою: щит, замах и пустая стамина
-    // отменяют бег. Те же условия проверяет клиент у себя.
+    // Бежать можно только налегке и не в бою: щит, замах, пустая стамина
+    // и усталость отменяют бег. Те же условия проверяет клиент у себя.
+    const exhausted = combat.exhaustedFor > 0;
     const sprinting =
       input.sprint &&
       !combat.blocking &&
       !combat.action &&
+      !exhausted &&
       combat.vitals.stamina > 0 &&
       (input.forward !== 0 || input.right !== 0);
 
@@ -382,6 +385,7 @@ function applyMovement(world: World, player: Player, dt: number): void {
       gliding,
       sprinting,
       acting: Boolean(combat.action) && combat.action?.kind !== 'dodge',
+      exhausted,
       slowFactor: speedMultiplier(combat),
       weightFactor: weightSpeedFactor(player.attributes, player.carriedWeight),
     });
@@ -393,6 +397,10 @@ function applyMovement(world: World, player: Player, dt: number): void {
     if (sprinting) {
       combat.vitals.stamina = Math.max(0, combat.vitals.stamina - SPRINT_DRAIN * input.dt);
       combat.sinceStaminaUse = 0;
+
+      // Добежал досуха — выдохся. Три секунды медленного шага: и передышка
+      // перед следующим рывком, и цена за то, что бежал без оглядки.
+      if (combat.vitals.stamina <= 0) combat.exhaustedFor = EXHAUSTION_SECONDS;
     }
 
     player.lastProcessedSeq = input.seq;
