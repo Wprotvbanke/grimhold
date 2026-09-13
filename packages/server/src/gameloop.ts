@@ -31,7 +31,8 @@ import {
 import { craftingMessage, finishCraft } from './commands/craft.js';
 import { flagFor, forgiveForMob } from './pvp.js';
 import { OVERWORLD } from './world.js';
-import { finishHarvest, gatheringMessage, outOfReach } from './commands/harvest.js';
+import { finishHarvest, workMessage, outOfReach } from './commands/harvest.js';
+import { finishChest } from './commands/chest.js';
 import {
   applyDodgeImpulse,
   resolveCone,
@@ -120,26 +121,31 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     combat.karma = Math.max(0, combat.karma - KARMA_DECAY_PER_SECOND * dt);
     combat.purpleFor = Math.max(0, combat.purpleFor - dt);
 
-    // Добыча идёт, пока игрок стоит у ноды: отошёл — работа брошена.
-    // Это и есть способ передумать, отдельной кнопки отмены не нужно.
-    if (player.gathering) {
-      if (outOfReach(player, player.gathering.node)) {
-        player.gathering = null;
+    // Работа идёт, пока игрок стоит у цели: отошёл — брошена. Это и есть
+    // способ передумать, отдельной кнопки отмены не нужно. Одинаково для
+    // дерева и для сундука: механика одна.
+    if (player.work) {
+      if (outOfReach(player, player.work)) {
+        player.work = null;
         outbox.gathering.push({
           playerId: player.id,
-          message: gatheringMessage(player, 'Ты отошёл'),
+          message: workMessage(player, 'Ты отошёл'),
         });
       } else {
-        player.gathering.remaining -= dt;
-        if (player.gathering.remaining <= 0) {
-          for (const event of finishHarvest(player, world)) {
+        player.work.remaining -= dt;
+        if (player.work.remaining <= 0) {
+          const done =
+            player.work.kind === 'chest' ? finishChest(player, world) : finishHarvest(player, world);
+
+          for (const event of done) {
             if (event.type === 'gathering') {
               outbox.gathering.push({
                 playerId: player.id,
-                message: gatheringMessage(player, event.note as string | undefined),
+                message: workMessage(player, event.note as string | undefined),
               });
             }
             if (event.type === 'inventory') outbox.inventory.push(player);
+            if (event.type === 'criticalSave') outbox.criticalSaves.push(player);
             if (event.type === 'loot') {
               outbox.loot.push({ playerId: player.id, message: event.message as LootMessage });
             }
@@ -173,12 +179,12 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
       player.deadFor += dt;
       player.pendingInputs.length = 0;
 
-      // Смерть прерывает и добычу: заряд ноды цел, в руках пусто.
-      if (player.gathering) {
-        player.gathering = null;
+      // Смерть прерывает работу: заряд ноды цел, замок не поддался.
+      if (player.work) {
+        player.work = null;
         outbox.gathering.push({
           playerId: player.id,
-          message: gatheringMessage(player, 'Работа брошена'),
+          message: workMessage(player, 'Работа брошена'),
         });
       }
 

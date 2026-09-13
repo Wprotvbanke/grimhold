@@ -93,6 +93,9 @@ const MATERIALS: Record<LevelBox['kind'], THREE.Material> = {
   brick: surface('buildings/wall_brick_stone_center.png', 0x9fa0a2, true),
   plank: surface('buildings/floor_wood_planks.png', 0xa08a70, true),
   shingle: surface('buildings/roof_clay_grey_center.png', 0x8d99a6, true),
+  // Сундук окован и темнее половиц: в полумраке зала его надо узнавать
+  // с десяти шагов, иначе искать добычу приходится наощупь.
+  chest: surface('planks.jpg', 0x6b4f33),
 };
 
 /**
@@ -103,6 +106,8 @@ const MATERIALS: Record<LevelBox['kind'], THREE.Material> = {
  * поедет, брус окажется поперёк.
  */
 const TILES: Partial<Record<LevelBox['kind'], [number, number]>> = {
+  // Сундук маленький: доска в метр растянулась бы на весь бок одной полосой.
+  chest: [0.55, 0.55],
   frame: [2.2, 4.4],
   brick: [1.3, 2.6],
   plank: [1.6, 1.6],

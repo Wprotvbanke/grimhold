@@ -13,7 +13,7 @@ import {
 import { dispatch } from './commands/index.js';
 import { canRespawn, emptyOutbox, respawnPlayer, tickWorld } from './gameloop.js';
 import { craftingMessage } from './commands/craft.js';
-import { gatheringMessage } from './commands/harvest.js';
+import { workMessage } from './commands/harvest.js';
 import { endTrade, tradeMessages } from './commands/trade.js';
 import { Persistence } from './persistence.js';
 import { Session } from './session.js';
@@ -144,7 +144,7 @@ wss.on('connection', (socket) => {
         session.send(craftingMessage(player, event.note as string | undefined));
       }
       if (event.type === 'gathering') {
-        session.send(gatheringMessage(player, event.note as string | undefined));
+        session.send(workMessage(player, event.note as string | undefined));
       }
       // Игрок сменил инстанс: клиенту надо перестроить землю под ногами.
       if (event.type === 'world') {
@@ -231,6 +231,7 @@ setInterval(() => {
       entities: world.snapshotFor(player),
       projectiles: world.projectilesFor(player),
       depletedNodes: world.depletedNodesFor(player),
+      openedChests: world.openedChestsIn(player.instanceId),
     });
   }
 }, TICK_MS);

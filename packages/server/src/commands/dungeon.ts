@@ -48,7 +48,15 @@ export const handleEnterDungeon: CommandHandler<EnterDungeonMessage> = (ctx) => 
   counter += 1;
   const seed = (Date.now() ^ (counter * 2654435761)) >>> 0;
 
-  ctx.world.moveToInstance(player, dungeonInstance(seed), DUNGEON_ENTRY);
+  const instanceId = dungeonInstance(seed);
+  ctx.world.moveToInstance(player, instanceId, DUNGEON_ENTRY);
+
+  // Зал заселяется в момент заведения, а не при первом шаге: игрок должен
+  // встретить обитателей там, где они стояли до него, а не там, куда он успел
+  // дойти. Состав берётся из зерна — своя компания на каждый забег.
+  const count = ctx.world.populateDungeon(instanceId);
+  console.log(`[подземелье] ${player.name} спустился в ${instanceId}, обитателей: ${count}`);
+
   return [{ type: 'world' }, { type: 'criticalSave' }];
 };
 

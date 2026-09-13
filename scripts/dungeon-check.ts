@@ -9,16 +9,21 @@
  *   2. у люка спуск открывается, и игрок оказывается в своём инстансе;
  *   3. оставшийся наверху его не видит — и он не видит наверх;
  *   4. **вещи едут с игроком**: зашёл со своим, вышел со своим;
- *   5. портал возвращает в город, и это переживает перезаход.
+ *   5. в зале есть обитатели и сундуки, и сундук отдаёт добычу один раз;
+ *   6. портал возвращает в город, и это переживает перезаход.
  */
 import {
+  CHEST_RANGE,
+  CHEST_TIME,
+  dungeonChests,
+  dungeonSeed,
   DUNGEON_ENTRY,
   DUNGEON_EXIT,
   DUNGEON_GATE,
   SPAWN_POINT,
   isDungeon,
 } from '@grimhold/shared';
-import { carried, walkTo } from './fieldwork.js';
+import { carried, reviveIfDead, walkTo } from './fieldwork.js';
 import { TestClient, sleep } from './testClient.js';
 
 const failures: string[] = [];
@@ -33,6 +38,21 @@ function check(condition: boolean, description: string, detail = ''): void {
 
 function where(client: TestClient): string {
   return client.world?.instanceId ?? 'неизвестно';
+}
+
+/**
+ * Поднимает павшего и возвращает вниз. Возвращает true, если пришлось.
+ *
+ * Воскрешение всегда возвращает в город — значит, забег прерван, и спуск
+ * начинается сначала, с новым залом и новым зерном.
+ */
+async function descendAgain(client: TestClient): Promise<boolean> {
+  if (!(await reviveIfDead(client))) return false;
+
+  await walkTo(client, DUNGEON_GATE, 1.2);
+  client.send({ t: 'enterDungeon' });
+  await sleep(700);
+  return true;
 }
 
 async function main(): Promise<void> {
@@ -81,7 +101,53 @@ async function main(): Promise<void> {
   console.log('\n4. Вещи поехали с игроком');
   check(carried(digger, 'bandage') === bandages, 'рюкзак при нём', `бинтов ${carried(digger, 'bandage')}`);
 
-  console.log('\n5. Портал возвращает наверх');
+  console.log('\n5. В зале есть чем поживиться и от кого получить');
+  const dwellers = digger.latestSnapshot?.entities.filter((e) => e.kind === 'mob') ?? [];
+  check(dwellers.length > 0, 'зал заселён', `видно обитателей: ${dwellers.length}`);
+
+  const chests = dungeonChests(dungeonSeed(where(digger)));
+  check(chests.length > 0, 'сундуки разложены', `их ${chests.length}`);
+
+  // Ближайший к игроку: идти до дальнего дольше, а проверяем мы не выносливость.
+  const here = digger.latestSnapshot!.self;
+  const chest = [...chests].sort(
+    (a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z),
+  )[0]!;
+
+  const toChest = await walkTo(digger, chest, 1.4);
+  check(toChest <= CHEST_RANGE, 'дошли до сундука', `${toChest.toFixed(2)} м`);
+
+  digger.loot.length = 0;
+  digger.errors.length = 0;
+  digger.send({ t: 'openChest', chestId: chest.id });
+  await sleep(400);
+  check(
+    digger.gathering?.nodeId === chest.id,
+    'пошла полоса вскрытия',
+    String(digger.gathering?.nodeId),
+  );
+
+  // Ждём дольше самой работы: замок должен поддаться сам, без второго нажатия.
+  await sleep(CHEST_TIME * 1000 + 900);
+  check(digger.loot.length > 0, 'сундук отдал добычу', digger.loot[0]?.from ?? 'молчит');
+
+  if (digger.latestSnapshot?.self.alive) {
+    digger.errors.length = 0;
+    digger.send({ t: 'openChest', chestId: chest.id });
+    await sleep(400);
+    check(digger.errors.length > 0, 'второй раз тот же сундук пуст', digger.errors[0] ?? 'молча');
+  } else {
+    console.log('  ···  второй заход не проверен: копателя убили у сундука');
+  }
+
+  console.log('\n6. Портал возвращает наверх');
+  // Зал обитаем, и до портала можно не дойти — это и есть подземелье.
+  // Проверяем правило выхода, а не выносливость: павшего поднимаем и спускаем
+  // заново, иначе проверка будет падать через раз по совершенно честной причине.
+  if (await descendAgain(digger)) {
+    console.log('  ···  копателя убили в зале — спустился заново');
+  }
+
   digger.errors.length = 0;
   digger.send({ t: 'leaveDungeon' });
   await sleep(300);
@@ -102,7 +168,7 @@ async function main(): Promise<void> {
   );
   check(carried(digger, 'bandage') === bandages, 'вещи вынесены');
 
-  console.log('\n6. Перезаход помнит, где ты');
+  console.log('\n7. Перезаход помнит, где ты');
   digger.close();
   await sleep(700);
 

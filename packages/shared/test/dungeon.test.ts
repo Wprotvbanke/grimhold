@@ -6,8 +6,12 @@ import {
   DUNGEON_ENTRY,
   DUNGEON_EXIT,
   DUNGEON_ORIGIN_CHUNK,
+  dungeonChests,
   dungeonInstance,
   dungeonSeed,
+  findChest,
+  hallLayout,
+  mobsForDungeon,
   generateDungeonChunk,
   isDungeon,
 } from '../src/dungeon.js';
@@ -132,5 +136,77 @@ describe('поток чанков не знает о границах мира',
         box.maxY <= DUNGEON_ENTRY.y + 0.01,
     );
     expect(under).toBeDefined();
+  });
+});
+
+describe('сундуки', () => {
+  /**
+   * Сундук — единственная причина спускаться, и раскладку его клиент строит
+   * сам, из зерна. Разойдись она с серверной — игрок вскрывал бы воздух,
+   * а настоящий сундук стоял бы там, где его не видно.
+   */
+  it('одно зерно — те же сундуки', () => {
+    expect(dungeonChests(2024)).toEqual(dungeonChests(2024));
+  });
+
+  it('разные зёрна — разная раскладка', () => {
+    expect(dungeonChests(1)).not.toEqual(dungeonChests(2));
+  });
+
+  it('их несколько, и каждый со своим именем', () => {
+    const chests = dungeonChests(99);
+    expect(chests.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(chests.map((chest) => chest.id)).size).toBe(chests.length);
+  });
+
+  it('находятся по имени, как ноды', () => {
+    const chest = dungeonChests(5)[0]!;
+    expect(findChest(5, chest.id)).toEqual(chest);
+    expect(findChest(5, 'chest.999')).toBeNull();
+  });
+
+  it('ни один не стоит внутри колонны', () => {
+    // Раскладка потому и считается одним потоком чисел: два независимых
+    // генератора рано или поздно ставят сундук в колонну, и вскрыть его
+    // становится неоткуда.
+    for (const seed of [1, 17, 2024, 777777]) {
+      const { pillars, chests } = hallLayout(seed);
+      for (const chest of chests) {
+        for (const pillar of pillars) {
+          expect(Math.hypot(chest.x - pillar.x, chest.z - pillar.z)).toBeGreaterThan(
+            pillar.width / 2,
+          );
+        }
+      }
+    }
+  });
+
+  it('не лежат ни у входа, ни у портала', () => {
+    // Добычу надо унести, а не подобрать с порога: весь риск между этими
+    // двумя точками.
+    for (const chest of dungeonChests(31337)) {
+      expect(Math.hypot(chest.x - DUNGEON_ENTRY.x, chest.z - DUNGEON_ENTRY.z)).toBeGreaterThan(8);
+      expect(Math.hypot(chest.x - DUNGEON_EXIT.x, chest.z - DUNGEON_EXIT.z)).toBeGreaterThan(6);
+    }
+  });
+
+  it('стоят в зале телесно — в них упираются', () => {
+    const boxes = generateDungeonChunk(2024)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
+    const crates = boxes.filter((entry) => entry.kind === 'chest');
+    expect(crates).toHaveLength(dungeonChests(2024).length);
+    expect(crates.every((entry) => !entry.noCollide)).toBe(true);
+  });
+});
+
+describe('обитатели зала', () => {
+  it('состав выводится из зерна и не пуст', () => {
+    expect(mobsForDungeon(8)).toEqual(mobsForDungeon(8));
+    expect(mobsForDungeon(8).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('наверху такой компании не собрать', () => {
+    // Крыс и волков внизу нет: спуск обязан быть страшнее прогулки за околицу.
+    expect(mobsForDungeon(12)).not.toContain('rat');
+    expect(mobsForDungeon(12)).not.toContain('wolf');
   });
 });

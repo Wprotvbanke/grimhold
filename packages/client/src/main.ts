@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import {
   BANK,
+  CHEST_HEIGHT,
+  CHEST_RANGE,
+  CHEST_SIZE,
+  dungeonChests,
+  dungeonSeed,
+  isDungeon,
   DUNGEON_EXIT,
   DUNGEON_EXIT_RANGE,
   DUNGEON_GATE,
@@ -231,6 +237,10 @@ const controls = new Controls(renderer.domElement, {
       connection.send({ t: 'leaveDungeon' });
       return;
     }
+    if (aimedChest) {
+      connection.send({ t: 'openChest', chestId: aimedChest });
+      return;
+    }
     if (aimedNode) connection.send({ t: 'harvest', nodeId: aimedNode });
   },
   onTrade: () => {
@@ -324,6 +334,10 @@ const connection = new Connection(SERVER_URL, {
       world.streamChunks(message.spawn.x, message.spawn.z);
     }
     undergroundNow = message.instanceId !== 'overworld';
+    dungeonSeedNow = isDungeon(message.instanceId) ? dungeonSeed(message.instanceId) : null;
+    // Чужой забег к новому отношения не имеет: список вскрытого придёт заново.
+    openedChests.clear();
+    aimedChest = null;
   },
   onGathering: (message) => {
     ui.setGathering(message);
@@ -602,6 +616,17 @@ let bankOpen = false;
 let undergroundNow = false;
 /** На что нацелен игрок из рукотворного: казна, спуск, портал. */
 let aimedPlace: 'vault' | 'descent' | 'portal' | null = null;
+/** Сундук под перекрестием и его имя — по нему уходит намерение вскрыть. */
+let aimedChest: string | null = null;
+/**
+ * Зерно текущего подземелья.
+ *
+ * Клиент раскладывает сундуки тем же генератором, что и сервер, — по сети
+ * едет только имя инстанса. Наверху зерна нет: там и сундуков нет.
+ */
+let dungeonSeedNow: number | null = null;
+/** Вскрытые сундуки: приходят снапшотом, как выработанные ноды. */
+const openedChests = new Set<string>();
 /** Идёт ли разговор об обмене — приглашение или сам стол. */
 let tradeOpen = false;
 /** На каком расстоянии клиент вообще предлагает обмен. Сервер строже. */
@@ -659,6 +684,7 @@ function playerInFront(): EntitySnapshot | null {
  */
 const aimRay = new THREE.Ray();
 const aimDirection = new THREE.Vector3();
+const aimPoint = new THREE.Vector3();
 const bankBox = new THREE.Box3(
   new THREE.Vector3(BANK.x - BANK.width / 2, 0, BANK.z - BANK.depth / 2),
   new THREE.Vector3(BANK.x + BANK.width / 2, BANK.height, BANK.z + BANK.depth / 2),
@@ -666,6 +692,41 @@ const bankBox = new THREE.Box3(
 /** Запас к коробке казны: целятся в сундук, а не в его рёбра. */
 const BANK_AIM_PADDING = 0.3;
 bankBox.expandByScalar(BANK_AIM_PADDING);
+
+/**
+ * Сундук под перекрестием.
+ *
+ * Считается лучом, как и ноды: подсказка обязана идти за прицелом, а не
+ * за близостью корпуса — иначе она загорается у сундука за спиной.
+ */
+const chestBox = new THREE.Box3();
+/** Запас к коробке: целятся в сундук, а не в его рёбра. */
+const CHEST_AIM_PADDING = 0.3;
+
+function chestAt(x: number, z: number): { id: string } | null {
+  if (dungeonSeedNow === null) return null;
+
+  let best: { id: string } | null = null;
+  let bestHit = Infinity;
+
+  for (const chest of dungeonChests(dungeonSeedNow)) {
+    // Дальность считаем по горизонтали от ног, как сервер: подсказка не
+    // должна обещать то, в чём он откажет.
+    if (Math.hypot(chest.x - x, chest.z - z) > CHEST_RANGE) continue;
+
+    const half = CHEST_SIZE / 2 + CHEST_AIM_PADDING;
+    chestBox.min.set(chest.x - half, 0, chest.z - half);
+    chestBox.max.set(chest.x + half, CHEST_HEIGHT + CHEST_AIM_PADDING, chest.z + half);
+    if (!aimRay.intersectBox(chestBox, aimPoint)) continue;
+
+    const hit = aimPoint.distanceToSquared(aimRay.origin);
+    if (hit >= bestHit) continue;
+    best = chest;
+    bestHit = hit;
+  }
+
+  return best;
+}
 
 function updateNodeHint(x: number, z: number): void {
   camera.getWorldDirection(aimDirection);
@@ -678,11 +739,26 @@ function updateNodeHint(x: number, z: number): void {
    * их нет тем более. Подсказка при этом одна — и клавиша одна.
    */
   aimedPlace = null;
+  aimedChest = null;
   if (undergroundNow) {
     if (Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) <= DUNGEON_EXIT_RANGE) {
       aimedPlace = 'portal';
       aimedNode = null;
       ui.setNodeHint('Портал наверх', null, true, 'выйти');
+      return;
+    }
+
+    const chest = chestAt(x, z);
+    if (chest) {
+      aimedNode = null;
+      const empty = openedChests.has(chest.id);
+      // Вскрытый сундук молчит про добычу, но остаётся виден: пустой сундук
+      // на полу — это след того, что здесь уже кто-то был.
+      if (empty) ui.setNodeHint('Сундук — пусто', null, false);
+      else {
+        aimedChest = chest.id;
+        ui.setNodeHint('Сундук', null, true, 'вскрыть');
+      }
       return;
     }
   } else if (
@@ -727,6 +803,10 @@ function consumeSnapshot(now: number): void {
   // Выработанные ноды: клиент знает про них всё, кроме того, взяли ли с них
   // урожай, — это единственное, что приходит с сервера.
   world.nodes.setDepleted(snapshot.depletedNodes);
+  // Вскрытые сундуки — те же исключения, что и выработанные ноды: всё
+  // остальное про них клиент считает сам.
+  openedChests.clear();
+  for (const id of snapshot.openedChests) openedChests.add(id);
 
   const seen = new Set<string>();
   for (const entity of snapshot.entities) {

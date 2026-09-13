@@ -1,4 +1,5 @@
 import { CHUNK_SIZE, chunkCenter, type ChunkSource } from './chunks.js';
+import type { LootEntry, MobId } from './mobs.js';
 import { boxFromCenter } from './math.js';
 import type { LevelBox } from './level.js';
 
@@ -143,7 +144,6 @@ export function generateDungeonChunk(seed: number): ChunkSource {
     const dz = cz - DUNGEON_ORIGIN_CHUNK;
     if (Math.abs(dx) > DUNGEON_RADIUS || Math.abs(dz) > DUNGEON_RADIUS) return [];
 
-    const random = mulberry32(seed ^ ((dx * 73856093) ^ (dz * 19349663)));
     const { x: originX, z: originZ } = chunkCenter(cx, cz);
     const half = CHUNK_SIZE / 2;
     const boxes: LevelBox[] = [];
@@ -160,7 +160,7 @@ export function generateDungeonChunk(seed: number): ChunkSource {
     });
 
     // Стены по краю этажа.
-    for (const [dx, dz, w, d] of [
+    for (const [wx, wz, w, d] of [
       [0, -half, CHUNK_SIZE, WALL],
       [0, half, CHUNK_SIZE, WALL],
       [-half, 0, WALL, CHUNK_SIZE],
@@ -168,25 +168,34 @@ export function generateDungeonChunk(seed: number): ChunkSource {
     ] as const) {
       boxes.push({
         kind: 'brick',
-        box: boxFromCenter(originX + dx, HALL_HEIGHT / 2, originZ + dz, w, HALL_HEIGHT, d),
+        box: boxFromCenter(originX + wx, HALL_HEIGHT / 2, originZ + wz, w, HALL_HEIGHT, d),
       });
     }
 
+    const layout = hallLayout(seed);
+
     // Колонны: укрытия и ориентиры. Без них зал — пустая коробка, в которой
     // некуда спрятаться и не за что зацепиться глазом.
-    const pillars = 8 + Math.floor(random() * 6);
-    for (let i = 0; i < pillars; i++) {
-      const width = 1.4 + random() * 1.2;
+    for (const pillar of layout.pillars) {
       boxes.push({
         kind: 'pillar',
         box: boxFromCenter(
-          originX + (random() - 0.5) * (CHUNK_SIZE - 12),
+          pillar.x,
           HALL_HEIGHT / 2,
-          originZ + (random() - 0.5) * (CHUNK_SIZE - 12),
-          width,
+          pillar.z,
+          pillar.width,
           HALL_HEIGHT,
-          width,
+          pillar.width,
         ),
+      });
+    }
+
+    // Сундуки стоят прямо в геометрии зала: так они и видны, и телесны,
+    // и приходят на обе стороны одним генератором — пересылать нечего.
+    for (const chest of layout.chests) {
+      boxes.push({
+        kind: 'chest',
+        box: boxFromCenter(chest.x, CHEST_HEIGHT / 2, chest.z, CHEST_SIZE, CHEST_HEIGHT, CHEST_SIZE),
       });
     }
 
@@ -241,4 +250,160 @@ function addExitMark(boxes: LevelBox[]): void {
     noCollide: true,
     box: boxFromCenter(x, 0.06, z, DUNGEON_EXIT_MARK * 2, 0.12, DUNGEON_EXIT_MARK * 2),
   });
+}
+
+// ---------- сундуки ----------
+
+/**
+ * Сундук: то, ради чего вниз и идут.
+ *
+ * Устроен как ресурсная нода, а не как предмет мира: раскладка выводится из
+ * зерна инстанса, сервер хранит только **вскрытые**. Нетронутый сундук не
+ * занимает ни байта ни в памяти, ни в сети — его знают обе стороны, потому
+ * что обе считают его одним генератором.
+ */
+export interface DungeonChest {
+  /** Устойчивое имя вида `chest.номер`: по нему сервер находит сундук заново. */
+  id: string;
+  x: number;
+  z: number;
+}
+
+/** Сторона сундука и его высота: по ним же строится коробка в зале. */
+export const CHEST_SIZE = 1.1;
+export const CHEST_HEIGHT = 0.85;
+
+/** С какого расстояния сундук поддаётся. Та же мерка, что у нод. */
+export const CHEST_RANGE = 3.2;
+
+/**
+ * Сколько секунд вскрывается сундук.
+ *
+ * Заметно дольше любой добычи, и это главное в нём: замысел вехи обещал
+ * «уязвим и слышен». Пока идёт полоса, игрок стоит на месте спиной к залу —
+ * и чужая жадность становится чужой ошибкой.
+ */
+export const CHEST_TIME = 5;
+
+/** Сколько сундуков в зале: от и до. */
+const CHESTS_MIN = 4;
+const CHESTS_MAX = 6;
+
+/**
+ * Что лежит в сундуках.
+ *
+ * Свитки рецептов падают **здесь**, а не с умертвия: замысел с самого начала
+ * привязывал рецептурный ярус к подземельям, и до сих пор они висели на мобе
+ * временно, за неимением другого источника. Теперь у похода вниз есть причина,
+ * которой нет наверху.
+ */
+export const CHEST_LOOT: readonly LootEntry[] = [
+  { itemId: 'coin', name: 'Монеты', chance: 0.9, min: 12, max: 60 },
+  { itemId: 'grave_silver', name: 'Могильное серебро', chance: 0.45, min: 1, max: 4 },
+  { itemId: 'crude_ingot', name: 'Грубый слиток', chance: 0.35, min: 1, max: 3 },
+  { itemId: 'health_potion', name: 'Зелье здоровья', chance: 0.3, min: 1, max: 2 },
+  { itemId: 'recipe_scrap', name: 'Обрывок рецепта', chance: 0.25, min: 1, max: 2 },
+  // Свитки трёх ремёсел: выпавший чужой прочесть нельзя, и это не досада,
+  // а повод торговать.
+  { itemId: 'scroll_iron_sword', name: 'Свиток: железный меч', chance: 0.09, min: 1, max: 1 },
+  { itemId: 'scroll_iron_helm', name: 'Свиток: железный шлем', chance: 0.09, min: 1, max: 1 },
+  { itemId: 'scroll_hunting_bow', name: 'Свиток: охотничий лук', chance: 0.09, min: 1, max: 1 },
+  { itemId: 'scroll_leather_cap', name: 'Свиток: кожаный шлем', chance: 0.09, min: 1, max: 1 },
+  { itemId: 'scroll_health_potion', name: 'Свиток: зелье здоровья', chance: 0.09, min: 1, max: 1 },
+  { itemId: 'scroll_stamina_draught', name: 'Свиток: настой сил', chance: 0.09, min: 1, max: 1 },
+];
+
+/**
+ * Кто живёт в зале.
+ *
+ * Мало и тяжело, а не много и тяжело. Первый состав был из шести элитных
+ * нежитей, и проверка это показала прямо: одиночка не доходил до портала
+ * ни разу. Зал — одна комната, разойтись в ней негде, поэтому риск задаётся
+ * качеством противника, а не количеством; толпа здесь читается не как
+ * опасность, а как запертая дверь.
+ *
+ * Умертвие — редкий гость и главная причина уйти с добычей, не жадничая.
+ */
+export function mobsForDungeon(seed: number): MobId[] {
+  const random = mulberry32(seed ^ 0x5bf03635);
+  const roster: MobId[] = ['skeleton', 'skeleton', 'ghoul'];
+  const extra: MobId[] = ['skeleton', 'ghoul', 'ghoul', 'wight'];
+  roster.push(extra[Math.floor(random() * extra.length)]!);
+  return roster;
+}
+
+interface HallLayout {
+  pillars: { x: number; z: number; width: number }[];
+  chests: DungeonChest[];
+}
+
+/**
+ * Разобранные раскладки: генератор зовут каждый кадр прицеливания.
+ *
+ * Список ограничен, потому что зерно у каждого забега своё: без предела
+ * сервер за сутки накопил бы раскладку каждого подземелья, которое когда-либо
+ * заводили. Старые вытесняются — заново собрать их всё равно дёшево.
+ */
+const layouts = new Map<number, HallLayout>();
+const LAYOUT_CACHE = 32;
+
+/**
+ * Раскладка зала: колонны и сундуки **из одного потока чисел**.
+ *
+ * Порознь их считать нельзя: два независимых генератора рано или поздно
+ * поставят сундук внутрь колонны, и вскрыть его будет неоткуда. Здесь сундуки
+ * расставляются после колонн и знают про них.
+ */
+export function hallLayout(seed: number): HallLayout {
+  const cached = layouts.get(seed);
+  if (cached) return cached;
+
+  const random = mulberry32(seed);
+  const { x: originX, z: originZ } = DUNGEON_CENTER;
+  const spread = CHUNK_SIZE / 2 - 6;
+
+  const pillars: HallLayout['pillars'] = [];
+  const count = 8 + Math.floor(random() * 6);
+  for (let i = 0; i < count; i++) {
+    const width = 1.4 + random() * 1.2;
+    pillars.push({
+      x: originX + (random() - 0.5) * (CHUNK_SIZE - 12),
+      z: originZ + (random() - 0.5) * (CHUNK_SIZE - 12),
+      width,
+    });
+  }
+
+  const chests: DungeonChest[] = [];
+  const wanted = CHESTS_MIN + Math.floor(random() * (CHESTS_MAX - CHESTS_MIN + 1));
+
+  for (let attempt = 0; attempt < 200 && chests.length < wanted; attempt++) {
+    const x = originX + (random() * 2 - 1) * spread;
+    const z = originZ + (random() * 2 - 1) * spread;
+
+    // У входа и у портала сундуков нет: добычу надо унести, а не подобрать
+    // с порога. Между ними и лежит весь риск.
+    if (Math.hypot(x - DUNGEON_ENTRY.x, z - DUNGEON_ENTRY.z) < 10) continue;
+    if (Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) < 8) continue;
+
+    const blocked =
+      pillars.some((p) => Math.hypot(x - p.x, z - p.z) < p.width / 2 + CHEST_SIZE) ||
+      chests.some((c) => Math.hypot(x - c.x, z - c.z) < CHEST_RANGE * 2);
+    if (blocked) continue;
+
+    chests.push({ id: `chest.${chests.length}`, x, z });
+  }
+
+  const layout: HallLayout = { pillars, chests };
+  if (layouts.size >= LAYOUT_CACHE) layouts.delete(layouts.keys().next().value as number);
+  layouts.set(seed, layout);
+  return layout;
+}
+
+export function dungeonChests(seed: number): DungeonChest[] {
+  return hallLayout(seed).chests;
+}
+
+/** Сундук по имени — как `findNode` у ресурсных нод: ничего не храня. */
+export function findChest(seed: number, id: string): DungeonChest | null {
+  return dungeonChests(seed).find((chest) => chest.id === id) ?? null;
 }

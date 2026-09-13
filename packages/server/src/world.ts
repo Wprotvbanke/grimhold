@@ -13,6 +13,9 @@ import {
   maxMana,
   maxStamina,
   mobsForChunk,
+  mobsForDungeon,
+  DUNGEON_CENTER,
+  DUNGEON_ENTRY,
   playerAabb,
   step,
   NODES,
@@ -89,6 +92,29 @@ export interface Trade {
   accepted: boolean;
 }
 
+/**
+ * Работа, которая занимает время и показывается полосой.
+ *
+ * Добыча с ноды и вскрытие сундука отличаются только тем, что получится
+ * в конце: и то и другое — стоять у цели и ждать. Общий тип нужен, чтобы
+ * правила «отошёл — бросил» и «смерть прерывает» не пришлось писать дважды
+ * и однажды разойтись.
+ */
+export interface Work {
+  kind: 'node' | 'chest';
+  /** Имя цели: по нему клиент узнаёт свою полосу. */
+  id: string;
+  /** Подпись над полосой. */
+  name: string;
+  /** Где стоит цель и с какого расстояния она поддаётся. */
+  at: { x: number; z: number };
+  range: number;
+  duration: number;
+  remaining: number;
+  /** Для ноды — она сама: профиль и заряды нужны в конце работы. */
+  node?: ResourceNode;
+}
+
 export interface Player {
   id: string;
   /** Идентификатор персонажа в базе — по нему идёт сохранение. */
@@ -116,12 +142,16 @@ export interface Player {
    */
   lastIntent: { forward: number; right: number; jump: boolean };
   /**
-   * Начатая добыча, если игрок сейчас работает над нодой.
+   * Начатая работа с полосой: добыча ноды или вскрытие сундука.
    *
-   * Сама нода лежит рядом с именем: восстанавливать её из имени каждый тик
-   * ради проверки расстояния — лишняя работа на ровном месте.
+   * Одно поле на оба случая, потому что это одна механика: стоишь у цели,
+   * идёт полоса, отошёл — бросил, и ничего не потратил. Две работы
+   * одновременно невозможны по построению.
+   *
+   * Где стоит цель, лежит рядом с именем: восстанавливать её из имени каждый
+   * тик ради проверки расстояния — лишняя работа на ровном месте.
    */
-  gathering: { nodeId: string; node: ResourceNode; duration: number; remaining: number } | null;
+  work: Work | null;
   /**
    * Начатая работа, если игрок сейчас мастерит.
    *
@@ -244,7 +274,7 @@ export class World {
       pendingInputs: [],
       lastProcessedSeq: -1,
       lastIntent: { forward: 0, right: 0, jump: false },
-      gathering: null,
+      work: null,
       crafting: null,
       wantsRespawn: false,
       dirty: true,
@@ -300,8 +330,10 @@ export class World {
   }
 
   removePlayer(id: string): void {
+    const left = this.players.get(id)?.instanceId;
     this.players.delete(id);
     this.history.forget(id);
+    if (left) this.closeIfEmpty(left);
   }
 
   /**
@@ -316,6 +348,7 @@ export class World {
    * ушла, бессмысленно, а попасть по ней оттуда — уже дыра.
    */
   moveToInstance(player: Player, instanceId: InstanceId, spawn: { x: number; y: number; z: number }): void {
+    const left = player.instanceId;
     player.instanceId = instanceId;
     player.combat.instanceId = instanceId;
 
@@ -327,6 +360,8 @@ export class World {
     player.pendingInputs.length = 0;
     this.history.forget(player.id);
     player.dirty = true;
+
+    this.closeIfEmpty(left);
   }
 
   findByCharacterId(characterId: string): Player | null {
@@ -437,6 +472,60 @@ export class World {
 
     this.mobs.set(instanceId, list);
     return list.length;
+  }
+
+  /**
+   * Заселяет зал подземелья.
+   *
+   * Отдельно от диких земель, и не потому, что «так удобнее»: наверху состав
+   * зависит от расстояния до города, внизу — от зерна забега. Общий код не
+   * должен знать правил одного мира, иначе первый же чужой инстанс получит
+   * чужих обитателей — ровно так подземелье однажды получило городскую
+   * безопасную зону.
+   */
+  populateDungeon(instanceId: InstanceId): number {
+    const terrain = this.terrainOf(instanceId);
+    const seed = dungeonSeed(instanceId);
+    const random = seededRandom(instanceId);
+    const list: Mob[] = [];
+
+    for (const mobId of mobsForDungeon(seed)) {
+      const home = findFreeSpot(terrain, DUNGEON_CENTER.x, DUNGEON_CENTER.z, random, {
+        spread: CHUNK_SIZE - 16,
+        away: { ...DUNGEON_ENTRY, range: 20 },
+      });
+      if (!home) continue;
+      list.push(createMob(`m${this.nextId++}`, mobId, home, instanceId));
+    }
+
+    this.mobs.set(instanceId, list);
+    return list.length;
+  }
+
+  /**
+   * Ушедший последним гасит свет.
+   *
+   * Подземелье живёт ровно один забег и умирает, как только из него вышел
+   * последний. Проверка стоит **в переезде и в выходе из игры**, а не в команде
+   * выхода наверх: из подземелья уходят тремя путями — порталом, смертью
+   * и разрывом связи, — и забыть один из них значило бы копить залы молча.
+   *
+   * Обычный мир не закрывается никогда: он один и общий.
+   */
+  private closeIfEmpty(instanceId: InstanceId): void {
+    if (!isDungeon(instanceId)) return;
+    for (const player of this.players.values()) {
+      if (player.instanceId === instanceId) return;
+    }
+
+    this.mobs.delete(instanceId);
+    this.npcs.delete(instanceId);
+    this.terrain.delete(instanceId);
+
+    const prefix = `${instanceId}|`;
+    for (const key of this.openedChests) {
+      if (key.startsWith(prefix)) this.openedChests.delete(key);
+    }
   }
 
   /**
@@ -614,6 +703,33 @@ export class World {
   // ---------- ресурсные ноды ----------
 
   /**
+   * Вскрытые сундуки подземелий.
+   *
+   * Хранятся исключения, как и у нод: нетронутый сундук выводится из зерна
+   * инстанса и не занимает ничего. Инстанс умирает вместе с забегом, поэтому
+   * и запись живёт ровно столько же.
+   */
+  private readonly openedChests = new Set<string>();
+
+  isChestOpen(instanceId: InstanceId, chestId: string): boolean {
+    return this.openedChests.has(`${instanceId}|${chestId}`);
+  }
+
+  markChestOpen(instanceId: InstanceId, chestId: string): void {
+    this.openedChests.add(`${instanceId}|${chestId}`);
+  }
+
+  /** Вскрытые сундуки этого инстанса: клиенту, чтобы нарисовать их пустыми. */
+  openedChestsIn(instanceId: InstanceId): string[] {
+    const prefix = `${instanceId}|`;
+    const result: string[] = [];
+    for (const key of this.openedChests) {
+      if (key.startsWith(prefix)) result.push(key.slice(prefix.length));
+    }
+    return result;
+  }
+
+  /**
    * Состояние тронутых нод: сколько зарядов осталось и сколько ждать
    * восстановления. Нетронутых тут нет — их тысячи, и они выводятся
    * генератором, а хранить стоит только исключения.
@@ -749,16 +865,28 @@ function seededRandom(key: string): () => number {
   };
 }
 
-/** Ищет свободное место под спавн: моб внутри валуна застрянет навсегда. */
+/**
+ * Ищет свободное место под спавн: моб внутри валуна застрянет навсегда.
+ *
+ * `away` держит место подальше от точки: в подземелье это вход, и нужен он
+ * не для удобства — моб, стоящий вплотную к точке появления, бьёт раньше,
+ * чем у игрока успевает собраться картинка.
+ */
 function findFreeSpot(
   terrain: ChunkedWorld,
   originX: number,
   originZ: number,
   random: () => number,
+  options: { spread?: number; away?: { x: number; z: number; range: number } } = {},
 ): { x: number; y: number; z: number } | null {
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const x = originX + (random() - 0.5) * (CHUNK_SIZE - 12);
-    const z = originZ + (random() - 0.5) * (CHUNK_SIZE - 12);
+  const spread = options.spread ?? CHUNK_SIZE - 12;
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const x = originX + (random() - 0.5) * spread;
+    const z = originZ + (random() - 0.5) * spread;
+    if (options.away && Math.hypot(x - options.away.x, z - options.away.z) < options.away.range) {
+      continue;
+    }
     const candidate = { x, y: 0.1, z };
     const body = playerAabb(candidate, { radius: 0.9, height: 2.9 });
 

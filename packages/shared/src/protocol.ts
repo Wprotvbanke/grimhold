@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 16;
+export const PROTOCOL_VERSION = 17;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -185,6 +185,18 @@ export const UseHotbarSchema = z.object({
  * Клиент шлёт только имя рецепта. Доступен ли он этой расе, изучен ли,
  * хватает ли сырья и влезает ли результат — решает сервер.
  */
+/**
+ * Вскрыть сундук в подземелье.
+ *
+ * Клиент шлёт только имя сундука. Где он стоит, не вскрыт ли уже и дошёл ли
+ * до него игрок — решает сервер: сундук он восстанавливает из зерна инстанса
+ * тем же генератором, что и клиент.
+ */
+export const OpenChestSchema = z.object({
+  t: z.literal('openChest'),
+  chestId: z.string().max(32),
+});
+
 export const CraftSchema = z.object({
   t: z.literal('craft'),
   recipeId: z.string().max(48),
@@ -330,6 +342,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   SetHotbarSchema,
   UseHotbarSchema,
   HarvestSchema,
+  OpenChestSchema,
   CraftSchema,
   OpenBankSchema,
   CloseBankSchema,
@@ -361,6 +374,7 @@ export type DropItemMessage = z.infer<typeof DropItemSchema>;
 export type SetHotbarMessage = z.infer<typeof SetHotbarSchema>;
 export type UseHotbarMessage = z.infer<typeof UseHotbarSchema>;
 export type HarvestMessage = z.infer<typeof HarvestSchema>;
+export type OpenChestMessage = z.infer<typeof OpenChestSchema>;
 export type CraftMessage = z.infer<typeof CraftSchema>;
 export type OpenBankMessage = z.infer<typeof OpenBankSchema>;
 export type CloseBankMessage = z.infer<typeof CloseBankSchema>;
@@ -556,7 +570,14 @@ export interface CraftingMessage {
  */
 export interface GatheringMessage {
   t: 'gathering';
-  /** Что добывают. `null` — работа кончилась, полосу убрать. */
+  /**
+   * Над чем работают: имя ноды или имя сундука. `null` — работа кончилась,
+   * полосу убрать.
+   *
+   * Полоса у сундука и полоса у дерева — одна и та же механика: стоишь,
+   * ждёшь, отошёл — бросил. Заводить ради сундука второе сообщение значило бы
+   * держать две шкалы, которые обязаны вести себя одинаково.
+   */
   nodeId: string | null;
   /** Название ноды — подписью над полосой. */
   name: string;
@@ -650,6 +671,14 @@ export interface SnapshotMessage {
    * поэтому дешевле перечислить вторые.
    */
   depletedNodes: string[];
+  /**
+   * Имена вскрытых сундуков подземелья.
+   *
+   * По той же причине, что и выработанные ноды: сундуки клиент выводит из
+   * зерна инстанса сам и знает про них всё, кроме одного — добрались до них
+   * или нет. Наверху список всегда пуст.
+   */
+  openedChests: string[];
 }
 
 export interface ErrorMessage {
