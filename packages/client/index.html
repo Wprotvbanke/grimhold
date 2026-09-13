@@ -419,7 +419,7 @@
       }
       #setStats {
         margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
-        font-size: 11px; color: var(--dim); line-height: 1.6;
+        font-size: 11px; color: var(--dim); line-height: 1.6; white-space: pre-line;
       }
       #setResume {
         margin-top: 12px; width: 100%; padding: 7px; font: inherit; font-size: 12px;
@@ -643,6 +643,14 @@
           <option value="every">Каждый кадр</option>
           <option value="half">Через кадр</option>
           <option value="off">Выключить</option>
+        </select>
+      </label>
+
+      <label>
+        Сглаживание краёв
+        <select id="setAa">
+          <option value="on">Включено</option>
+          <option value="off">Выключено — быстрее</option>
         </select>
       </label>
 

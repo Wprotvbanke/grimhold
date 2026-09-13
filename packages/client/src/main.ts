@@ -59,7 +59,7 @@ import { InventoryUi } from './inventoryui.js';
 import { guardBrowserKeys, toggleFullCapture, wireFullCapture } from './keyboard.js';
 import { createQuality } from './quality.js';
 import { createFrameStats } from './frames.js';
-import { createSettings } from './settings.js';
+import { createSettings, loadSettings } from './settings.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -68,7 +68,11 @@ const SERVER_URL = `ws://${location.hostname}:8080`;
 const hud = document.getElementById('hud')!;
 const labels = document.getElementById('labels')!;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+/**
+ * Сглаживание краёв читается из сохранённых настроек до всего остального:
+ * поменять его у готового рендерера нельзя, только при создании.
+ */
+const renderer = new THREE.WebGLRenderer({ antialias: loadSettings().antialias });
 renderer.setSize(innerWidth, innerHeight);
 // Разрешение задаёт quality.ts: оно отступает при просадке и возвращается,
 // когда запас появился. Постоянное число тут подходило бы ровно одной машине.
@@ -87,6 +91,9 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 // Руки рисуются вторым проходом поверх мира, поэтому очисткой управляем сами.
 renderer.autoClear = false;
+// Счётчики отрисовки считаем за весь кадр, а не за последний проход:
+// сбрасываем их сами, в начале кадра.
+renderer.info.autoReset = false;
 document.body.appendChild(renderer.domElement);
 
 // Потолок анизотропии — у видеокарты свой; берём её предел, а не число
@@ -725,6 +732,7 @@ renderer.setAnimationLoop((frameTime: number) => {
   // когда его не видно.
   if (settings.open && now - lastReadout > 500) {
     lastReadout = now;
+    frameStats.setMouseRate(controls.mouseRate);
     settings.setReadout(frameStats.readout());
   }
 
@@ -739,11 +747,17 @@ renderer.setAnimationLoop((frameTime: number) => {
 
   quality.frame(now);
 
+  // Счётчики обнуляем сами: проходов за кадр несколько (мир, руки, карта
+  // теней), а three сбрасывает их в начале каждого — считался бы только
+  // последний, то есть руки.
+  renderer.info.reset();
+
   renderer.clear();
   renderer.render(scene, camera);
   // Второй проход с очисткой глубины: руки не режутся о стены впритык.
   if (game && !combatUi.dead) game.hands.render(renderer, camera.aspect);
 
+  frameStats.setLoad(renderer.info.render.calls, renderer.info.render.triangles);
   updateHud();
 });
 

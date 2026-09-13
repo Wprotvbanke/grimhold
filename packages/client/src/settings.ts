@@ -15,6 +15,15 @@ export type Shadows = 'every' | 'half' | 'off';
 export interface Settings {
   /** Предел кадров в секунду. Ноль — без предела. */
   fpsCap: number;
+  /**
+   * Сглаживание краёв.
+   *
+   * Дорого не вычислениями, а заполнением: на высокой частоте кадров, где
+   * на кадр отведено пять миллисекунд, это заметная доля. Применяется при
+   * создании рендерера, то есть после обновления страницы, — поменять его
+   * на ходу нельзя.
+   */
+  antialias: boolean;
   /** Множитель разрешения. `auto` — подстраивается сам, см. quality.ts. */
   resolution: 'auto' | number;
   shadows: Shadows;
@@ -24,6 +33,7 @@ const STORAGE_KEY = 'grimhold.settings';
 
 const DEFAULTS: Settings = {
   fpsCap: 0,
+  antialias: true,
   resolution: 'auto',
   shadows: 'half',
 };
@@ -34,13 +44,20 @@ function el<T extends HTMLElement>(id: string): T {
   return node as T;
 }
 
-function load(): Settings {
+/**
+ * Читает настройки без интерфейса.
+ *
+ * Нужно потому, что сглаживание краёв задаётся при создании рендерера —
+ * до того, как появится сама панель.
+ */
+export function loadSettings(): Settings {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return { ...DEFAULTS };
     const parsed = JSON.parse(saved) as Partial<Settings>;
     return {
       fpsCap: typeof parsed.fpsCap === 'number' ? parsed.fpsCap : DEFAULTS.fpsCap,
+      antialias: typeof parsed.antialias === 'boolean' ? parsed.antialias : DEFAULTS.antialias,
       resolution:
         parsed.resolution === 'auto' || typeof parsed.resolution === 'number'
           ? parsed.resolution
@@ -71,17 +88,19 @@ export function createSettings(
   onChange: (settings: Settings) => void,
   onResume: () => void,
 ): SettingsUi {
-  const current = load();
+  const current = loadSettings();
 
   const panel = el<HTMLDivElement>('settings');
   const fps = el<HTMLSelectElement>('setFps');
   const resolution = el<HTMLSelectElement>('setRes');
   const shadows = el<HTMLSelectElement>('setShadow');
+  const smoothing = el<HTMLSelectElement>('setAa');
   const readout = el<HTMLParagraphElement>('setStats');
 
   fps.value = String(current.fpsCap);
   resolution.value = String(current.resolution);
   shadows.value = current.shadows;
+  smoothing.value = current.antialias ? 'on' : 'off';
 
   function save(): void {
     try {
@@ -103,6 +122,12 @@ export function createSettings(
   shadows.addEventListener('change', () => {
     current.shadows = shadows.value as Shadows;
     save();
+  });
+  smoothing.addEventListener('change', () => {
+    current.antialias = smoothing.value === 'on';
+    save();
+    // Менять на ходу нечего: сглаживание задаётся при создании рендерера.
+    readout.textContent = 'Сглаживание краёв применится после обновления страницы (F5).';
   });
 
   el<HTMLButtonElement>('setResume').addEventListener('click', () => {

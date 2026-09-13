@@ -46,6 +46,27 @@ export class Controls {
 
   private readonly keys = new Set<string>();
 
+  /**
+   * Сколько отсчётов мыши приходит в секунду.
+   *
+   * Число важнее, чем кажется, и именно его не хватало при поиске дрожания.
+   * Мышь на 125 Гц при 180 кадрах даёт **ноль или один** отсчёт на кадр:
+   * картинка поворачивается рывками по восемь миллисекунд, и заметно это
+   * ровно тогда, когда ведёшь взглядом предмет. Чем выше частота кадров,
+   * тем хуже — потому и на 180 Гц хуже, чем на 60.
+   *
+   * Ускорить мышь кодом нельзя: это её опрос, настройка драйвера. Зато можно
+   * показать число рядом с частотой кадров, и причина становится видна.
+   */
+  private readonly moves: number[] = [];
+
+  /** Отсчётов мыши в секунду. Ноль — мышь ещё не двигали. */
+  get mouseRate(): number {
+    const now = performance.now();
+    while (this.moves.length > 0 && now - this.moves[0]! > 1000) this.moves.shift();
+    return this.moves.length;
+  }
+
   constructor(
     private readonly canvas: HTMLElement,
     private readonly hooks: ControlsHooks,
@@ -58,6 +79,8 @@ export class Controls {
 
     document.addEventListener('mousemove', (event) => {
       if (!this.locked) return;
+      this.moves.push(performance.now());
+      if (this.moves.length > 2000) this.moves.shift();
       this.yaw -= event.movementX * MOUSE_SENSITIVITY;
       this.pitch -= event.movementY * MOUSE_SENSITIVITY;
       this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch));
