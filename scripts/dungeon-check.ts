@@ -183,13 +183,21 @@ async function main(): Promise<void> {
 
   // Ждём дольше самой работы: замок должен поддаться сам, без второго нажатия.
   await sleep(CHEST_TIME * 1000 + 900);
-  check(digger.loot.length > 0, 'сундук отдал добычу', digger.loot[0]?.from ?? 'молчит');
+  check(digger.loot.length > 0, 'сундук вскрыт', digger.loot[0]?.from ?? 'молчит');
+
+  // Сундук — хранилище, а не выдача: добыча лежит в нём, и открывается он тем
+  // же окном, что казна.
+  const inside = digger.bank;
+  check(inside?.open === true, 'сундук открылся окном', inside?.title ?? 'молчит');
+  check((inside?.grid.items.length ?? 0) > 0, 'и в нём лежит добыча');
 
   if (digger.latestSnapshot?.self.alive) {
-    digger.errors.length = 0;
+    digger.send({ t: 'closeBank' });
+    await sleep(200);
     digger.send({ t: 'openChest', chestId: chest.id });
     await sleep(400);
-    check(digger.errors.length > 0, 'второй раз тот же сундук пуст', digger.errors[0] ?? 'молча');
+    // Замок уже сломан: второй раз он открывается сразу, без полосы.
+    check(digger.bank?.open === true, 'вскрытый открывается снова, без полосы');
   } else {
     console.log('  ···  второй заход не проверен: копателя убили у сундука');
   }

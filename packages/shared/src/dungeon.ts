@@ -119,9 +119,15 @@ export const DUNGEON_EXIT = {
  * Чуть шире самой метки: она скромная, и упираться в неё носом, чтобы нажать,
  * было бы наказанием за то, что её нашли.
  */
-export const DUNGEON_EXIT_RANGE = 3.4;
-/** Радиус кольца на полу — по нему же клиент ставит свет. */
-export const DUNGEON_EXIT_MARK = 2.2;
+export const DUNGEON_EXIT_RANGE = 4.2;
+/**
+ * Половина ширины знака на полу — по нему же клиент ставит свет.
+ *
+ * Знак нарисован краской вокруг точки выхода и нарочно большой: его ищут
+ * глазами в полумраке, из дальнего конца зала, и «маленький, но заметный»
+ * здесь не работает — заметен он только тому, кто уже знает, где стоит.
+ */
+export const DUNGEON_EXIT_MARK = 3.5;
 
 export function isDungeon(instanceId: string): boolean {
   return instanceId.startsWith(DUNGEON_PREFIX);
@@ -223,31 +229,33 @@ export function generateDungeonChunk(seed: number): ChunkSource {
 }
 
 /**
- * Метка выхода: ниша в стене и кольцо на полу.
+ * Метка выхода: ниша в стене.
  *
  * Портал был невидим — просто точка на полу, — и игрок в первом же забеге
  * заблудился в собственном зале. Ниша нужна не для красоты: стена, которая
- * расступается, читается как выход издалека, а кольцо говорит, где именно
- * встать. Свет над кольцом ставит клиент.
+ * расступается, читается как выход издалека. Где именно встать, говорит знак
+ * на полу; и знак, и свет над ним ставит клиент.
  */
 function addExitMark(boxes: LevelBox[]): void {
   const { x, z } = DUNGEON_EXIT;
 
   // Ниша: пол и потолок уходят за линию стены, образуя карман.
+  const pocket = 6.6;
+
   boxes.push({
     kind: 'brick',
-    box: boxFromCenter(x, -0.5, z - 2.5, DUNGEON_EXIT_MARK * 3, 1, 6),
+    box: boxFromCenter(x, -0.5, z - 2.5, pocket, 1, 6),
   });
   boxes.push({
     kind: 'brick',
-    box: boxFromCenter(x, HALL_HEIGHT + 0.5, z - 2.5, DUNGEON_EXIT_MARK * 3, 1, 6),
+    box: boxFromCenter(x, HALL_HEIGHT + 0.5, z - 2.5, pocket, 1, 6),
   });
   // Боковины кармана, чтобы он был карманом, а не дырой в стене.
   for (const side of [-1, 1]) {
     boxes.push({
       kind: 'brick',
       box: boxFromCenter(
-        x + side * DUNGEON_EXIT_MARK * 1.5,
+        x + side * (pocket / 2),
         HALL_HEIGHT / 2,
         z - 2.5,
         WALL,
@@ -259,15 +267,12 @@ function addExitMark(boxes: LevelBox[]): void {
   // Задняя стенка кармана: сквозь портал не проходят, в него входят.
   boxes.push({
     kind: 'brick',
-    box: boxFromCenter(x, HALL_HEIGHT / 2, z - 5.5, DUNGEON_EXIT_MARK * 3, HALL_HEIGHT, WALL),
+    box: boxFromCenter(x, HALL_HEIGHT / 2, z - 5.5, pocket, HALL_HEIGHT, WALL),
   });
 
-  // Кольцо на полу. Низкое и непреграждающее: по нему ходят, а не спотыкаются.
-  boxes.push({
-    kind: 'ruin',
-    noCollide: true,
-    box: boxFromCenter(x, 0.06, z, DUNGEON_EXIT_MARK * 2, 0.12, DUNGEON_EXIT_MARK * 2),
-  });
+  // Кольца на полу больше нет: на его месте знак, нарисованный краской.
+  // Он ничего не преграждает и живёт целиком на клиенте — см. scene.ts,
+  // `exitMark`. Серверу знать о краске нечего.
 }
 
 // ---------- сундуки ----------

@@ -194,11 +194,22 @@ async function main(): Promise<void> {
   }
 
   check(sawHit, 'удары по мобу засчитываются');
-  check(killed, 'моб убит и лут получен',
+  check(killed, 'моб убит, добыча объявлена',
     client.loot[0] ? JSON.stringify(client.loot[0].items) : 'лута не было');
+
   if (client.loot[0]) {
     console.log(`  выпало с «${client.loot[0].from}»: ` +
       client.loot[0].items.map((i) => `${i.name} ×${i.count}`).join(', '));
+
+    // Добыча теперь не сыплется в рюкзак, а лежит мешком: игрок сам решает,
+    // что брать. Мешок обязан появиться в снапшоте — иначе брать нечего.
+    check(client.loot[0].onGround === true, 'добыча лежит мешком, а не падает в рюкзак');
+    await sleep(400);
+    check(
+      (client.latestSnapshot?.bags.length ?? 0) > 0,
+      'мешок виден на земле',
+      `мешков рядом: ${client.latestSnapshot?.bags.length ?? 0}`,
+    );
   }
   check(client.skillUps.length > 0, 'навык вырос от использования',
     `поднятий: ${client.skillUps.length}`);

@@ -8,6 +8,7 @@ import {
   SPRINT_DRAIN,
   addItem,
   createBackpack,
+  createSack,
   isDungeon,
   itemDef,
   gainExperience,
@@ -179,6 +180,8 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
             }
             if (event.type === 'inventory') outbox.inventory.push(player);
             if (event.type === 'criticalSave') outbox.criticalSaves.push(player);
+            // Сундук вскрыт — перед игроком открывается окно с добычей.
+            if (event.type === 'bank') outbox.bank.push(player);
             if (event.type === 'loot') {
               outbox.loot.push({ playerId: player.id, message: event.message as LootMessage });
             }
@@ -555,29 +558,37 @@ function handleDeath(
   // Убитый зверь снимает часть кармы: замаливать делом быстрее, чем ждать.
   forgiveForMob(killer.combat);
 
-  const rolled = rollLoot(mob);
-  if (rolled.length === 0) return;
-
-  // Лут кладётся в рюкзак. Что не влезло — остаётся на земле, то есть
-  // теряется: это первая ситуация, где игрок платит за набитый рюкзак.
-  const taken: { itemId: string; name: string; count: number }[] = [];
-  let lost = 0;
-
-  for (const entry of rolled) {
-    const result = addItem(killer.inventory, entry.itemId, entry.count);
-    killer.inventory = result.grid;
-
-    const got = entry.count - result.leftover;
-    if (got > 0) taken.push({ itemId: entry.itemId, name: entry.name, count: got });
-    lost += result.leftover;
+  /**
+   * Добыча ложится **мешком на землю**, а не в рюкзак убийцы.
+   *
+   * Раньше шкуры и кости падали в рюкзак сами, и рюкзак забивался хламом
+   * без спроса: набитый — и следующая добыча пропадала молча, «за полный
+   * рюкзак». Теперь решает игрок: подошёл, открыл, взял нужное. Тот же
+   * порядок, что у казны, и те же правила переноса.
+   */
+  let sack = createSack();
+  for (const entry of rollLoot(mob)) {
+    // Что не влезло в мешок — того зверь и не носил: мешок мал намеренно.
+    sack = addItem(sack, entry.itemId, entry.count).grid;
   }
 
-  refreshLoadout(killer);
-  outbox.inventory.push(killer);
+  const bag = world.dropBag(mob.instanceId, mob.pos, mob.name, sack);
+  if (!bag) return;
 
+  // Убийце говорим, что добыча есть и где она: иначе мешок теряется в траве.
   outbox.loot.push({
     playerId: killer.id,
-    message: { t: 'loot', from: mob.name, items: taken, lost },
+    message: {
+      t: 'loot',
+      from: mob.name,
+      items: sack.items.map((item) => ({
+        itemId: item.defId,
+        name: itemDef(item.defId).name,
+        count: item.count,
+      })),
+      lost: 0,
+      onGround: true,
+    },
   });
 }
 

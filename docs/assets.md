@@ -17,6 +17,8 @@
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
+| `public/models/loot_bag.glb` | от владельца проекта, собран `scripts/prepare-bag.ts` | уточнить |
+| `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
 | `public/models/nature.glb` | от владельца проекта, собран `scripts/prepare-nature.ts` | уточнить |
 | `public/models/lights.glb` | от владельца проекта, собран `scripts/prepare-lights.ts` | уточнить |
@@ -40,6 +42,8 @@ npx tsx scripts/prepare-nature.ts     # 68 моделей растительно
 npx tsx scripts/prepare-tavern.ts     # обстановка таверны: 34.5 МБ → 0.8 МБ
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
 npx tsx scripts/prepare-gnome.ts      # житель площади: 2 МБ FBX → 0.12 МБ
+npx tsx scripts/prepare-bag.ts        # мешок с добычей: 2 МБ → 0.06 МБ
+npx tsx scripts/prepare-symbol.ts     # знак выхода: 98 КБ → 50 КБ
 npx tsx scripts/prepare-sky.ts        # панорама неба: 12 КБ
 ```
 

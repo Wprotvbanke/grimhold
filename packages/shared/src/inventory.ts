@@ -17,6 +17,16 @@ export const BACKPACK_HEIGHT = 6;
 export const BANK_WIDTH = 12;
 export const BANK_HEIGHT = 10;
 
+/**
+ * Мешок с добычи: убитого зверя, вскрытого сундука, павшего игрока.
+ *
+ * Меньше рюкзака намеренно. Мешок — это не хранилище, а горсть вещей, из
+ * которой выбирают: что не влезло, того в нём и не было, а решать, брать ли
+ * шкуру вместо доспеха, игрок должен сам.
+ */
+export const SACK_WIDTH = 6;
+export const SACK_HEIGHT = 5;
+
 /** Предмет, лежащий в сетке. Адресуется координатами левого верхнего угла. */
 export interface PlacedItem {
   defId: ItemId;
@@ -78,6 +88,10 @@ export function createBackpack(): Grid {
 
 export function createBank(): Grid {
   return createGrid(BANK_WIDTH, BANK_HEIGHT);
+}
+
+export function createSack(): Grid {
+  return createGrid(SACK_WIDTH, SACK_HEIGHT);
 }
 
 /** Занимаемый размер с учётом поворота. */

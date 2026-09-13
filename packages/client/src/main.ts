@@ -312,7 +312,11 @@ const connection = new Connection(SERVER_URL, {
   },
   onLoot: (message) => {
     const list = message.items.map((item) => `${item.name} ×${item.count}`).join(', ');
-    if (list) {
+    if (list && message.onGround) {
+      // Мешок на земле — это ещё не добыча: сказать надо ровно это, иначе
+      // игрок решит, что вещи уже у него, и уйдёт.
+      ui.system(`${message.from} оставил мешок: ${list}`);
+    } else if (list) {
       ui.system(`С «${message.from}»: ${list}`);
       // Руки тянутся и забирают добычу — видно, что она попала именно к тебе.
       game?.hands.playTake();
@@ -973,14 +977,12 @@ function updateNodeHint(x: number, z: number): void {
     const chest = chestAt(x, z);
     if (chest) {
       aimedNode = null;
-      const empty = openedChests.has(chest.id);
-      // Вскрытый сундук молчит про добычу, но остаётся виден: пустой сундук
-      // на полу — это след того, что здесь уже кто-то был.
-      if (empty) ui.setNodeHint('Сундук — пусто', null, false);
-      else {
-        aimedChest = chest.id;
-        ui.setNodeHint('Сундук', null, true, 'вскрыть');
-      }
+      aimedChest = chest.id;
+      // Вскрытый открывается сразу, невскрытый — полосой. Обещать разное
+      // одним словом нельзя: «вскрыть» у сломанного замка читалось бы
+      // как «здесь пусто».
+      const opened = openedChests.has(chest.id);
+      ui.setNodeHint('Сундук', null, true, opened ? 'обыскать' : 'вскрыть');
       return;
     }
   } else if (

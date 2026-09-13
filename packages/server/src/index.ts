@@ -112,7 +112,7 @@ wss.on('connection', (socket) => {
       // Содержимое казны уходит только пока сундук открыт: закрытый банк
       // клиенту не нужен, а лежит в нём самое ценное.
       if (event.type === 'bank') {
-        const grid = containerGrid(player);
+        const grid = containerGrid(world, player);
         session.send({
           t: 'bank',
           open: grid !== null,
@@ -218,8 +218,8 @@ setInterval(() => {
   for (const player of new Set(outbox.bank)) {
     sendTo(player.id, {
       t: 'bank',
-      open: containerGrid(player) !== null,
-      grid: containerGrid(player) ?? player.bank,
+      open: containerGrid(world, player) !== null,
+      grid: containerGrid(world, player) ?? player.bank,
       title: containerTitle(player),
     });
   }

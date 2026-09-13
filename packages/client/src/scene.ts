@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   CHUNK_SIZE,
   ChunkedWorld,
   DUNGEON_EXIT,
+  DUNGEON_EXIT_MARK,
   dungeonSeed,
   generateDungeonChunk,
   isDungeon,
@@ -44,6 +47,18 @@ import { createSky } from './sky.js';
 export const TILE_METERS = 2.5;
 
 const textures = new THREE.TextureLoader();
+
+/** Знак выхода из подземелья. Загружается один раз на всю сессию. */
+let symbol: THREE.Texture | null = null;
+
+function symbolTexture(): THREE.Texture | null {
+  if (typeof document === 'undefined') return null;
+  if (!symbol) {
+    symbol = textures.load('/textures/exit_symbol.webp');
+    symbol.colorSpace = THREE.SRGBColorSpace;
+  }
+  return symbol;
+}
 
 /**
  * Анизотропная фильтрация: сколько выборок делать на вытянутых по перспективе
@@ -226,9 +241,38 @@ export function createScene(): World3D {
    * вшито в шейдер, и добавить лампу посреди игры — значит пересобрать все
    * материалы сцены разом. На этом уже спотыкались, см. performance.md.
    */
-  const portalLight = new THREE.PointLight(0x7fc9d8, 0, 16, 2);
+  const portalLight = new THREE.PointLight(0xff4426, 0, 20, 1.6);
   portalLight.position.set(DUNGEON_EXIT.x, 2.2, DUNGEON_EXIT.z);
   scene.add(portalLight);
+
+  /**
+   * Знак выхода — краской по полу.
+   *
+   * Не коробка и не модель: прозрачный прямоугольник, лежащий на камне. Его
+   * ищут глазами из дальнего конца зала, поэтому он большой (`DUNGEON_EXIT_MARK`)
+   * и светится сам — цвета складываются с полом, как у огня, и в полумраке
+   * знак виден насквозь темноты.
+   *
+   * Геометрии он не касается: сервер о краске ничего не знает, а под ногами
+   * тут обычный пол.
+   */
+  const exitMark = new THREE.Mesh(
+    new THREE.PlaneGeometry(DUNGEON_EXIT_MARK * 2, DUNGEON_EXIT_MARK * 2),
+    new THREE.MeshBasicMaterial({
+      map: symbolTexture(),
+      color: 0xff2a1e,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      // Глубину не пишем и слегка приподнимаем: краска на камне не должна
+      // спорить с полом за один и тот же пиксель.
+      depthWrite: false,
+      fog: false,
+    }),
+  );
+  exitMark.rotation.x = -Math.PI / 2;
+  exitMark.position.set(DUNGEON_EXIT.x, 0.02, DUNGEON_EXIT.z);
+  exitMark.visible = false;
+  scene.add(exitMark);
 
   let instanceId = 'overworld';
   let underground = false;
@@ -264,6 +308,7 @@ export function createScene(): World3D {
       sky.mesh.visible = !underground;
       // Портал светится только там, где он есть.
       portalLight.intensity = underground ? 9 : 0;
+      exitMark.visible = underground;
       terrain = new ChunkedWorld(
         underground ? generateDungeonChunk(dungeonSeed(next)) : undefined,
       );
@@ -317,6 +362,14 @@ export function createScene(): World3D {
 
     update(elapsed, worldTime, camera) {
       daynight.update(worldTime, camera);
+
+      if (exitMark.visible) {
+        // Знак дышит: неподвижное пятно на полу глаз принимает за текстуру,
+        // а медленно разгорающееся — за живое место.
+        const breath = 0.78 + 0.22 * Math.sin(elapsed * 1.6);
+        (exitMark.material as THREE.MeshBasicMaterial).opacity = breath;
+        portalLight.intensity = 7 + breath * 4;
+      }
 
       /**
        * Город показываем, только пока он рядом.
@@ -513,28 +566,89 @@ export function createProjectileMesh(spellId: SpellId): THREE.Object3D {
 }
 
 /**
- * Мешок павшего: мешковина, перетянутая верёвкой.
+ * Мешок с добычей: от павшего игрока и от каждого убитого зверя.
  *
- * Геометрия своя, а не из пака: мешок должен читаться мгновенно и с любого
- * ракурса — это единственная вещь в зале, ради которой стоит рискнуть,
- * и искать её в полумраке игрок будет глазами, а не подсказкой.
+ * Модель одна на всех и грузится один раз: мешков в кадре бывает несколько,
+ * а клонирование готового дерева стоит копейки против загрузки.
+ *
+ * Пока модель едет, на её месте стоит заглушка — мешковина примитивами.
+ * Мешок обязан быть виден сразу: он появляется ровно в тот момент, когда
+ * игрок смотрит на убитого, и «подожди секунду» здесь читается как «ничего
+ * не выпало».
  */
+let bagModel: THREE.Object3D | null = null;
+let bagPending: Promise<void> | null = null;
+
 export function createBagMesh(): THREE.Object3D {
+  const group = new THREE.Group();
+  const stub = sackStub();
+  group.add(stub);
+
+  if (bagModel) {
+    group.remove(stub);
+    group.add(bagModel.clone(true));
+    return group;
+  }
+
+  bagPending ??= loadBag();
+  void bagPending.then(() => {
+    if (!bagModel || !group.parent) return;
+    group.remove(stub);
+    group.add(bagModel.clone(true));
+  });
+
+  return group;
+}
+
+async function loadBag(): Promise<void> {
+  if (typeof document === 'undefined') return;
+  try {
+    const loader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('/draco/');
+    loader.setDRACOLoader(draco);
+
+    const gltf = await loader.loadAsync('/models/loot_bag.glb');
+    const model = gltf.scene;
+
+    // Под рост мешка, а не под размер, в котором его смоделировали: на земле
+    // он должен читаться как поклажа, а не как валун.
+    model.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(model);
+    const height = bounds.max.y - bounds.min.y;
+    const scale = height > 0 ? BAG_HEIGHT / height : 1;
+    model.scale.setScalar(scale);
+    // Основанием в ноль: сервер присылает точку на полу.
+    model.position.y = -bounds.min.y * scale;
+    model.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh) node.castShadow = true;
+    });
+
+    bagModel = model;
+  } catch (error) {
+    console.warn('[мешок] модель не загрузилась, остаётся заглушка:', error);
+  }
+}
+
+/** Высота мешка в мире. */
+const BAG_HEIGHT = 0.55;
+
+/** Заглушка на время загрузки: мешковина, перетянутая верёвкой. */
+function sackStub(): THREE.Object3D {
   const group = new THREE.Group();
 
   const cloth = new THREE.MeshStandardMaterial({ color: 0x7a6a4f, roughness: 1 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), cloth);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), cloth);
   body.scale.set(1, 0.85, 1);
-  body.position.y = 0.27;
+  body.position.y = 0.2;
   body.castShadow = true;
   group.add(body);
 
-  // Горловина: по ней мешок отличается от камня, которых в зале хватает.
   const neck = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.1, 0.16, 0.22, 8),
+    new THREE.CylinderGeometry(0.08, 0.13, 0.18, 8),
     new THREE.MeshStandardMaterial({ color: 0x5f5238, roughness: 1 }),
   );
-  neck.position.y = 0.56;
+  neck.position.y = 0.42;
   group.add(neck);
 
   return group;

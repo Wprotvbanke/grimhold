@@ -1,5 +1,6 @@
 import {
   CHEST_LOOT,
+  createSack,
   CHEST_RANGE,
   CHEST_TIME,
   addItem,
@@ -7,10 +8,11 @@ import {
   findChest,
   isDungeon,
   isItemId,
+  itemDef,
   type ItemId,
   type OpenChestMessage,
 } from '@grimhold/shared';
-import { refreshLoadout, type Player, type World } from '../world.js';
+import type { Player, World } from '../world.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
 /**
@@ -23,6 +25,11 @@ import type { CommandHandler, GameEvent } from './types.js';
  * Вскрытие идёт долго и **в конце**: бросил на полпути — ничего не получил,
  * но ничего и не потерял. Эта пауза и есть цена добычи: пока идёт полоса,
  * игрок стоит на месте, и его видно.
+ *
+ * Вскрытый сундук — **хранилище, а не выдача**. Добыча не сыплется в рюкзак,
+ * а лежит в нём, и открывается он тем же окном, что казна: игрок сам решает,
+ * что унести. Подойти к нему второй раз можно в любой момент — пока цел
+ * инстанс, цело и содержимое.
  */
 
 function refuse(reason: string): GameEvent[] {
@@ -44,7 +51,9 @@ export const handleOpenChest: CommandHandler<OpenChestMessage> = (ctx, payload) 
   if (Math.hypot(chest.x - actor.state.pos.x, chest.z - actor.state.pos.z) > CHEST_RANGE) {
     return refuse('Слишком далеко');
   }
-  if (world.isChestOpen(actor.instanceId, chest.id)) return refuse('Он уже пуст');
+
+  // Вскрытый открывается сразу: замок уже сломан, ждать нечего.
+  if (world.isChestOpen(actor.instanceId, chest.id)) return openChest(actor, chest);
 
   actor.work = {
     kind: 'chest',
@@ -58,6 +67,17 @@ export const handleOpenChest: CommandHandler<OpenChestMessage> = (ctx, payload) 
   return [{ type: 'gathering' }];
 };
 
+/** Ставит сундук перед игроком открытым окном — тем же, что у казны. */
+function openChest(player: Player, chest: { id: string; x: number; z: number }): GameEvent[] {
+  player.container = {
+    kind: 'chest',
+    instanceId: player.instanceId,
+    chestId: chest.id,
+    at: { x: chest.x, z: chest.z },
+  };
+  return [{ type: 'bank' }];
+}
+
 /**
  * Замок поддался.
  *
@@ -69,46 +89,49 @@ export function finishChest(player: Player, world: World): GameEvent[] {
   if (!work) return [];
   player.work = null;
 
+  const chest = findChest(dungeonSeed(player.instanceId), work.id);
+  if (!chest) return [{ type: 'gathering' }];
+
   if (world.isChestOpen(player.instanceId, work.id)) {
-    return [{ type: 'gathering', note: 'Его уже вскрыли' }];
+    // Сосед пришёл на звук и вскрыл его, пока шла полоса. Не беда: смотреть
+    // в чужой сундук не запрещено, там могло что-то остаться.
+    return [{ type: 'gathering', note: 'Его уже вскрыли' }, ...openChest(player, chest)];
   }
 
-  // Сундук помечается вскрытым до раздачи добычи: вещь может не влезть
-  // в рюкзак, но замок от этого обратно не запрётся.
-  world.markChestOpen(player.instanceId, work.id);
-
-  const taken: { itemId: string; name: string; count: number }[] = [];
-  let lost = 0;
-
+  /**
+   * Добыча складывается **в сам сундук**, а не в рюкзак.
+   *
+   * Что не поместилось в сетку — того в сундуке и не было: мешок мал
+   * намеренно, и выбор «взять это или то» начинается уже здесь.
+   */
+  let loot = createSack();
   for (const entry of CHEST_LOOT) {
     if (Math.random() > entry.chance) continue;
     // Опечатка в таблице не должна ронять забег — несуществующее пропускаем.
     if (!isItemId(entry.itemId)) continue;
 
     const count = entry.min + Math.floor(Math.random() * (entry.max - entry.min + 1));
-    const result = addItem(player.inventory, entry.itemId as ItemId, count);
-    player.inventory = result.grid;
-
-    const got = count - result.leftover;
-    if (got > 0) taken.push({ itemId: entry.itemId, name: entry.name, count: got });
-    lost += result.leftover;
+    loot = addItem(loot, entry.itemId as ItemId, count).grid;
   }
 
-  refreshLoadout(player);
+  world.markChestOpen(player.instanceId, work.id, loot);
 
   return [
     { type: 'gathering' },
-    { type: 'inventory' },
+    ...openChest(player, chest),
     {
       type: 'loot',
       message: {
         t: 'loot',
-        from: taken.length > 0 ? 'Сундук' : 'Сундук — пусто',
-        items: taken,
-        lost,
+        from: loot.items.length > 0 ? 'Сундук' : 'Сундук — пусто',
+        items: loot.items.map((item) => ({
+          itemId: item.defId,
+          name: itemDef(item.defId).name,
+          count: item.count,
+        })),
+        lost: 0,
+        onGround: true,
       },
     },
-    // Добыча из сундука — ценность: падение сервера не должно её отменить.
-    { type: 'criticalSave' },
   ];
 }

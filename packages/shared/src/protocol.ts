@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -511,6 +511,13 @@ export interface LootMessage {
   items: { itemId: string; name: string; count: number }[];
   /** Сколько не влезло в рюкзак и осталось на земле. */
   lost: number;
+  /**
+   * Добыча лежит мешком, а не попала в рюкзак.
+   *
+   * Так падает всё с убитых: игрок сам решает, что брать. Клиенту это нужно,
+   * чтобы не соврать — «получено» и «лежит рядом» разные вещи.
+   */
+  onGround?: boolean;
 }
 
 /**

@@ -48,6 +48,7 @@ import {
   carryCapacity,
   createBackpack,
   createBank,
+  createSack,
   createHotbar,
   createMoveState,
   equipmentArmor,
@@ -145,7 +146,10 @@ export interface Bag {
  * из которых два бессмысленны, и однажды игрок оказался бы одновременно
  * у казны и у мешка, перекладывая вещи неизвестно куда.
  */
-export type OpenContainer = { kind: 'vault' } | { kind: 'bag'; bag: Bag };
+export type OpenContainer =
+  | { kind: 'vault' }
+  | { kind: 'bag'; bag: Bag }
+  | { kind: 'chest'; instanceId: InstanceId; chestId: string; at: { x: number; z: number } };
 
 export interface Player {
   id: string;
@@ -574,6 +578,9 @@ export class World {
     for (const key of this.openedChests) {
       if (key.startsWith(prefix)) this.openedChests.delete(key);
     }
+    for (const key of this.chestLoot.keys()) {
+      if (key.startsWith(prefix)) this.chestLoot.delete(key);
+    }
   }
 
   /**
@@ -859,12 +866,32 @@ export class World {
    */
   private readonly openedChests = new Set<string>();
 
+  /**
+   * Что лежит во вскрытых сундуках.
+   *
+   * Сундук — это **хранилище, а не выдача**: вскрыл, посмотрел, взял нужное,
+   * остальное оставил. Значит его содержимое обязано где-то жить между двумя
+   * открытиями. Живёт оно в инстансе и умирает вместе с ним: забег кончился —
+   * зала больше нет.
+   */
+  private readonly chestLoot = new Map<string, Grid>();
+
   isChestOpen(instanceId: InstanceId, chestId: string): boolean {
     return this.openedChests.has(`${instanceId}|${chestId}`);
   }
 
-  markChestOpen(instanceId: InstanceId, chestId: string): void {
+  markChestOpen(instanceId: InstanceId, chestId: string, loot: Grid): void {
     this.openedChests.add(`${instanceId}|${chestId}`);
+    this.chestLoot.set(`${instanceId}|${chestId}`, loot);
+  }
+
+  /** Содержимое вскрытого сундука. Пустая сетка — если его уже обобрали. */
+  chestGrid(instanceId: InstanceId, chestId: string): Grid {
+    return this.chestLoot.get(`${instanceId}|${chestId}`) ?? createSack();
+  }
+
+  setChestGrid(instanceId: InstanceId, chestId: string, grid: Grid): void {
+    this.chestLoot.set(`${instanceId}|${chestId}`, grid);
   }
 
   /** Вскрытые сундуки этого инстанса: клиенту, чтобы нарисовать их пустыми. */

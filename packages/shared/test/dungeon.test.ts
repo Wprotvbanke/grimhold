@@ -98,13 +98,27 @@ describe('подземелье стоит в стороне от мира', () =
     expect(source(0, 0)).toHaveLength(0);
   });
 
-  it('у портала есть метка, через которую можно пройти', () => {
+  it('к порталу можно подойти: на его месте ничего не преграждает путь', () => {
+    /**
+     * Знак выхода нарисован краской и живёт на клиенте — в геометрии его нет
+     * вовсе. Раз так, проверять надо не метку, а то, ради чего она стоит:
+     * что до точки выхода можно дойти ногами.
+     */
     const boxes = generateDungeonChunk(7)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
-    const ring = boxes.find((entry) => entry.noCollide);
+    const { x, z } = DUNGEON_EXIT;
 
-    expect(ring).toBeDefined();
-    expect(ring!.box.minX).toBeLessThan(DUNGEON_EXIT.x);
-    expect(ring!.box.maxX).toBeGreaterThan(DUNGEON_EXIT.x);
+    const blocking = boxes.filter(
+      (entry) =>
+        !entry.noCollide &&
+        entry.box.minX <= x &&
+        entry.box.maxX >= x &&
+        entry.box.minZ <= z &&
+        entry.box.maxZ >= z &&
+        entry.box.maxY > 0.2 &&
+        entry.box.minY < 2,
+    );
+
+    expect(blocking).toHaveLength(0);
   });
 });
 

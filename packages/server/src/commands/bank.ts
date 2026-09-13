@@ -1,6 +1,7 @@
 import {
   BAG_RANGE,
   BANK,
+  CHEST_RANGE,
   addItem,
   arrangeInGrid,
   itemAt,
@@ -14,7 +15,7 @@ import {
   type OpenBankMessage,
   type PlacedItem,
 } from '@grimhold/shared';
-import { refreshLoadout, type OpenContainer, type Player } from '../world.js';
+import { refreshLoadout, type OpenContainer, type Player, type World } from '../world.js';
 import { forgetMissing } from './hotbar.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
@@ -35,7 +36,13 @@ function refuse(reason: string): GameEvent[] {
   return [{ type: 'itemError', reason }];
 }
 
-/** Куда писать результат: казна идёт в базу, мешок живёт в памяти инстанса. */
+/**
+ * Куда писать результат.
+ *
+ * Казна идёт в базу целиком. Мешок и сундук живут в памяти инстанса и в базу
+ * не попадают — зато **рюкзак игрока попадает**: вещь, вынутая из сундука,
+ * уже ценность, и падение сервера не должно её отменить.
+ */
 function saveOf(container: OpenContainer): GameEvent {
   return container.kind === 'vault' ? { type: 'bankSave' } : { type: 'criticalSave' };
 }
@@ -46,21 +53,29 @@ function moved(container: OpenContainer): GameEvent[] {
 }
 
 /** Содержимое открытого хранилища. */
-export function containerGrid(player: Player): Grid | null {
-  if (!player.container) return null;
-  return player.container.kind === 'vault' ? player.bank : player.container.bag.grid;
+export function containerGrid(world: World, player: Player): Grid | null {
+  const container = player.container;
+  if (!container) return null;
+  if (container.kind === 'vault') return player.bank;
+  if (container.kind === 'bag') return container.bag.grid;
+  return world.chestGrid(container.instanceId, container.chestId);
 }
 
 /** Подпись над сеткой: игрок должен видеть, куда кладёт. */
 export function containerTitle(player: Player): string {
-  if (!player.container) return '';
-  return player.container.kind === 'vault' ? 'Казна' : `Мешок: ${player.container.bag.owner}`;
+  const container = player.container;
+  if (!container) return '';
+  if (container.kind === 'vault') return 'Казна';
+  if (container.kind === 'chest') return 'Сундук';
+  return `Мешок: ${container.bag.owner}`;
 }
 
-function setContainerGrid(player: Player, grid: Grid): void {
-  if (!player.container) return;
-  if (player.container.kind === 'vault') player.bank = grid;
-  else player.container.bag.grid = grid;
+function setContainerGrid(world: World, player: Player, grid: Grid): void {
+  const container = player.container;
+  if (!container) return;
+  if (container.kind === 'vault') player.bank = grid;
+  else if (container.kind === 'bag') container.bag.grid = grid;
+  else world.setChestGrid(container.instanceId, container.chestId, grid);
 }
 
 /**
@@ -76,6 +91,9 @@ function withinReach(player: Player): boolean {
 
   const { x, z } = player.state.pos;
   if (container.kind === 'vault') return Math.hypot(x - BANK.x, z - BANK.z) <= BANK.range;
+  if (container.kind === 'chest') {
+    return Math.hypot(x - container.at.x, z - container.at.z) <= CHEST_RANGE;
+  }
   return Math.hypot(x - container.bag.pos.x, z - container.bag.pos.z) <= BAG_RANGE;
 }
 
@@ -129,7 +147,7 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
     return [{ type: 'bank' }, ...refuse('Мешка больше нет')];
   }
 
-  const grid = containerGrid(player)!;
+  const grid = containerGrid(ctx.world, player)!;
 
   // Раскладка внутри хранилища идёт по тем же правилам, что и в рюкзаке.
   if (payload.dir === 'arrange') {
@@ -145,7 +163,7 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
     );
     if (typeof arranged === 'string') return refuse(arranged);
 
-    setContainerGrid(player, arranged);
+    setContainerGrid(ctx.world, player, arranged);
     return [{ type: 'bank' }, saveOf(container)];
   }
 
@@ -163,9 +181,9 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
   const rest = removeItem(from, item);
   if (payload.dir === 'deposit') {
     player.inventory = rest;
-    setContainerGrid(player, placed);
+    setContainerGrid(ctx.world, player, placed);
   } else {
-    setContainerGrid(player, rest);
+    setContainerGrid(ctx.world, player, rest);
     player.inventory = placed;
   }
 
@@ -178,7 +196,7 @@ export const handleBankMove: CommandHandler<BankMoveMessage> = (ctx, payload) =>
 
   const def = itemDef(item.defId);
   console.log(
-    `[${container.kind === 'vault' ? 'банк' : 'мешок'}] ${player.name}: ` +
+    `[${container.kind}] ${player.name}: ` +
       `${payload.dir === 'deposit' ? 'положил' : 'забрал'} ${def.name} ×${item.count}`,
   );
   return moved(container);
@@ -210,7 +228,8 @@ function putInto(
   const added = addItem(grid, item.defId, item.count);
   if (added.leftover > 0) {
     if (payload.dir !== 'deposit') return 'В рюкзаке нет места';
-    return kind === 'vault' ? 'В казне нет места' : 'В мешке нет места';
+    if (kind === 'vault') return 'В казне нет места';
+    return kind === 'chest' ? 'В сундуке нет места' : 'В мешке нет места';
   }
   return added.grid;
 }
