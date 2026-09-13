@@ -56,7 +56,7 @@ import {
   tagHeight,
 } from './scene.js';
 import { createAdmin } from './admin.js';
-import { createCarriedLights, makeHalo } from './lights.js';
+import { TORCH_LIGHT, createCarriedLights, flicker, makeHalo } from './lights.js';
 import { InventoryUi } from './inventoryui.js';
 import { guardBrowserKeys, toggleFullCapture, wireFullCapture } from './keyboard.js';
 import { createQuality } from './quality.js';
@@ -347,6 +347,9 @@ const connection = new Connection(SERVER_URL, {
     // Что в руке — нужно подсказке у ресурсных нод: киркой жилу берут,
     // мечом нет, и игрок должен видеть это до того, как замахнётся.
     mainHandItem = message.equipment.mainHand?.defId ?? null;
+    // Что в левой руке — по нему клиент решает, каким светом светить:
+    // пламенем факела или ровным светом «Светоча».
+    offHandItem = message.equipment.offHand?.defId ?? null;
     // Рывок пропадает раньше скорости: вес должен быть выбором, а не штрафом.
     dashAllowed = message.weight <= message.capacity * DASH_WEIGHT_LIMIT;
     // Перегруз замедляет, и предсказание обязано знать об этом сразу,
@@ -794,9 +797,27 @@ renderer.setAnimationLoop((frameTime: number) => {
     // 6. Руки: поза берётся из авторитетного состояния, скорость — из предсказания.
     const self = connection.latestSnapshot?.self;
 
-    // Свет «Светоча» плавно разгорается и гаснет по остатку времени с сервера.
-    const wantLight = (self?.light ?? 0) > 0 ? 34 : 0;
-    lanternLight.intensity += (wantLight - lanternLight.intensity) * Math.min(1, dt * 4);
+    /**
+     * Свой огонь: факел в руке или «Светоч».
+     *
+     * Источник клиент выводит сам, по надетому: сервер шлёт только остаток
+     * времени, а какой это свет — видно по левой руке. Числа факела общие
+     * с городскими (`TORCH_LIGHT`): огонь в руке и огонь на стене — один
+     * и тот же огонь, и разойдись они, в подземелье горел бы фонарик.
+     *
+     * «Светоч» остаётся бледным и ровным: это магия, а не пламя, и мерцать
+     * ей незачем.
+     */
+    const torch = offHandItem === 'torch';
+    const burning = (self?.light ?? 0) > 0;
+    const wantLight = burning ? (torch ? TORCH_LIGHT.base * flicker(now / 1000, 0) : 34) : 0;
+
+    lanternLight.color.setHex(torch ? TORCH_LIGHT.color : 0xffd9a0);
+    lanternLight.distance = torch ? TORCH_LIGHT.range : 16;
+    lanternLight.decay = torch ? TORCH_LIGHT.decay : 2;
+    // Разгорание плавное, мерцание — нет: иначе оно бы сглаживалось в ровный
+    // свет. За плавность отвечает только появление и угасание.
+    lanternLight.intensity += (wantLight - lanternLight.intensity) * Math.min(1, dt * (burning ? 12 : 4));
     const velocity = game.predictor.state.vel;
     game.hands.update(dt, {
       action: self?.action ?? null,
@@ -891,6 +912,8 @@ const TRADE_REACH = 5;
 
 /** Что у игрока в основной руке. Приходит вместе с состоянием вещей. */
 let mainHandItem: string | null = null;
+/** Что во второй: по нему выбирается вид своего света — факел или «Светоч». */
+let offHandItem: string | null = null;
 /** Хватает ли лёгкости на рывок. Считается по тому же правилу, что у сервера. */
 let dashAllowed = true;
 
@@ -1332,7 +1355,7 @@ function updateAvatars(now: number, dt: number): void {
       (a.z - renderPos.z) ** 2 -
       ((b.x - renderPos.x) ** 2 + (b.z - renderPos.z) ** 2),
   );
-  carriedLights.update(carried);
+  carriedLights.update(now / 1000, carried);
 }
 
 /**

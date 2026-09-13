@@ -256,20 +256,16 @@ export function createLights(scene: THREE.Scene): WorldLights {
       litCount = 0;
 
       for (const flame of flames) {
-        // Два несинхронных синуса дают живое пламя без случайных скачков.
-        const flicker =
-          0.82 +
-          0.12 * Math.sin(elapsed * 11 + flame.phase) +
-          0.06 * Math.sin(elapsed * 23.5 + flame.phase * 2.3);
+        const flame_flicker = flicker(elapsed, flame.phase);
 
         // Ровная яркость, без мерцания: по ней решается, кому достанется
         // лампа. Само мерцание идёт поверх, уже выбранному источнику.
         const steady = flame.base * (flame.outdoor ? outdoorScale : 1);
-        const power = steady * flicker;
+        const power = steady * flame_flicker;
 
         if (flame.glow) {
           flame.glow.visible = steady > 0.01;
-          flame.glow.scale.setScalar(0.9 + flicker * 0.18);
+          flame.glow.scale.setScalar(0.9 + flame_flicker * 0.18);
         }
         if (steady <= 0.01) continue;
 
@@ -373,12 +369,37 @@ export function createLights(scene: THREE.Scene): WorldLights {
   };
 }
 
+/**
+ * Как выглядит огонь в руке.
+ *
+ * Те же числа, что у настенного факела, и это не совпадение: огонь в городе
+ * и огонь в руке — один и тот же огонь. Разойдись они — в подземелье горел бы
+ * фонарик, а не факел, и вся картинка мрака рассыпалась бы об это.
+ *
+ * Дальность меньше городской: настенный освещает улицу, ручной — то, куда
+ * ты идёшь.
+ */
+export const TORCH_LIGHT = { color: 0xff9a3c, range: 24, base: 11, decay: LIGHT_DECAY };
+
+/**
+ * Мерцание пламени: два несинхронных синуса разной частоты.
+ *
+ * Отдано наружу, потому что мерцать обязан **любой** огонь. Случайных скачков
+ * нет намеренно: шум на свету читается как моргание сломанной лампы, а не
+ * как живое пламя.
+ */
+export function flicker(elapsed: number, phase: number): number {
+  return (
+    0.82 + 0.12 * Math.sin(elapsed * 11 + phase) + 0.06 * Math.sin(elapsed * 23.5 + phase * 2.3)
+  );
+}
+
 /** Сколько чужих огней освещают мир одновременно. */
 const CARRIED_LIGHTS = 3;
 
 export interface CarriedLights {
   /** Зовётся каждый кадр со списком тех, кто несёт огонь. */
-  update(list: readonly { x: number; y: number; z: number }[]): void;
+  update(elapsed: number, list: readonly { x: number; y: number; z: number }[]): void;
 }
 
 /**
@@ -394,13 +415,18 @@ export interface CarriedLights {
 export function createCarriedLights(scene: THREE.Scene): CarriedLights {
   const pool: THREE.PointLight[] = [];
   for (let i = 0; i < CARRIED_LIGHTS; i++) {
-    const light = new THREE.PointLight(0xffa851, 0, 18, LIGHT_DECAY);
+    const light = new THREE.PointLight(
+      TORCH_LIGHT.color,
+      0,
+      TORCH_LIGHT.range,
+      TORCH_LIGHT.decay,
+    );
     scene.add(light);
     pool.push(light);
   }
 
   return {
-    update(list) {
+    update(elapsed, list) {
       for (const [index, light] of pool.entries()) {
         const carrier = list[index];
         if (!carrier) {
@@ -409,7 +435,8 @@ export function createCarriedLights(scene: THREE.Scene): CarriedLights {
         }
         // Огонь в руке, а не над головой: свет ложится под ноги несущему.
         light.position.set(carrier.x, carrier.y + 1.1, carrier.z);
-        light.intensity = 9;
+        // Фаза от порядкового номера: два факела рядом не должны мигать в такт.
+        light.intensity = TORCH_LIGHT.base * flicker(elapsed, index * 2.3);
       }
     },
   };
