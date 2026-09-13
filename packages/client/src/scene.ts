@@ -276,9 +276,15 @@ export function createScene(): World3D {
       fog: false,
     }),
   );
-  // Плоскость смотрит в зал: поворачивать не нужно, у неё и так лицо на +Z.
-  // Сдвиг на сантиметр от камня — чтобы краска не спорила со стеной за пиксель.
-  exitMark.position.set(DUNGEON_EXIT.x, DUNGEON_EXIT_MARK_HEIGHT, DUNGEON_EXIT_WALL + 0.01);
+  /**
+   * Плоскость смотрит в зал: поворачивать не нужно, у неё и так лицо на +Z.
+   *
+   * Отступ от камня — шесть сантиметров, а не один. Подземелье стоит в восьми
+   * километрах от начала координат, а там шаг числа с плавающей точкой —
+   * миллиметр: сантиметрового зазора не хватало, и краска спорила со стеной
+   * за пиксель.
+   */
+  exitMark.position.set(DUNGEON_EXIT.x, DUNGEON_EXIT_MARK_HEIGHT, DUNGEON_EXIT_WALL + 0.06);
   exitMark.visible = false;
   scene.add(exitMark);
 

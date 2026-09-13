@@ -273,14 +273,16 @@ function addExitMark(boxes: LevelBox[]): void {
   const depth = 6;
   const middle = DUNGEON_EXIT_WALL + depth / 2;
 
-  boxes.push({
-    kind: 'brick',
-    box: boxFromCenter(x, -0.5, middle, pocket, 1, depth),
-  });
-  boxes.push({
-    kind: 'brick',
-    box: boxFromCenter(x, HALL_HEIGHT + 0.5, middle, pocket, 1, depth),
-  });
+  /**
+   * Своего пола и потолка у ниши нет.
+   *
+   * Они были — и в точности повторяли пол и потолок зала, слой в слой.
+   * Две совпадающие поверхности в одном месте — это дрожание текстуры:
+   * видеокарта на каждом кадре выбирает между ними заново, и у самого знака
+   * камень «кипел». Ниша лежит внутри зала, и пол ей достаётся оттуда же,
+   * откуда всем.
+   */
+
   // Боковины кармана, чтобы он был карманом, а не дырой в стене.
   for (const side of [-1, 1]) {
     boxes.push({
