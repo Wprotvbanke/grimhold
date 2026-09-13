@@ -5,6 +5,8 @@ import {
   ACTIONS,
   ATTACK_COOLDOWN,
   DODGE_COOLDOWN,
+  dodgeCooldown,
+  dodgeCost,
   RACES,
   WALK_SPEED,
   type ActionKind,
@@ -187,6 +189,8 @@ export class ViewModel {
    */
   private swingCooldown = 0;
   private dodgeCooldown = 0;
+  /** Уровень уклонения — приходит с прокачкой, см. `setEvasion`. */
+  private evasion = 0;
 
   /** Был ли игрок на земле в прошлом кадре — по смене ловим прыжок. */
   private grounded = true;
@@ -233,7 +237,7 @@ export class ViewModel {
       const timing = ACTIONS[kind].timing;
       this.swingCooldown = ATTACK_COOLDOWN + timing.windup + timing.active;
     }
-    if (kind === 'dodge') this.dodgeCooldown = DODGE_COOLDOWN;
+    if (kind === 'dodge') this.dodgeCooldown = dodgeCooldown(this.evasion);
 
     this.localAction = { kind, elapsed: 0 };
     return true;
@@ -286,8 +290,19 @@ export class ViewModel {
   }
 
   /** Хватает ли стамины: те же числа, по которым решает сервер. */
-  static staminaCost(kind: 'attack' | 'heavy' | 'dodge'): number {
-    return ACTIONS[kind].staminaCost;
+  static staminaCost(kind: 'attack' | 'heavy' | 'dodge', evasion = 0): number {
+    return kind === 'dodge' ? dodgeCost(evasion) : ACTIONS[kind].staminaCost;
+  }
+
+  /**
+   * Уровень уклонения: от него зависят откат рывка и его цена.
+   *
+   * Клиенту он нужен, чтобы **отказывать по тем же правилам, что и сервер**.
+   * Знай он меньше сервера — руки отказывались бы делать рывок, который
+   * сервер разрешает, и наоборот: жмёшь, а ничего не происходит.
+   */
+  setEvasion(level: number): void {
+    this.evasion = level;
   }
 
   /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */

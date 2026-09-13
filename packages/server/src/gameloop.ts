@@ -896,8 +896,10 @@ function grantExperience(
 
   const result = gainExperience(player.skills[skill], amount);
   player.skills[skill] = result.progress;
-  // Уровень блока едет с бойцом: удар принимают там, где книги навыков нет.
+  // Уровни защиты едут с бойцом: удар принимают и от него уходят там,
+  // где книги навыков нет.
   if (skill === 'block') player.combat.blockSkill = result.progress.level;
+  if (skill === 'evasion') player.combat.evasionSkill = result.progress.level;
   player.dirty = true;
   // Числа в панели изменились — панель должна это увидеть.
   outbox.progress.push(player);

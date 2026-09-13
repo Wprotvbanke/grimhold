@@ -253,7 +253,9 @@ const controls = new Controls(renderer.domElement, {
     }
 
     const stamina = connection.latestSnapshot?.self.stamina ?? 0;
-    if (stamina < ViewModel.staminaCost(kind) || !game.hands.beginAction(kind)) return;
+    if (stamina < ViewModel.staminaCost(kind, evasionLevel) || !game.hands.beginAction(kind)) {
+      return;
+    }
 
     connection.send({ t: 'action', kind, seq: actionSeq++, viewTick: viewTick() });
   },
@@ -375,7 +377,13 @@ const connection = new Connection(SERVER_URL, {
     if (message.recipeId) game?.hands.beginWork(message.remaining);
     else game?.hands.endWork();
   },
-  onProgress: (message) => inventoryUi.setProgress(message),
+  onProgress: (message) => {
+    inventoryUi.setProgress(message);
+    // Рывок зависит от уклонения, и клиент обязан знать уровень: иначе он
+    // откажет в броске, который сервер разрешает.
+    evasionLevel = message.skills.find((entry) => entry.skill === 'evasion')?.level ?? 0;
+    game?.hands.setEvasion(evasionLevel);
+  },
   onDaytime: (shift) => {
     daytimeShift = shift;
   },
@@ -709,6 +717,9 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
     eye: eyeHeight(body),
     hands: new ViewModel(character.race),
   };
+  // Руки заводятся при входе, прокачка приходит раньше или позже — ставим то,
+  // что уже известно, иначе первый рывок пойдёт по правилам новичка.
+  game.hands.setEvasion(evasionLevel);
 
   renderPos.x = spawn.x;
   renderPos.y = spawn.y;
@@ -924,6 +935,8 @@ let tradeOpen = false;
 /** На каком расстоянии клиент вообще предлагает обмен. Сервер строже. */
 const TRADE_REACH = 5;
 
+/** Уровень уклонения: от него зависят откат и цена рывка. Приходит с прокачкой. */
+let evasionLevel = 0;
 /** Был ли игрок выдохшимся в прошлом кадре — по этому говорится о усталости. */
 let wasWinded = false;
 /** Что у игрока в основной руке. Приходит вместе с состоянием вещей. */

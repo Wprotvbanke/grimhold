@@ -7,6 +7,9 @@ import {
   BLOCK_STAMINA_HIT,
   DODGE,
   DODGE_COOLDOWN,
+  dodgeCooldown,
+  dodgeCost,
+  dodgeTiming,
   DODGE_SPEED_SCALE,
   EXPERIENCE_PER_DEFENCE,
   EXPERIENCE_PER_HIT,
@@ -75,10 +78,23 @@ export function startAttack(attacker: Combatant, kind: 'attack' | 'heavy' | 'dod
   // сплошным потоком и опережает анимацию.
   if (kind !== 'dodge' && attacker.swingCooldown > 0) return false;
 
-  const profile = ACTIONS[kind];
+  /**
+   * Рывок зависит от навыка уклонения: он готов раньше, летит дальше
+   * и стоит дешевле. Удары от навыка не зависят — там растёт урон, а не темп.
+   */
+  const base = ACTIONS[kind];
+  const profile =
+    kind === 'dodge'
+      ? {
+          ...base,
+          timing: dodgeTiming(attacker.evasionSkill),
+          staminaCost: dodgeCost(attacker.evasionSkill),
+        }
+      : base;
+
   if (!spendStamina(attacker, profile.staminaCost)) return false;
 
-  if (kind === 'dodge') attacker.dodgeCooldown = DODGE_COOLDOWN;
+  if (kind === 'dodge') attacker.dodgeCooldown = dodgeCooldown(attacker.evasionSkill);
   else attacker.swingCooldown = ATTACK_COOLDOWN + profile.timing.windup + profile.timing.active;
 
   attacker.action = beginAction(profile);
@@ -87,9 +103,15 @@ export function startAttack(attacker: Combatant, kind: 'attack' | 'heavy' | 'dod
   return true;
 }
 
-/** Рывок: неуязвимость на всю фазу удара плюс ускорение. */
+/**
+ * Рывок: неуязвимость на всю фазу удара плюс ускорение.
+ *
+ * Длину фазы считаем по навыку, а не берём из профиля: с уклонением она
+ * растёт, и неуязвимость обязана расти вместе с броском — иначе ловкач летел
+ * бы дальше, оставаясь уязвимым на хвосте полёта.
+ */
 export function applyDodgeImpulse(dodger: Combatant): number {
-  dodger.invulnerable = DODGE.timing.active;
+  dodger.invulnerable = dodgeTiming(dodger.evasionSkill).active;
   return DODGE_SPEED_SCALE;
 }
 

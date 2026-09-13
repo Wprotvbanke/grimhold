@@ -473,6 +473,7 @@ export class World {
         sinceStaminaUse: 99,
         exhaustedFor: 0,
         blockSkill: skills.block.level,
+        evasionSkill: skills.evasion.level,
         wardArmor: 0,
         wardRemaining: 0,
         slowFactor: 1,

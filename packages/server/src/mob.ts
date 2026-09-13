@@ -189,8 +189,9 @@ export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: stri
     invulnerable: 0,
     sinceStaminaUse: 0,
     exhaustedFor: 0,
-    // Щитов у зверья нет — блокировать им нечем.
+    // Щитов у зверья нет, рывков они не делают.
     blockSkill: 0,
+    evasionSkill: 0,
     wardArmor: 0,
     wardRemaining: 0,
     slowFactor: 1,

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BACKSTAB_ARC,
   BLOCK_REDUCTION,
+  DODGE,
+  DODGE_COOLDOWN,
   BLOCK_REDUCTION_VS_HEAVY,
   HEAVY_ATTACK,
   LIGHT_ATTACK,
@@ -12,6 +14,9 @@ import {
   beginAction,
   blockStaminaScale,
   blockedShare,
+  dodgeCooldown,
+  dodgeCost,
+  dodgeTiming,
   experienceForLevel,
   gainExperience,
   inAttackCone,
@@ -199,5 +204,33 @@ describe('навык блока', () => {
     expect(blockStaminaScale(50)).toBeLessThan(1);
     expect(blockStaminaScale(100)).toBe(0.5);
     expect(blockStaminaScale(1000)).toBe(0.5);
+  });
+});
+
+describe('навык уклонения', () => {
+  /**
+   * Ответ лёгкого и быстрого на тяжёлого и защищённого: щитовик растит блок
+   * и стоит под ударами, ловкач растит уклонение и под удары не попадает.
+   */
+  it('рывок готов раньше, летит дальше и стоит дешевле', () => {
+    expect(dodgeCooldown(0)).toBe(DODGE_COOLDOWN);
+    expect(dodgeCooldown(100)).toBeLessThan(dodgeCooldown(0));
+
+    expect(dodgeCost(100)).toBeLessThan(dodgeCost(0));
+    expect(dodgeTiming(100).active).toBeGreaterThan(dodgeTiming(0).active);
+  });
+
+  it('но выгода упирается в потолок', () => {
+    // Иначе на запредельном уровне рывок стал бы бесплатным и бесконечным.
+    expect(dodgeCooldown(1000)).toBe(dodgeCooldown(100));
+    expect(dodgeCost(1000)).toBe(dodgeCost(100));
+    expect(dodgeTiming(1000).active).toBe(dodgeTiming(100).active);
+  });
+
+  it('замах и восстановление не трогаются', () => {
+    // Растёт только полёт: он же и окно неуязвимости. Разгон и выход из броска
+    // остаются прежними, иначе рывок превратился бы в способ ходить.
+    expect(dodgeTiming(100).windup).toBe(DODGE.timing.windup);
+    expect(dodgeTiming(100).recovery).toBe(DODGE.timing.recovery);
   });
 });
