@@ -4,6 +4,10 @@ import {
   RESPAWN_STREAK_MAX,
   MAX_INPUTS_PER_TICK,
   BLOCK_DRAIN,
+  EXPERIENCE_PER_DEFENCE,
+  EXPERIENCE_PER_HIT,
+  EXPERIENCE_PER_RIPOSTE,
+  RIPOSTE_SECONDS,
   blockStaminaScale,
   MOBS,
   SPAWN_POINT,
@@ -564,8 +568,9 @@ function tickMobs(world: World, dt: number, outbox: Outbox): void {
         instanceId,
       });
 
-      if (result.blocked) grantExperience(world, target.id, 'block', 4, outbox);
-      if (result.dodged) grantExperience(world, target.id, 'evasion', 4, outbox);
+      if (result.blocked) grantExperience(world, target.id, 'block', EXPERIENCE_PER_DEFENCE, outbox);
+      // Уход от удара зверя опыта не даёт — он открывает окно для ответа.
+      if (result.dodged) target.combat.riposteFor = RIPOSTE_SECONDS;
       if (result.killed) handlePlayerDeath(world, target, mob.name, outbox);
     }
   }
@@ -597,7 +602,15 @@ function tickProjectiles(world: World, dt: number, outbox: Outbox): void {
       if (hit.victim) {
         // Заклинание учит разрушению, стрела — стрельбе.
         const skill = projectile.spellId ? SPELLS[projectile.spellId].skill : 'archery';
-        grantExperience(world, projectile.ownerId, skill, 3, outbox);
+        grantExperience(world, projectile.ownerId, skill, EXPERIENCE_PER_HIT, outbox);
+
+        // Ушёл рывком и сразу достал стрелой — ответ засчитан так же, как
+        // в ближнем бою: уклонение учит уходу с ответом, а не способу ответа.
+        const shooter = world.playerByCombatantId(projectile.ownerId);
+        if (shooter && shooter.combat.riposteFor > 0) {
+          shooter.combat.riposteFor = 0;
+          grantExperience(world, projectile.ownerId, 'evasion', EXPERIENCE_PER_RIPOSTE, outbox);
+        }
 
         if (hit.killed) {
           handleDeath(world, hit.victim, projectile.ownerId, projectile.ownerName, outbox);

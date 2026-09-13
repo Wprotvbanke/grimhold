@@ -70,6 +70,13 @@ export interface Combatant {
    * У зверья ноль — рывков они не делают.
    */
   evasionSkill: number;
+  /**
+   * Сколько секунд ещё засчитывается ответ после ухода рывком.
+   *
+   * Уклонение учится не уходом, а **уходом с ответом**: ушёл от удара
+   * и тут же достал врага. Рывок сам по себе делают и просто так.
+   */
+  riposteFor: number;
   /** Временная прибавка к броне от заклинания и сколько ей осталось. */
   wardArmor: number;
   wardRemaining: number;
@@ -176,6 +183,7 @@ export function tickCombatant(
   combatant.swingCooldown = Math.max(0, combatant.swingCooldown - dt);
   combatant.sinceStaminaUse += dt;
   combatant.exhaustedFor = Math.max(0, combatant.exhaustedFor - dt);
+  combatant.riposteFor = Math.max(0, combatant.riposteFor - dt);
 
   let enteredActive = false;
   let finished = false;

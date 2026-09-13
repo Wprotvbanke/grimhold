@@ -12,6 +12,8 @@ import {
   dodgeTiming,
   DODGE_SPEED_SCALE,
   EXPERIENCE_PER_DEFENCE,
+  EXPERIENCE_PER_RIPOSTE,
+  RIPOSTE_SECONDS,
   EXPERIENCE_PER_HIT,
   SPELLS,
   beginAction,
@@ -208,13 +210,28 @@ export function resolveMelee(
     // Учит только результат: удар в пустоту не тренирует.
     if (!result.dodged) {
       outcome.experience.push({ combatantId: attacker.id, skill: skill.id, amount: EXPERIENCE_PER_HIT });
+
+      // Достал врага сразу после ухода — вот это и есть уклонение.
+      if (attacker.riposteFor > 0) {
+        attacker.riposteFor = 0;
+        outcome.experience.push({
+          combatantId: attacker.id,
+          skill: 'evasion',
+          amount: EXPERIENCE_PER_RIPOSTE,
+        });
+      }
     }
     if (result.blocked) {
       outcome.experience.push({ combatantId: hit.target.id, skill: 'block', amount: EXPERIENCE_PER_DEFENCE });
     }
-    if (result.dodged) {
-      outcome.experience.push({ combatantId: hit.target.id, skill: 'evasion', amount: EXPERIENCE_PER_DEFENCE });
-    }
+    /**
+     * Уход **не учит сам по себе** — он открывает окно для ответа.
+     *
+     * Пока навык рос от самого ухода, тренировкой было «прыгай в сторону
+     * рядом с крысой»: рывок делают и просто так, а опыт капал. Теперь надо
+     * уйти от настоящего удара и тут же достать врага — см. `riposteFor`.
+     */
+    if (result.dodged) hit.target.riposteFor = RIPOSTE_SECONDS;
     if (result.killed) {
       punishKill(attacker, hit.target);
       outcome.deaths.push({ victim: hit.target, killer: attacker });
