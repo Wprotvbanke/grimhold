@@ -575,6 +575,10 @@ const renderPos = { x: 0, y: 0, z: 0 };
 let lastFrame = performance.now();
 /** Когда в последний раз обновляли замер в меню. */
 let lastReadout = 0;
+/** Когда в последний раз переписывали отладочную строку. */
+let lastHud = 0;
+/** Когда в последний раз искали цель под перекрестием. */
+let lastAim = 0;
 
 /**
  * Замер кадра.
@@ -700,7 +704,19 @@ renderer.setAnimationLoop((frameTime: number) => {
 
     // 5. Мир вокруг подгружается и выгружается по мере движения.
     world.streamChunks(renderPos.x, renderPos.z);
-    updateNodeHint(renderPos.x, renderPos.z);
+
+    /**
+     * Прицел пересчитывается тридцать раз в секунду, а не каждый кадр.
+     *
+     * Это перебор всех нод вокруг с проверкой луча — работа не бесплатная,
+     * а подсказка от неё меняется в лучшем случае раз в секунду. Задержка
+     * в тридцать миллисекунд не значит ничего: нажатие E всё равно проверяет
+     * сервер.
+     */
+    if (now - lastAim > 33) {
+      lastAim = now;
+      updateNodeHint(renderPos.x, renderPos.z);
+    }
 
     // 6. Руки: поза берётся из авторитетного состояния, скорость — из предсказания.
     const self = connection.latestSnapshot?.self;
@@ -758,7 +774,13 @@ renderer.setAnimationLoop((frameTime: number) => {
   if (game && !combatUi.dead) game.hands.render(renderer, camera.aspect);
 
   frameStats.setLoad(renderer.info.render.calls, renderer.info.render.triangles);
-  updateHud();
+  // Отладочная строка переписывается несколько раз в секунду, а не каждый
+  // кадр: это сборка длинной строки и запись в DOM, и на ста восьмидесяти
+  // кадрах она стоит дороже, чем всё, что показывает.
+  if (now - lastHud > 160) {
+    lastHud = now;
+    updateHud();
+  }
 });
 
 /**
@@ -1239,7 +1261,26 @@ function animateCorpse(avatar: Avatar, dt: number): void {
 }
 
 /** Ники видны только пока зажат Alt — в подземелье это будет частью напряжения. */
+/** Были ли ники показаны в прошлом кадре — чтобы не писать в DOM впустую. */
+let tagsShown = false;
+
 function updateNametags(): void {
+  /**
+   * Пока ники скрыты, в DOM не пишем вовсе.
+   *
+   * Раньше каждому аватару каждый кадр проставлялся `display: none` — и это
+   * при том, что ники видно только с зажатым Alt. На ста восьмидесяти кадрах
+   * такая запись стоит дороже, чем сами ники.
+   */
+  if (!controls.showNames) {
+    if (tagsShown) {
+      for (const avatar of avatars.values()) avatar.tag.style.display = 'none';
+      tagsShown = false;
+    }
+    return;
+  }
+  tagsShown = true;
+
   const projected = new THREE.Vector3();
 
   for (const avatar of avatars.values()) {

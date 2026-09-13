@@ -165,20 +165,32 @@ export class Ui {
    * пака, что и декорации, и отличить рудную жилу от валуна на глаз нельзя.
    * Пустая строка убирает подсказку.
    */
+  /**
+   * Что было написано в подсказке в прошлый раз.
+   *
+   * Подсказка считается каждый кадр, а меняется редко. Писать `innerHTML`
+   * по сто восемьдесят раз в секунду — это разбор разметки и пересчёт стилей
+   * на каждый кадр, то есть заметная доля бюджета там, где меняется нечего.
+   */
+  private lastHint = '';
+
   setNodeHint(name: string, tool: string | null, ready: boolean, verb = 'добыть'): void {
     // Пока идёт работа, подсказка молчит: под прицелом уже стоит полоса
     // с тем же названием, и повторять его дважды незачем.
-    if (this.gathering) {
-      this.nodeHint.hidden = true;
-      return;
-    }
-    if (!name) {
-      this.nodeHint.hidden = true;
+    if (this.gathering || !name) {
+      if (this.lastHint !== '') {
+        this.lastHint = '';
+        this.nodeHint.hidden = true;
+      }
       return;
     }
 
     const how = ready ? `<b>E</b> — ${verb}` : `<span>нужен в руке: ${tool}</span>`;
-    this.nodeHint.innerHTML = `${name} · ${how}`;
+    const html = `${name} · ${how}`;
+    if (html === this.lastHint) return;
+
+    this.lastHint = html;
+    this.nodeHint.innerHTML = html;
     this.nodeHint.hidden = false;
   }
 
