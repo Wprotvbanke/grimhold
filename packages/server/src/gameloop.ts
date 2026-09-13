@@ -52,7 +52,7 @@ import {
   type CombatOutcome,
 } from './combat.js';
 import { speedMultiplier, tickCombatant, type Combatant } from './combatant.js';
-import { decideMob, killMob, tickRespawn, type Mob, type MobTarget } from './mob.js';
+import { alertMob, decideMob, killMob, tickRespawn, type Mob, type MobTarget } from './mob.js';
 import { applyDamage } from './combatant.js';
 import { createProjectile, spawnArrow, stepProjectile } from './projectile.js';
 import { isLit, refreshLoadout, type Player, type World } from './world.js';
@@ -579,6 +579,9 @@ function tickProjectiles(world: World, dt: number, outbox: Outbox): void {
         near: projectile.pos,
         instanceId: projectile.instanceId,
       });
+      // Стрела и заклинание бьют больнее всего по тем, кто не видел стрелка:
+      // зверю надо сказать, откуда прилетело.
+      reactToHit(world, hit.event);
 
       if (hit.victim) {
         // Заклинание учит разрушению, стрела — стрельбе.
@@ -616,6 +619,7 @@ function collectOutcome(world: World, outcome: CombatOutcome, outbox: Outbox): v
       near: { x: event.x, z: event.z },
       instanceId: instanceOfEvent(world, event),
     });
+    reactToHit(world, event);
   }
   for (const gain of outcome.experience) {
     grantExperience(world, gain.combatantId, gain.skill, gain.amount, outbox);
@@ -630,6 +634,29 @@ function collectOutcome(world: World, outcome: CombatOutcome, outbox: Outbox): v
     said.add(refusal.attackerId);
     outbox.itemErrors.push({ playerId: refusal.attackerId, message: refusal.reason });
   }
+}
+
+/**
+ * Зверь узнаёт, что его ударили.
+ *
+ * Одно место на все виды урона — меч, стрела, заклинание: реакция на боль
+ * не должна зависеть от того, чем эту боль причинили. Раньше её не было
+ * вовсе, и зверь, подстреленный с сорока метров, продолжал стоять: цели он
+ * ищет сам и только в пределах своего зрения.
+ *
+ * Точку берём у **стрелявшего**, а не у попадания: попадание случилось
+ * в самом звере, и бежать «от него» было бы некуда.
+ */
+function reactToHit(world: World, event: CombatEvent): void {
+  if (event.kind !== 'hit' || event.amount <= 0) return;
+
+  const mob = world.mobByCombatantId(instanceOfEvent(world, event), event.targetId);
+  if (!mob) return;
+
+  const attacker = world.combatantsIn(mob.instanceId).find((one) => one.id === event.attackerId);
+  if (!attacker) return;
+
+  alertMob(mob, event.attackerId, attacker.pos, event.amount);
 }
 
 function handleDeath(

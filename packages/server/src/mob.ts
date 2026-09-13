@@ -24,7 +24,7 @@ import type { Combatant } from './combatant.js';
  * Это осознанное упрощение — вокруг открытые дикие земли, а не лабиринт.
  */
 
-export type MobPhase = 'idle' | 'chase' | 'attack' | 'return' | 'dead';
+export type MobPhase = 'idle' | 'chase' | 'attack' | 'return' | 'flee' | 'dead';
 
 export interface Mob extends Combatant {
   mobId: MobId;
@@ -40,6 +40,22 @@ export interface Mob extends Combatant {
   chaseMetres: number;
   /** Секунд, пока моб ни на кого не бросается: только что отстал. */
   giveUpFor: number;
+  /**
+   * Откуда прилетело. По этой точке моб решает, куда бежать: от неё или к ней.
+   *
+   * Хранится точка, а не боец: стрелявший успеет уйти, пока моб бежит, —
+   * а бежать он должен **от места выстрела**, как человек, который спрятался
+   * от того, что видел.
+   */
+  hurtFrom: Vec3 | null;
+  /** Секунд, пока моб удирает и не смотрит ни на кого. */
+  fleeFor: number;
+  /**
+   * Секунд ярости: моб идёт на обидчика, не считаясь ни с дальностью зрения,
+   * ни с бросками кости на отставание. Без этого стрелка с сорока метров
+   * никто никогда не догонит — он просто вне поля зрения.
+   */
+  rageFor: number;
   /** Секунд до следующего удара. */
   attackCooldown: number;
   /** Секунд до конца замаха, если он замахнулся. */
@@ -88,7 +104,60 @@ function giveUp(mob: Mob): void {
   mob.targetId = null;
   mob.chaseMetres = 0;
   mob.giveUpFor = GIVE_UP_SECONDS;
+  mob.rageFor = 0;
   mob.phase = 'return';
+}
+
+/**
+ * Какая доля здоровья должна уйти за один удар, чтобы зверь бросился бежать.
+ *
+ * Считается **долей, а не числом урона**: крыса от той же стрелы теряет
+ * половину жизни, а умертвие — десятую часть, и бояться им положено по-разному.
+ * Так «слабый убегает, сильный идёт на тебя» получается само, без деления
+ * мобов на трусов и храбрецов.
+ */
+const PANIC_SHARE = 0.3;
+/** Сколько секунд зверь удирает после тяжёлого попадания. */
+const FLEE_SECONDS = 4;
+/** Сколько секунд он идёт на обидчика после лёгкого. */
+const RAGE_SECONDS = 12;
+
+/**
+ * Зверя ударили — он обязан отреагировать.
+ *
+ * До этого стрела с дальней дистанции не значила для него ничего: цели он
+ * ищет сам и только в пределах своего зрения, поэтому стоял столбом, пока его
+ * расстреливают. Теперь удар всегда что-то меняет, и что именно — решает
+ * **тяжесть попадания**:
+ *
+ * - тяжёлое (`PANIC_SHARE` и больше от полного здоровья) — бежать прочь
+ *   от места выстрела: зверю больно, и он не разбирается, кто там стрелял;
+ * - лёгкое — идти на обидчика, не считаясь ни с дальностью зрения, ни
+ *   с усталостью погони.
+ *
+ * Знание о стрелявшем не даётся даром: моб бежит **к точке выстрела**,
+ * а не к самому стрелку, — то есть промахнуться мимо него он ещё может.
+ */
+export function alertMob(mob: Mob, attackerId: string, from: Vec3, damage: number): void {
+  if (!mob.alive) return;
+
+  mob.hurtFrom = { ...from };
+  mob.giveUpFor = 0;
+
+  const share = damage / Math.max(1, mob.profile.health);
+  if (share >= PANIC_SHARE) {
+    mob.targetId = null;
+    mob.fleeFor = FLEE_SECONDS;
+    mob.chaseMetres = 0;
+    mob.rageFor = 0;
+    mob.phase = 'flee';
+    return;
+  }
+
+  mob.targetId = attackerId;
+  mob.fleeFor = 0;
+  mob.rageFor = RAGE_SECONDS;
+  mob.phase = 'chase';
 }
 
 export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: string): Mob {
@@ -137,6 +206,9 @@ export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: stri
     lastPos: { ...home },
     chaseMetres: 0,
     giveUpFor: 0,
+    hurtFrom: null,
+    fleeFor: 0,
+    rageFor: 0,
     attackCooldown: 0,
     windupRemaining: 0,
     respawnIn: 0,
@@ -176,6 +248,8 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
 
   mob.attackCooldown = Math.max(0, mob.attackCooldown - dt);
   mob.giveUpFor = Math.max(0, mob.giveUpFor - dt);
+  mob.fleeFor = Math.max(0, mob.fleeFor - dt);
+  mob.rageFor = Math.max(0, mob.rageFor - dt);
 
   // Путь меряем по факту, а не по скорости из профиля: моб упирается в камни
   // и заборы, и «пройденный метр» должен быть настоящим — иначе застрявший
@@ -199,6 +273,24 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
     return { input: { ...idle, yaw: mob.yaw }, strike: false };
   }
 
+  /**
+   * Удирает.
+   *
+   * Перебивает всё, кроме начатого замаха: раненому зверю не до выбора целей.
+   * Бежит он **от места выстрела** — не от стрелка, которого мог и не видеть.
+   * Дом при этом не тянет назад: спасаться домой через того, кто в тебя
+   * стреляет, — бессмыслица.
+   */
+  if (mob.fleeFor > 0 && mob.hurtFrom) {
+    mob.phase = 'flee';
+    const away = {
+      x: mob.pos.x * 2 - mob.hurtFrom.x,
+      y: mob.pos.y,
+      z: mob.pos.z * 2 - mob.hurtFrom.z,
+    };
+    return { input: moveToward(mob, away, dt), strike: false };
+  }
+
   const target = mob.targetId
     ? candidates.find((c) => c.id === mob.targetId && c.alive)
     : undefined;
@@ -215,8 +307,9 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
   if (target) {
     const distance = horizontalDistance(mob.pos, target.pos);
 
-    // Цель убежала слишком далеко — теряем интерес.
-    if (distance > mob.profile.aggroRange * CHASE_TOLERANCE) {
+    // Цель убежала слишком далеко — теряем интерес. Но не в ярости: обидчика
+    // с сорока метров иначе не догнать, он просто вне поля зрения.
+    if (mob.rageFor <= 0 && distance > mob.profile.aggroRange * CHASE_TOLERANCE) {
       giveUp(mob);
       return { input: moveToward(mob, mob.home, dt), strike: false };
     }
@@ -231,7 +324,8 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
      */
     while (mob.chaseMetres >= 1) {
       mob.chaseMetres -= 1;
-      if (Math.random() < giveUpChance(mob, distanceHome)) {
+      // В ярости кость не бросают: пока она не остынет, зверь идёт до конца.
+      if (mob.rageFor <= 0 && Math.random() < giveUpChance(mob, distanceHome)) {
         giveUp(mob);
         return { input: moveToward(mob, mob.home, dt), strike: false };
       }
@@ -248,6 +342,21 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
 
     mob.phase = 'chase';
     return { input: moveToward(mob, target.pos, dt), strike: false };
+  }
+
+  /**
+   * Обидчик потерялся, а злость осталась — идём к месту, откуда прилетело.
+   *
+   * Так стрелок из-за угла не становится невидимкой: зверь придёт туда, где
+   * его видели в последний раз, и уже там осмотрится. Промахнуться мимо
+   * стрелка он при этом может — и это честно.
+   */
+  if (!target && mob.rageFor > 0 && mob.hurtFrom) {
+    mob.phase = 'chase';
+    if (horizontalDistance(mob.pos, mob.hurtFrom) > 1.5) {
+      return { input: moveToward(mob, mob.hurtFrom, dt), strike: false };
+    }
+    mob.rageFor = 0;
   }
 
   // Погоня кончилась — счётчик метров ни к чему.
