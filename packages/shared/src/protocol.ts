@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -405,12 +405,23 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 // ---------- Сервер -> Клиент ----------
 
+/**
+ * Сущность в снапшоте.
+ *
+ * **Опознание едет один раз.** Имя, вид, раса и порода не меняются никогда,
+ * но раньше ехали двадцать раз в секунду и занимали 45% каждой сущности.
+ * Теперь они приходят при первом появлении в поле зрения, а дальше сущность
+ * узнаётся по `id`; вышел из радиуса и вернулся — представят заново.
+ *
+ * Поэтому у клиента обязана быть память на опознанных: сущность без имени —
+ * это не ошибка, это «ты его уже знаешь».
+ */
 export interface EntitySnapshot {
   id: string;
-  name: string;
+  name?: string;
   /** Игрок, мирный житель или зверьё — от этого зависит подпись и модель. */
-  kind: 'player' | 'npc' | 'mob';
-  race: Race;
+  kind?: 'player' | 'npc' | 'mob';
+  race?: Race;
   mobId?: MobId;
   x: number;
   y: number;

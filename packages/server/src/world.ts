@@ -235,6 +235,16 @@ export interface Player {
    * По нему сервер отматывает цели назад — см. history.ts.
    */
   pendingViewTick: number | null;
+  /**
+   * Кого этому игроку уже представили.
+   *
+   * Имя, вид и раса не меняются никогда, но ехали в каждом снапшоте и занимали
+   * 45% каждой сущности. Теперь они уходят при первом появлении в поле зрения;
+   * набор пересобирается каждый тик из тех, кто в нём виден, поэтому ушедший
+   * за радиус и вернувшийся будет представлен заново — иначе клиент, успевший
+   * забыть его аватар, получил бы сущность без имени.
+   */
+  introduced: Set<string>;
 }
 
 export class World {
@@ -325,6 +335,7 @@ export class World {
       carriedWeight: 0,
       pitch: 0,
       pendingViewTick: null,
+      introduced: new Set(),
       combat: {
         id,
         kind: 'player',
@@ -390,6 +401,8 @@ export class World {
 
     // Ввод, накопленный в прежнем месте, к новому отношения не имеет.
     player.pendingInputs.length = 0;
+    // В новом мире знакомых нет: всех представят заново.
+    player.introduced = new Set();
     this.history.forget(player.id);
     player.dirty = true;
 
@@ -641,15 +654,21 @@ export class World {
   snapshotFor(viewer: Player): EntitySnapshot[] {
     const entities: EntitySnapshot[] = [];
     const origin = viewer.state.pos;
+    // Кто попал в снапшот этого тика: из них соберётся новая память о знакомых.
+    const seen = new Set<string>();
+
+    /** Опознание — только при первом появлении. Дальше сущность знают по id. */
+    const introduce = (id: string, card: Partial<EntitySnapshot>): Partial<EntitySnapshot> => {
+      seen.add(id);
+      return viewer.introduced.has(id) ? {} : card;
+    };
 
     for (const player of this.players.values()) {
       if (player.instanceId !== viewer.instanceId) continue;
       if (player.id !== viewer.id && !withinAoi(origin, player.state.pos)) continue;
       entities.push({
         id: player.id,
-        name: player.name,
-        kind: 'player',
-        race: player.race,
+        ...introduce(player.id, { name: player.name, kind: 'player', race: player.race }),
         x: round(player.state.pos.x),
         y: round(player.state.pos.y),
         z: round(player.state.pos.z),
@@ -666,9 +685,7 @@ export class World {
       if (!withinAoi(origin, npc.state.pos)) continue;
       entities.push({
         id: npc.id,
-        name: npc.name,
-        kind: 'npc',
-        race: npc.race,
+        ...introduce(npc.id, { name: npc.name, kind: 'npc', race: npc.race }),
         x: round(npc.state.pos.x),
         y: round(npc.state.pos.y),
         z: round(npc.state.pos.z),
@@ -684,10 +701,12 @@ export class World {
       if (!withinAoi(origin, mob.pos)) continue;
       entities.push({
         id: mob.id,
-        name: mob.name,
-        kind: 'mob',
-        race: 'human',
-        mobId: mob.mobId,
+        ...introduce(mob.id, {
+          name: mob.name,
+          kind: 'mob',
+          race: 'human',
+          mobId: mob.mobId,
+        }),
         x: round(mob.pos.x),
         y: round(mob.pos.y),
         z: round(mob.pos.z),
@@ -700,6 +719,7 @@ export class World {
       });
     }
 
+    viewer.introduced = seen;
     return entities;
   }
 

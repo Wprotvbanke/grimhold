@@ -9,6 +9,7 @@ import {
   type CharacterSummary,
   type ClientMessage,
   type CombatEvent,
+  type EntitySnapshot,
   type BankMessage,
   type CraftingMessage,
   type GatheringMessage,
@@ -57,6 +58,22 @@ export class TestClient {
   /** Где игрок находится: имя инстанса и точка появления. */
   world: WorldMessage | null = null;
   readonly errors: string[] = [];
+
+  /**
+   * Кого уже представили.
+   *
+   * Опознание (имя, вид, раса) едет один раз — при первом появлении сущности
+   * в поле зрения. Проверки читают `kind` и `name`, и без этой памяти они
+   * молча перестали бы находить кого бы то ни было: поле просто пустое.
+   * Настоящий клиент устроен так же.
+   */
+  private readonly identities = new Map<string, Partial<EntitySnapshot>>();
+
+  /** Длина последнего пришедшего сообщения на проводе, байт. */
+  wireBytes = 0;
+
+  /** Длина последнего снапшота на проводе — по ней считается трафик. */
+  snapshotBytes = 0;
   onSnapshot?: (snapshot: SnapshotMessage) => void;
 
   private readonly socket: WebSocket;
@@ -91,7 +108,14 @@ export class TestClient {
       });
     });
 
-    this.socket.on('message', (raw) => this.receive(JSON.parse(raw.toString()) as ServerMessage));
+    this.socket.on('message', (raw) => {
+      const text = raw.toString();
+      // Длина **на проводе**, до разбора: клиент дополняет сущности опознанием
+      // из памяти, и мерить размер после этого — значит мерить собственную
+      // работу, а не трафик.
+      this.wireBytes = text.length;
+      this.receive(JSON.parse(text) as ServerMessage);
+    });
     this.socket.on('error', (error) => this.rejectReady(error));
   }
 
@@ -130,8 +154,9 @@ export class TestClient {
         this.resolveReady();
         break;
       case 'snapshot':
-        this.latestSnapshot = message;
-        this.onSnapshot?.(message);
+        this.snapshotBytes = this.wireBytes;
+        this.latestSnapshot = { ...message, entities: message.entities.map((e) => this.identify(e)) };
+        this.onSnapshot?.(this.latestSnapshot);
         break;
       case 'chatMessage':
         this.chat.push(`[${message.channel}] ${message.from}: ${message.text}`);
@@ -173,6 +198,24 @@ export class TestClient {
         console.error('[сервер]', message.message);
         break;
     }
+  }
+
+  /**
+   * Дополняет сущность опознанием из памяти.
+   *
+   * Сущность без имени — это не ошибка, а «ты его уже знаешь».
+   */
+  private identify(entity: EntitySnapshot): EntitySnapshot {
+    if (entity.name !== undefined) {
+      this.identities.set(entity.id, {
+        name: entity.name,
+        kind: entity.kind,
+        race: entity.race,
+        mobId: entity.mobId,
+      });
+      return entity;
+    }
+    return { ...entity, ...this.identities.get(entity.id) };
   }
 
   send(message: ClientMessage): void {

@@ -345,6 +345,10 @@ const connection = new Connection(SERVER_URL, {
     openedChests.clear();
     aimedChest = null;
     syncBags([]);
+    // Сервер представит всех заново: память о знакомых относилась к прежнему
+    // миру, и держать её — значит однажды подписать чужого человека чужим
+    // именем.
+    identities.clear();
   },
   onGathering: (message) => {
     ui.setGathering(message);
@@ -448,12 +452,51 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'Escape' && inventoryUi.open) inventoryUi.hide();
 });
 
+/**
+ * Опознанная сущность.
+ *
+ * Сервер присылает имя, вид и расу **один раз** — при первом появлении в поле
+ * зрения; дальше в снапшоте едет только изменяемое. Поэтому у клиента есть
+ * память на опознанных, а всё, что рисует людей и зверьё, работает с этим
+ * типом, а не с сырым снапшотом: рисовать безымянную сущность нечем.
+ */
+type KnownEntity = EntitySnapshot & {
+  name: string;
+  kind: NonNullable<EntitySnapshot['kind']>;
+  race: NonNullable<EntitySnapshot['race']>;
+};
+
+/** Кого уже представили: id — имя, вид, раса, порода. */
+const identities = new Map<string, Pick<KnownEntity, 'name' | 'kind' | 'race' | 'mobId'>>();
+
+/**
+ * Дополняет сущность опознанием из памяти.
+ *
+ * `null` — сущность, которую нам не представляли: рисовать её нечем. В норме
+ * этого не бывает (сервер представляет заново каждого, кто вошёл в радиус),
+ * но молчать о пропаже дешевле, чем рисовать безымянного истукана.
+ */
+function identify(entity: EntitySnapshot): KnownEntity | null {
+  if (entity.name !== undefined && entity.kind !== undefined && entity.race !== undefined) {
+    identities.set(entity.id, {
+      name: entity.name,
+      kind: entity.kind,
+      race: entity.race,
+      mobId: entity.mobId,
+    });
+    return entity as KnownEntity;
+  }
+
+  const known = identities.get(entity.id);
+  return known ? { ...entity, ...known } : null;
+}
+
 interface Avatar {
   group: THREE.Group;
   placeholder: THREE.Group | null;
   model: CharacterModel | null;
   tag: HTMLDivElement;
-  entity: EntitySnapshot;
+  entity: KnownEntity;
   interpolator: EntityInterpolator;
   pose: InterpolatedPose;
   /** Секунд с момента смерти — по нему тело заваливается и оседает. */
@@ -661,7 +704,7 @@ const TOOL_NAMES: Record<string, string> = {
  * на экране. Далеко ли до него и не занят ли он, решит сервер: здесь мы
  * ошибёмся разве что в пользу отказа.
  */
-function playerInFront(): EntitySnapshot | null {
+function playerInFront(): KnownEntity | null {
   const snapshot = connection.latestSnapshot;
   if (!snapshot) return null;
 
@@ -669,10 +712,14 @@ function playerInFront(): EntitySnapshot | null {
   const forwardX = -Math.sin(controls.yaw);
   const forwardZ = -Math.cos(controls.yaw);
 
-  let best: EntitySnapshot | null = null;
+  let best: KnownEntity | null = null;
   let bestScore = 0.4; // косинус: примерно 66° в каждую сторону
-  for (const entity of snapshot.entities) {
-    if (entity.kind !== 'player' || !entity.alive) continue;
+  for (const raw of snapshot.entities) {
+    // Через опознание, а не по сырому снапшоту: имя и вид едут один раз,
+    // и у давно знакомого соседа их в пакете нет. Сравнение с сырым полем
+    // молча перестало бы находить кого бы то ни было.
+    const entity = identify(raw);
+    if (!entity || entity.kind !== 'player' || !entity.alive) continue;
     const dx = entity.x - self.x;
     const dz = entity.z - self.z;
     const distance = Math.hypot(dx, dz);
@@ -854,8 +901,10 @@ function consumeSnapshot(now: number): void {
   for (const id of snapshot.openedChests) openedChests.add(id);
 
   const seen = new Set<string>();
-  for (const entity of snapshot.entities) {
-    if (entity.id === connection.playerId) continue;
+  for (const raw of snapshot.entities) {
+    if (raw.id === connection.playerId) continue;
+    const entity = identify(raw);
+    if (!entity) continue;
     seen.add(entity.id);
     ensureAvatar(entity).interpolator.push(entity, now);
   }
@@ -934,7 +983,7 @@ function syncProjectiles(list: ProjectileSnapshot[]): void {
   }
 }
 
-function ensureAvatar(entity: EntitySnapshot): Avatar {
+function ensureAvatar(entity: KnownEntity): Avatar {
   const existing = avatars.get(entity.id);
   if (existing) {
     existing.entity = entity;
@@ -1148,7 +1197,7 @@ function projectToScreen(x: number, y: number, z: number): { x: number; y: numbe
   };
 }
 
-function nameFor(entity: EntitySnapshot): string {
+function nameFor(entity: KnownEntity): string {
   if (entity.kind === 'mob' && entity.mobId) {
     const percent = Math.round(entity.hp * 100);
     return `${MOBS[entity.mobId].name} · ${percent}%`;

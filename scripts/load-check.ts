@@ -44,8 +44,11 @@ async function main(): Promise<void> {
   let biggest = 0;
 
   for (const client of clients) {
-    client.onSnapshot = (snapshot) => {
-      const size = JSON.stringify(snapshot).length;
+    client.onSnapshot = () => {
+      // Размер берём с провода: опознание сущностей едет один раз, и клиент
+      // дописывает имена сам — измерять разобранный снапшот значило бы мерить
+      // работу клиента вместо трафика.
+      const size = client.snapshotBytes;
       count += 1;
       bytes += size;
       if (size > biggest) biggest = size;
