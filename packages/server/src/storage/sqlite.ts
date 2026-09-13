@@ -9,13 +9,16 @@ import {
   createBackpack,
   createBank,
   createHotbar,
+  isItemId,
   isRecipeId,
+  itemDef,
   sanitizeGrid,
   sanitizeHotbar,
   type CharacterClass,
   type Equipment,
   type Grid,
   type ItemId,
+  type PlacedItem,
   type Race,
   type RecipeId,
 } from '@grimhold/shared';
@@ -381,15 +384,39 @@ function parseJson(raw: string | undefined): unknown {
 }
 
 /** Надетое проверяется так же строго, как рюкзак. */
+/**
+ * Надетое при загрузке из базы.
+ *
+ * **Не через сетку.** Раньше каждый слот проверялся раскладкой один на один —
+ * и это молча съедало всё, что больше клетки: меч 2×4, лук 2×4, кираса 2×2.
+ * В слоте вещь лежит целиком, размер там не значит ничего, а проверка размера
+ * означала «снять с игрока всё оружие при каждом перезаходе».
+ *
+ * Проверяем то, что здесь действительно важно: предмет существует, его больше
+ * нуля и он **годится для этого слота** — иначе испорченная строка надела бы
+ * меч на голову.
+ */
 function sanitizeEquipment(raw: unknown): Equipment {
   const result: Equipment = {};
   if (!raw || typeof raw !== 'object') return result;
 
-  // Сетка один на один: каждый слот держит ровно один предмет.
   for (const [slot, value] of Object.entries(raw as Record<string, unknown>)) {
-    const grid = sanitizeGrid({ items: [value] }, 1, 1);
-    const item = grid.items[0];
-    if (item) result[slot as keyof Equipment] = { ...item, x: 0, y: 0, rotated: false };
+    if (!value || typeof value !== 'object') continue;
+
+    const { defId, count } = value as PlacedItem;
+    if (typeof defId !== 'string' || !isItemId(defId)) continue;
+    if (!Number.isFinite(count) || count <= 0) continue;
+
+    const def = itemDef(defId);
+    if (def.slot !== slot) continue;
+
+    result[slot as keyof Equipment] = {
+      defId,
+      count: Math.min(Math.floor(count), def.stack),
+      x: 0,
+      y: 0,
+      rotated: false,
+    };
   }
   return result;
 }

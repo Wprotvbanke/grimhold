@@ -856,8 +856,21 @@ function grantExperience(
   }
 }
 
+/**
+ * Какой навык растёт от удара.
+ *
+ * Решает **вещь в руке**, а не класс. Пока решал класс, следопыт качал
+ * стрельбу кулаками — и продолжал качать её же, потеряв лук: навык рос
+ * без лука и без стрел, то есть за то, чего игрок не делал.
+ *
+ * Класс остаётся запасным ответом для пустых рук: драка без оружия — это
+ * всё-таки драка, и чему-то она учить должна.
+ */
 function skillForWeapon(player: Player): SkillId {
-  // Инвентаря ещё нет: класс задаёт, какой навык тренируется кулаками.
+  const held = player.equipment.mainHand?.defId;
+  const skill = held ? itemDef(held).skill : undefined;
+  if (skill) return skill;
+
   if (player.characterClass === 'mage') return 'evocation';
   if (player.characterClass === 'ranger') return 'archery';
   return 'blade';

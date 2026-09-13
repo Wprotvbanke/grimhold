@@ -8,6 +8,7 @@
  */
 
 import { SPELLS, type SpellId } from './spells.js';
+import type { SkillId } from './skills.js';
 // Только тип: ссылка нужна свиткам, а цикл при этом стирается при сборке.
 import type { RecipeId } from './recipes.js';
 
@@ -56,6 +57,15 @@ export interface ItemDef {
   /** Броня: складывается со всей надетой и режет урон в applyDamage. */
   armor?: number;
   toolKind?: ToolKind;
+  /**
+   * Какой навык растёт от ударов этой вещью.
+   *
+   * У оружия он свой и не зависит от класса: лук учит стрельбе, дубина —
+   * дробящему, меч и топор — клинку. Пусто — значит вещь бьют не ради боя
+   * (или это вовсе не оружие), и навык выбирается по классу, как при
+   * пустых руках.
+   */
+  skill?: SkillId;
   /** Ярус инструмента: нода требует не ниже своего. */
   toolTier?: number;
   /** Что делает расходник при использовании. */
@@ -231,6 +241,7 @@ const ITEM_LIST: ItemDef[] = [
     tier: 1,
     slot: 'mainHand',
     damage: 11,
+    skill: 'blade',
     toolKind: 'axe',
     toolTier: 1,
     description: 'Рубит деревья. В бою лучше кулака, но ненамного.',
@@ -246,6 +257,7 @@ const ITEM_LIST: ItemDef[] = [
     tier: 1,
     slot: 'mainHand',
     damage: 10,
+    skill: 'blunt',
     toolKind: 'pick',
     toolTier: 1,
     description: 'Бьёт руду и камень.',
@@ -261,6 +273,7 @@ const ITEM_LIST: ItemDef[] = [
     tier: 1,
     slot: 'mainHand',
     damage: 8,
+    skill: 'blade',
     toolKind: 'knife',
     toolTier: 1,
     description: 'Срезает травы и снимает шкуры.',
@@ -317,6 +330,7 @@ const ITEM_LIST: ItemDef[] = [
     tier: 1,
     slot: 'mainHand',
     damage: 13,
+    skill: 'blunt',
   },
   {
     id: 'wooden_shield',
@@ -347,6 +361,7 @@ const ITEM_LIST: ItemDef[] = [
     tier: 2,
     slot: 'mainHand',
     damage: 24,
+    skill: 'blade',
     description: 'Работа дворфийской кузни. Занимает полрюкзака — и стоит того.',
   },
   { id: 'iron_helm', name: 'Железный шлем', kind: 'armor', width: 2, height: 2, weight: 2.4, stack: 1, tier: 2, slot: 'head', armor: 9 },
@@ -364,6 +379,7 @@ const ITEM_LIST: ItemDef[] = [
     tier: 2,
     slot: 'mainHand',
     damage: 18,
+    skill: 'archery',
     description: 'Бьёт издали. Требует стрел.',
   },
   { id: 'leather_cap', name: 'Кожаный шлем', kind: 'armor', width: 2, height: 2, weight: 0.8, stack: 1, tier: 2, slot: 'head', armor: 5 },
