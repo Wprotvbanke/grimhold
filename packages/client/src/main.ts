@@ -58,6 +58,8 @@ import {
 import { InventoryUi } from './inventoryui.js';
 import { guardBrowserKeys, toggleFullCapture, wireFullCapture } from './keyboard.js';
 import { createQuality } from './quality.js';
+import { createFrameStats } from './frames.js';
+import { createSettings } from './settings.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -203,6 +205,17 @@ const controls = new Controls(renderer.domElement, {
     // Подсказка вместо экрана паузы: мир видно всегда.
     ui.setResumeHint(!locked && !ui.chatFocused && !combatUi.dead && !inventoryUi.open);
     if (locked) controls.suspended = false;
+
+    /**
+     * Меню настроек — оно же экран паузы.
+     *
+     * Escape при захваченной мыши браузер забирает себе: он отпускает мышь
+     * и до игры нажатие не доходит. Поэтому меню открывается **на отпускание
+     * мыши** — для игрока это и есть «нажал Escape». Но не тогда, когда мышь
+     * отпущена ради рюкзака, чата или экрана смерти: там у игрока другое дело.
+     */
+    if (locked) settings.hide();
+    else if (!ui.chatFocused && !combatUi.dead && !inventoryUi.open) settings.show();
   },
   onAction: (kind) => {
     if (!game || combatUi.dead) return;
@@ -392,11 +405,18 @@ renderer.domElement.addEventListener('mousedown', () => {
  */
 function openInventory(): void {
   if (!game || combatUi.dead) return;
-  // Мышь нужна курсором, а не для обзора: отпускаем захват.
   controls.suspended = true;
+
+  /**
+   * Рюкзак поднимается **до** того, как отпущена мышь.
+   *
+   * Порядок важен: на отпускание мыши открывается меню настроек, и оно смотрит,
+   * не занят ли игрок чем-то ещё. Отпусти захват первым — и поверх рюкзака
+   * вылезет меню, потому что в тот момент рюкзак ещё не считался открытым.
+   */
+  inventoryUi.show();
   document.exitPointerLock();
   ui.setResumeHint(false);
-  inventoryUi.show();
 }
 
 /**
@@ -453,8 +473,31 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
-  // Escape закрывает, но захват не возвращает: курсор остаётся свободным.
-  if (event.code === 'Escape' && inventoryUi.open) inventoryUi.hide();
+  if (event.code === 'Escape') {
+    // Escape закрывает рюкзак, но захват не возвращает: курсор остаётся
+    // свободным — вещи ещё могут понадобиться.
+    if (inventoryUi.open) {
+      inventoryUi.hide();
+      return;
+    }
+    if (!game) return;
+
+    /**
+     * Меню настроек.
+     *
+     * Обычно до игры это нажатие не доходит: браузер забирает Escape себе,
+     * чтобы отпустить мышь, — и меню откроется само, по отпусканию. Но в полном
+     * экране с захватом клавиатуры Escape достаётся нам, и тогда мышь надо
+     * отпустить самим, иначе в меню нечем щёлкать.
+     */
+    if (settings.open) {
+      settings.hide();
+      controls.requestLock();
+    } else {
+      settings.show();
+      if (controls.locked) document.exitPointerLock();
+    }
+  }
 });
 
 /**
@@ -523,6 +566,27 @@ const projectiles = new Map<string, THREE.Object3D>();
 const renderPos = { x: 0, y: 0, z: 0 };
 
 let lastFrame = performance.now();
+/** Когда в последний раз обновляли замер в меню. */
+let lastReadout = 0;
+
+/**
+ * Замер кадра.
+ *
+ * Средний FPS почти ничего не говорит о плавности: двести кадров с одним
+ * застрявшим на десяток выглядят хуже ровных шестидесяти. Меряем разброс.
+ */
+const frameStats = createFrameStats();
+
+/**
+ * Настройки картинки. Они же экран паузы: мышь отпущена — меню открыто.
+ *
+ * Отдельного экрана паузы в игре нет намеренно, мир видно всегда; меню
+ * не закрывает его целиком и снимается тем же щелчком, что возвращает мышь.
+ */
+const settings = createSettings(
+  (chosen) => quality.configure({ resolution: chosen.resolution, shadows: chosen.shadows }),
+  () => controls.requestLock(),
+);
 let lastSnapshotTick = -1;
 let actionSeq = 0;
 /** Штраф скорости за перегруз. Обновляется вместе с состоянием вещей. */
@@ -573,9 +637,27 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   ui.setResumeHint(true);
 }
 
-renderer.setAnimationLoop(() => {
-  const now = performance.now();
+/**
+ * Главный цикл.
+ *
+ * Время кадра берётся **из метки браузера**, а не из `performance.now()`
+ * в начале обработчика. Разница не косметическая: метка — это момент, к
+ * которому кадр будет показан, и идёт она ровно по развёртке, а время входа
+ * в обработчик гуляет от того, как ОС раздала процессор. Считая по второму,
+ * мы вносили в движение камеры чужое дрожание планировщика.
+ */
+renderer.setAnimationLoop((frameTime: number) => {
+  const now = frameTime;
+
+  // Предел кадров. Браузер рисует по развёртке и своей синхронизации не отдаёт,
+  // но неровный ход лечится именно этим: ровная доля частоты монитора кладёт
+  // кадры на развёртку одинаково. Полтора миллисекунда допуска — чтобы из-за
+  // дробей не пропускать каждый второй кадр.
+  const cap = settings.current.fpsCap;
+  if (cap > 0 && now - lastFrame < 1000 / cap - 1.5) return;
+
   const dt = Math.min((now - lastFrame) / 1000, MAX_STEP_DT);
+  frameStats.push(now - lastFrame);
   lastFrame = now;
 
   if (game) {
@@ -639,6 +721,13 @@ renderer.setAnimationLoop(() => {
   // Время суток берётся из тика сервера — общих часов мира. До входа в игру
   // тика нет, и город облетается в том же сумеречном утре, с которого
   // начинается день: показывать случайное время на экране входа незачем.
+  // Замер в меню обновляется, только пока меню открыто: считать нечего,
+  // когда его не видно.
+  if (settings.open && now - lastReadout > 500) {
+    lastReadout = now;
+    settings.setReadout(frameStats.readout());
+  }
+
   const worldTime = connection.latestSnapshot
     ? timeOfDay(connection.latestSnapshot.tick, serverTickRate)
     : DAY_START;
@@ -655,7 +744,7 @@ renderer.setAnimationLoop(() => {
   // Второй проход с очисткой глубины: руки не режутся о стены впритык.
   if (game && !combatUi.dead) game.hands.render(renderer, camera.aspect);
 
-  updateHud(dt);
+  updateHud();
 });
 
 /**
@@ -1214,7 +1303,7 @@ function nameFor(entity: KnownEntity): string {
   return entity.name;
 }
 
-function updateHud(dt: number): void {
+function updateHud(): void {
   if (!game || ui.inMenus) {
     hud.textContent = '';
     return;
@@ -1224,14 +1313,19 @@ function updateHud(dt: number): void {
   const snapshot = connection.latestSnapshot;
   const pos = game.predictor.state.pos;
 
+  const frame = frameStats.measure();
   hud.textContent =
     `${game.character.name} · ${RACES[game.character.race].name}\n` +
     `связь: ${connection.status}   пинг: ${rtt.toFixed(0)} мс\n` +
     `тик: ${snapshot?.tick ?? '—'}  ack: ${snapshot?.ack ?? '—'}  в полёте: ${pending}\n` +
     `поправка: ${(correction * 100).toFixed(1)} см\n` +
     `позиция: ${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}\n` +
-    `рядом: ${avatars.size}   чанков: ${world.loadedChunks}   кадр: ${(1 / dt).toFixed(0)} fps` +
-    `   качество: ${quality.scale.toFixed(2)}`;
+    `рядом: ${avatars.size}   чанков: ${world.loadedChunks}
+` +
+    // Не средний FPS, а разброс: двести кадров с одним застрявшим на десяток
+    // выглядят хуже ровных шестидесяти, и дрожание живёт именно в разбросе.
+    `кадр: ${frame.median.toFixed(1)} мс (${Math.round(frame.fps)} в секунду)  ` +
+    `рывков: ${(frame.stutter * 100).toFixed(1)}%   качество: ${quality.scale.toFixed(2)}`;
 }
 
 addEventListener('resize', () => {

@@ -42,6 +42,13 @@ export interface Quality {
   readonly scale: number;
   /** Зовётся каждый кадр перед отрисовкой. */
   frame(now: number): void;
+  /**
+   * Выбор игрока из меню настроек.
+   *
+   * Ручное разрешение выключает подстройку целиком: если человек выставил
+   * число сам, подкручивать его за него — значит спорить с ним же.
+   */
+  configure(options: { resolution: 'auto' | number; shadows: 'every' | 'half' | 'off' }): void;
 }
 
 export function createQuality(renderer: THREE.WebGLRenderer): Quality {
@@ -54,6 +61,10 @@ export function createQuality(renderer: THREE.WebGLRenderer): Quality {
   let last = performance.now();
   let changedAt = last;
   let frames = 0;
+
+  /** Что выбрал игрок. `auto` — подстраиваемся сами, как раньше. */
+  let wantedResolution: 'auto' | number = 'auto';
+  let wantedShadows: 'every' | 'half' | 'off' = 'half';
 
   renderer.setPixelRatio(scale);
 
@@ -71,12 +82,42 @@ export function createQuality(renderer: THREE.WebGLRenderer): Quality {
       return scale;
     },
 
+    configure(options) {
+      wantedResolution = options.resolution;
+      wantedShadows = options.shadows;
+
+      /**
+       * Тени выключаются **флагом рендерера**, а не снятием castShadow
+       * с каждого объекта: смена флага у объектов пересобирает шейдеры всех
+       * материалов сцены, и это фриз на полсекунды посреди игры.
+       */
+      renderer.shadowMap.enabled = options.shadows !== 'off';
+      renderer.shadowMap.needsUpdate = true;
+
+      const wanted = options.resolution === 'auto' ? ceiling : options.resolution;
+      if (wanted === scale) return;
+
+      scale = wanted;
+      renderer.setPixelRatio(scale);
+      // Размер задаём заново: three пересоздаёт буфер кадра только по нему.
+      renderer.setSize(innerWidth, innerHeight);
+      changedAt = performance.now();
+      times.length = 0;
+    },
+
     frame(now) {
-      renderer.shadowMap.needsUpdate = frames++ % 2 === 0;
+      // Тени: каждый кадр честнее, через кадр вдвое дешевле, выключенные —
+      // самый большой запас на слабой машине.
+      frames++;
+      renderer.shadowMap.needsUpdate =
+        wantedShadows === 'every' || (wantedShadows === 'half' && frames % 2 === 0);
 
       times.push(now - last);
       last = now;
       if (times.length > WINDOW) times.shift();
+
+      // Разрешение выставлено вручную — подстраивать нечего.
+      if (wantedResolution !== 'auto') return;
       if (times.length < WINDOW || now - changedAt < SETTLE_MS) return;
 
       const sorted = [...times].sort((a, b) => a - b);
