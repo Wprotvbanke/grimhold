@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Просмотр модели</title>
+    <style>
+      body { margin: 0; background: #2a2a30; color: #cfcac0; font: 13px monospace; }
+      canvas { display: block; }
+      #note { position: fixed; left: 12px; top: 10px; opacity: 0.7; }
+    </style>
+  </head>
+  <body>
+    <div id="note"></div>
+    <!--
+      Просмотр одной модели без всей игры.
+
+      Нужен потому, что модель в мире видно только глазами игрока, а до мира
+      её ещё надо довезти: поставить NPC, дойти до него, поймать в кадр.
+      Здесь она стоит перед камерой сразу, с выбранным клипом.
+
+        /model.html?src=/models/gnome.glb&clip=Walk
+
+      Снимок делает scripts/model-shot.ts.
+    -->
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+      import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+
+      const options = new URLSearchParams(location.search);
+      const src = options.get('src') ?? '/models/gnome.glb';
+      const wanted = options.get('clip') ?? '';
+      const turn = Number(options.get('turn') ?? 0);
+      const seconds = Number(options.get('at') ?? 3);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(900, 900);
+      document.body.append(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x2a2a30);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2));
+      const sun = new THREE.DirectionalLight(0xffffff, 2);
+      sun.position.set(2, 4, 3);
+      scene.add(sun);
+
+      const loader = new GLTFLoader();
+      const draco = new DRACOLoader();
+      draco.setDecoderPath('/draco/');
+      loader.setDRACOLoader(draco);
+
+      const gltf = await loader.loadAsync(src);
+      const model = gltf.scene;
+      model.rotation.y = (turn * Math.PI) / 180;
+      scene.add(model);
+
+      // Камера ставится по габаритам модели: они у всех разные, а в кадр
+      // должна влезать любая — от гнома до огра.
+      model.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(model);
+      const height = bounds.max.y - bounds.min.y;
+      const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
+      camera.position.set(0, bounds.min.y + height * 0.6, height * 2.6);
+      camera.lookAt(0, bounds.min.y + height * 0.55, 0);
+
+      const mixer = new THREE.AnimationMixer(model);
+      const clip = wanted
+        ? THREE.AnimationClip.findByName(gltf.animations, wanted)
+        : gltf.animations[0];
+      if (clip) mixer.clipAction(clip).play();
+
+      const report = {
+        src,
+        height: Number(height.toFixed(3)),
+        clips: gltf.animations.map((entry) => `${entry.name} ${entry.duration.toFixed(2)}с`),
+        playing: clip ? clip.name : 'нет',
+      };
+      window.report = report;
+      document.getElementById('note').textContent =
+        `${src} · рост ${report.height} м · клипы: ${report.clips.join(', ') || 'нет'} · играет: ${report.playing}`;
+
+      // Проигрываем до заданного момента и останавливаемся: снимок должен быть
+      // воспроизводимым, а не «какой кадр успеется».
+      let time = 0;
+      const step = () => {
+        mixer.update(1 / 60);
+        time += 1 / 60;
+        renderer.render(scene, camera);
+        if (time < seconds) requestAnimationFrame(step);
+        else window.ready = true;
+      };
+      step();
+    </script>
+  </body>
+</html>

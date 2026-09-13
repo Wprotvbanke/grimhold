@@ -20,6 +20,18 @@ const RACE_MODELS: Partial<Record<Race, string>> = {
   dwarf: '/models/dwarf.glb',
 };
 
+/**
+ * Модель жителя.
+ *
+ * Отдельно от игроков намеренно: горожанин — не искатель приключений, и в лицо
+ * их путать не надо. Заодно это защита от подмены — у гнома есть ходьба
+ * и стойка, но нет ни удара, ни смерти; поставь его игрокам, и дворфы
+ * перестали бы замахиваться.
+ */
+const NPC_MODELS: Partial<Record<Race, string>> = {
+  dwarf: '/models/gnome.glb',
+};
+
 /** Файл модели на моба. Остальные пока рисуются примитивами из scene.ts. */
 const MOB_MODELS: Partial<Record<MobId, string>> = {
   skeleton: '/models/skeleton_human.glb',
@@ -104,16 +116,16 @@ loader.setDRACOLoader(dracoLoader);
 const cache = new Map<string, Promise<THREE.Group>>();
 const clips = new Map<string, THREE.AnimationClip[]>();
 
-export function hasModel(race: Race): boolean {
-  return RACE_MODELS[race] !== undefined;
+export function hasModel(race: Race, npc = false): boolean {
+  return (npc ? NPC_MODELS : RACE_MODELS)[race] !== undefined;
 }
 
 export function hasMobModel(mobId: MobId): boolean {
   return MOB_MODELS[mobId] !== undefined;
 }
 
-export function createCharacterModel(race: Race): Promise<CharacterModel | null> {
-  const url = RACE_MODELS[race];
+export function createCharacterModel(race: Race, npc = false): Promise<CharacterModel | null> {
+  const url = (npc ? NPC_MODELS : RACE_MODELS)[race];
   if (!url) return Promise.resolve(null);
   return buildModel(url, RACES[race].height);
 }

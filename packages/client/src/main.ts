@@ -1022,8 +1022,8 @@ function ensureAvatar(entity: KnownEntity): Avatar {
       ? hasMobModel(entity.mobId)
         ? createMobModel(entity.mobId)
         : null
-      : hasModel(entity.race)
-        ? createCharacterModel(entity.race)
+      : hasModel(entity.race, entity.kind === 'npc')
+        ? createCharacterModel(entity.race, entity.kind === 'npc')
         : null;
 
   if (pending) {
