@@ -956,21 +956,27 @@ function updateNodeHint(x: number, z: number): void {
   aimedPlace = null;
   aimedChest = null;
   aimedBag = null;
+
+  /**
+   * Мешок проверяется **до всего остального и в любом мире**.
+   *
+   * Мешки лежат и наверху — с каждого убитого зверя, — и внизу. И перебивают
+   * они всё: мешок лежит там, где что-то уже случилось, и подобрать его важнее,
+   * чем срубить дерево или вскрыть ящик.
+   */
+  const bag = bagAt(x, z);
+  if (bag) {
+    aimedNode = null;
+    aimedBag = bag;
+    ui.setNodeHint('Мешок', null, true, 'обыскать');
+    return;
+  }
+
   if (undergroundNow) {
     if (Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) <= DUNGEON_EXIT_RANGE) {
       aimedPlace = 'portal';
       aimedNode = null;
-      ui.setNodeHint('Портал наверх', null, true, 'выйти');
-      return;
-    }
-
-    const bag = bagAt(x, z);
-    if (bag) {
-      // Мешок перебивает сундук: он лежит там, где кто-то уже не дошёл,
-      // и решение подобрать его дороже решения вскрыть ящик.
-      aimedNode = null;
-      aimedBag = bag;
-      ui.setNodeHint('Мешок павшего', null, true, 'обыскать');
+      ui.setNodeHint('Выход наверх', null, true, 'выйти');
       return;
     }
 
