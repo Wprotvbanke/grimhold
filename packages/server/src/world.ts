@@ -267,6 +267,29 @@ export class World {
   private readonly terrain = new Map<InstanceId, ChunkedWorld>();
   private nextId = 1;
 
+  /**
+   * Кого перенесли в другой инстанс с прошлой рассылки.
+   *
+   * Клиенту **обязательно** сказать о переезде: землю под ногами он строит
+   * сам, по имени инстанса, и без этого сообщения продолжает строить прежнюю.
+   * Именно так и вышло с воскрешением из подземелья: сервер поднимал игрока
+   * в городе, а клиент оставался с генератором подземелья — за пределами зала
+   * тот отдаёт пустоту, и человек оказывался в городе без пола.
+   *
+   * Список живёт здесь, а не в командах, потому что переносов уже три —
+   * спуск, выход и воскрешение, — и добавится четвёртый. Забыть сообщение
+   * в одном из них нельзя: оно уходит оттуда же, откуда происходит перенос.
+   */
+  private readonly moved = new Set<Player>();
+
+  /** Забирает список переехавших: каждому надо разослать `world`. */
+  takeInstanceMoves(): Player[] {
+    if (this.moved.size === 0) return [];
+    const list = [...this.moved];
+    this.moved.clear();
+    return list;
+  }
+
   // ---------- игроки ----------
 
   spawnPlayer(character: {
@@ -377,7 +400,9 @@ export class World {
   }
 
   removePlayer(id: string): void {
-    const left = this.players.get(id)?.instanceId;
+    const player = this.players.get(id);
+    const left = player?.instanceId;
+    if (player) this.moved.delete(player);
     this.players.delete(id);
     this.history.forget(id);
     if (left) this.closeIfEmpty(left);
@@ -409,6 +434,7 @@ export class World {
     player.introduced = new Set();
     this.history.forget(player.id);
     player.dirty = true;
+    this.moved.add(player);
 
     this.closeIfEmpty(left);
   }

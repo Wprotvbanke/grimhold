@@ -153,14 +153,6 @@ wss.on('connection', (socket) => {
       if (event.type === 'gathering') {
         session.send(workMessage(player, event.note as string | undefined));
       }
-      // Игрок сменил инстанс: клиенту надо перестроить землю под ногами.
-      if (event.type === 'world') {
-        session.send({
-          t: 'world',
-          instanceId: player.instanceId,
-          spawn: { ...player.state.pos },
-        });
-      }
       if (event.type === 'criticalSave') {
         persistence.flushPlayer(player, 'переход между мирами');
       }
@@ -214,6 +206,21 @@ setInterval(() => {
   for (const entry of outbox.loot) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.crafting) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.gathering) sendTo(entry.playerId, entry.message);
+  /**
+   * Кого перенесли в другой инстанс — тому новую землю под ногами.
+   *
+   * Рассылается из одного места на все переносы разом: спуск, выход наверх,
+   * воскрешение. Забыть сообщение в одной из команд нельзя — его никто
+   * из команд и не шлёт.
+   */
+  for (const player of world.takeInstanceMoves()) {
+    sendTo(player.id, {
+      t: 'world',
+      instanceId: player.instanceId,
+      spawn: { ...player.state.pos },
+    });
+  }
+
   // Хранилище закрылось само — панель у игрока обязана погаснуть.
   for (const player of new Set(outbox.bank)) {
     sendTo(player.id, {

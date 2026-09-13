@@ -54,7 +54,7 @@ export const handleEnterDungeon: CommandHandler<EnterDungeonMessage> = (ctx) => 
   if (joined) {
     ctx.world.moveToInstance(player, joined, DUNGEON_ENTRY);
     console.log(`[подземелье] ${player.name} подсел в ${joined}`);
-    return [{ type: 'world' }, { type: 'criticalSave' }];
+    return [{ type: 'criticalSave' }];
   }
 
   // Свободного нет — заводим свой. Зерно у каждого забега своё: два спуска
@@ -71,7 +71,7 @@ export const handleEnterDungeon: CommandHandler<EnterDungeonMessage> = (ctx) => 
   const count = ctx.world.populateDungeon(instanceId);
   console.log(`[подземелье] ${player.name} спустился в ${instanceId}, обитателей: ${count}`);
 
-  return [{ type: 'world' }, { type: 'criticalSave' }];
+  return [{ type: 'criticalSave' }];
 };
 
 export const handleLeaveDungeon: CommandHandler<LeaveDungeonMessage> = (ctx) => {
@@ -87,7 +87,10 @@ export const handleLeaveDungeon: CommandHandler<LeaveDungeonMessage> = (ctx) => 
 
   ctx.world.moveToInstance(player, OVERWORLD, SPAWN_POINT);
 
+  // Сообщение о новой земле под ногами шлёт не команда, а сам перенос:
+  // `World.moveToInstance` помечает игрока переехавшим, рассылка забирает.
+  //
   // Выход с добычей — критичное событие: падение сервера сразу после него
   // не должно вернуть игрока вниз вместе с уже вынесенными вещами.
-  return [{ type: 'world' }, { type: 'criticalSave' }];
+  return [{ type: 'criticalSave' }];
 };

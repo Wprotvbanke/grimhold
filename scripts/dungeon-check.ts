@@ -103,6 +103,14 @@ function where(client: TestClient): string {
 async function descendAgain(client: TestClient): Promise<boolean> {
   if (!(await reviveIfDead(client))) return false;
 
+  /**
+   * Воскрешение — это перенос, и клиенту о нём обязаны сказать.
+   *
+   * Без этого сообщения клиент продолжает строить землю подземелья, а она
+   * за пределами зала пуста: игрок появлялся в городе без пола и проваливался.
+   */
+  check(where(client) === 'overworld', 'воскресшему сказали, что он в городе', where(client));
+
   await walkTo(client, DUNGEON_GATE, 1.2);
   client.send({ t: 'enterDungeon' });
   await sleep(700);
