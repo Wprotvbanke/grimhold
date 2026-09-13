@@ -13,6 +13,10 @@
  *   6. портал возвращает в город, и это переживает перезаход.
  */
 import {
+  ACTIONS,
+  BAG_RANGE,
+  INPUT_DT,
+  TICK_RATE,
   CHEST_RANGE,
   CHEST_TIME,
   dungeonChests,
@@ -27,6 +31,56 @@ import { carried, reviveIfDead, walkTo } from './fieldwork.js';
 import { TestClient, sleep } from './testClient.js';
 
 const failures: string[] = [];
+let seq = 0;
+
+/**
+ * Бьёт в сторону цели, пока та жива или пока не кончится терпение.
+ *
+ * Мародёру нужно не победить, а убить: мешок появляется только после смерти,
+ * и проверить его иначе нечем. Стамина кончается быстрее здоровья, поэтому
+ * между сериями ударов боец отдыхает.
+ */
+async function beatDown(
+  attacker: TestClient,
+  target: TestClient,
+  seconds = 70,
+): Promise<boolean> {
+  const until = Date.now() + seconds * 1000;
+
+  while (Date.now() < until) {
+    if (target.latestSnapshot?.self.alive === false) return true;
+
+    const self = attacker.latestSnapshot?.self;
+    const prey = target.latestSnapshot?.self;
+    if (!self || !prey) break;
+
+    if (self.stamina < ACTIONS.attack.staminaCost) {
+      await sleep(1200);
+      continue;
+    }
+
+    const yaw = Math.atan2(-(prey.x - self.x), -(prey.z - self.z));
+    for (let k = 0; k < 4; k++) {
+      attacker.send({
+        t: 'input',
+        seq: seq++,
+        forward: 0,
+        right: 0,
+        yaw,
+        pitch: 0,
+        jump: false,
+        sprint: false,
+        dt: INPUT_DT,
+      });
+    }
+    await sleep(1000 / TICK_RATE);
+
+    attacker.send({ t: 'action', kind: 'attack', seq: seq++, viewTick: attacker.latestSnapshot?.tick ?? 0 });
+    await sleep(600);
+  }
+
+  return target.latestSnapshot?.self.alive === false;
+}
 
 function check(condition: boolean, description: string, detail = ''): void {
   if (condition) console.log(`  OK   ${description}`);
@@ -140,13 +194,68 @@ async function main(): Promise<void> {
     console.log('  ···  второй заход не проверен: копателя убили у сундука');
   }
 
-  console.log('\n6. Портал возвращает наверх');
+  console.log('\n6. Зал общий, и павший оставляет мешок');
+  // Подземелье на одного — это полоса препятствий: ни встречи, ни второго
+  // охотника за тем же сундуком. Из замысла зал принимает двенадцать.
+  const marauder = new TestClient({ username: `Мародёр${stamp}` });
+  await marauder.ready;
+  await sleep(600);
+  await walkTo(marauder, DUNGEON_GATE, 1.2);
+  marauder.send({ t: 'enterDungeon' });
+  await sleep(800);
+
+  check(where(marauder) === where(digger), 'спустились в один зал', where(marauder));
+
+  const met = marauder.latestSnapshot?.entities.some((e) => e.id === digger.playerId);
+  check(met === true, 'и видят друг друга');
+
+  // Сходимся вплотную: удар считается по дистанции, а не по намерению.
+  const prey = digger.latestSnapshot!.self;
+  await walkTo(marauder, { x: prey.x, z: prey.z }, 1.0);
+
+  const killed = await beatDown(marauder, digger);
+  if (killed) {
+    await sleep(500);
+    const spoils = marauder.latestSnapshot?.bags ?? [];
+    check(spoils.length > 0, 'от павшего остался мешок', `мешков рядом: ${spoils.length}`);
+
+    if (spoils.length > 0) {
+      const sack = spoils[0]!;
+      const toBag = await walkTo(marauder, sack, 1.0);
+      check(toBag <= BAG_RANGE, 'дошли до мешка', `${toBag.toFixed(2)} м`);
+
+      marauder.send({ t: 'openBag', bagId: sack.id });
+      await sleep(400);
+
+      const opened = marauder.bank;
+      check(opened?.open === true, 'мешок открывается', opened?.title ?? 'молчит');
+      check(
+        (opened?.grid.items.length ?? 0) > 0,
+        'и в нём лежит добыча павшего',
+        `предметов: ${opened?.grid.items.length ?? 0}`,
+      );
+    }
+
+    // Убитому вещи не вернулись: надетое пропало, рюкзак остался внизу.
+    check(carried(digger, 'bandage') === 0, 'у павшего рюкзак пуст', `бинтов ${carried(digger, 'bandage')}`);
+  } else {
+    console.log('  ···  добить не вышло за отведённое время — мешок не проверен');
+  }
+
+  marauder.close();
+  await sleep(300);
+
+  console.log('\n7. Портал возвращает наверх');
   // Зал обитаем, и до портала можно не дойти — это и есть подземелье.
   // Проверяем правило выхода, а не выносливость: павшего поднимаем и спускаем
   // заново, иначе проверка будет падать через раз по совершенно честной причине.
   if (await descendAgain(digger)) {
     console.log('  ···  копателя убили в зале — спустился заново');
   }
+
+  // Что несём вниз на момент подъёма: сравнивать с самым началом больше нельзя —
+  // по дороге могли убить, и тогда рюкзак пуст совершенно законно.
+  const carriedDown = digger.inventory?.backpack.items.length ?? 0;
 
   digger.errors.length = 0;
   digger.send({ t: 'leaveDungeon' });
@@ -166,9 +275,13 @@ async function main(): Promise<void> {
     'и встали в городе',
     `${back?.x.toFixed(1)}, ${back?.z.toFixed(1)}`,
   );
-  check(carried(digger, 'bandage') === bandages, 'вещи вынесены');
+  check(
+    (digger.inventory?.backpack.items.length ?? 0) === carriedDown,
+    'что несли — вынесли',
+    `предметов ${digger.inventory?.backpack.items.length ?? 0} из ${carriedDown}`,
+  );
 
-  console.log('\n7. Перезаход помнит, где ты');
+  console.log('\n8. Перезаход помнит, где ты');
   digger.close();
   await sleep(700);
 

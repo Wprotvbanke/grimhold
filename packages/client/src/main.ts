@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  BAG_RANGE,
   BANK,
   CHEST_HEIGHT,
   CHEST_RANGE,
@@ -47,6 +48,7 @@ import {
   createAvatar,
   createMobMesh,
   createProjectileLights,
+  createBagMesh,
   createProjectileMesh,
   createScene,
   mobTagHeight,
@@ -237,6 +239,10 @@ const controls = new Controls(renderer.domElement, {
       connection.send({ t: 'leaveDungeon' });
       return;
     }
+    if (aimedBag) {
+      connection.send({ t: 'openBag', bagId: aimedBag });
+      return;
+    }
     if (aimedChest) {
       connection.send({ t: 'openChest', chestId: aimedChest });
       return;
@@ -338,6 +344,7 @@ const connection = new Connection(SERVER_URL, {
     // Чужой забег к новому отношения не имеет: список вскрытого придёт заново.
     openedChests.clear();
     aimedChest = null;
+    syncBags([]);
   },
   onGathering: (message) => {
     ui.setGathering(message);
@@ -627,6 +634,10 @@ let aimedChest: string | null = null;
 let dungeonSeedNow: number | null = null;
 /** Вскрытые сундуки: приходят снапшотом, как выработанные ноды. */
 const openedChests = new Set<string>();
+/** Мешки павших: что видно на полу, то и приходит в снапшоте. */
+const bags = new Map<string, { mesh: THREE.Object3D; x: number; y: number; z: number }>();
+/** Мешок под перекрестием. */
+let aimedBag: string | null = null;
 /** Идёт ли разговор об обмене — приглашение или сам стол. */
 let tradeOpen = false;
 /** На каком расстоянии клиент вообще предлагает обмен. Сервер строже. */
@@ -728,6 +739,29 @@ function chestAt(x: number, z: number): { id: string } | null {
   return best;
 }
 
+/** Мешок под перекрестием. Считается лучом, как ноды и сундуки. */
+const bagBox = new THREE.Box3();
+
+function bagAt(x: number, z: number): string | null {
+  let best: string | null = null;
+  let bestHit = Infinity;
+
+  for (const [id, bag] of bags) {
+    if (Math.hypot(bag.x - x, bag.z - z) > BAG_RANGE) continue;
+
+    bagBox.min.set(bag.x - 0.5, bag.y - 0.1, bag.z - 0.5);
+    bagBox.max.set(bag.x + 0.5, bag.y + 0.9, bag.z + 0.5);
+    if (!aimRay.intersectBox(bagBox, aimPoint)) continue;
+
+    const hit = aimPoint.distanceToSquared(aimRay.origin);
+    if (hit >= bestHit) continue;
+    best = id;
+    bestHit = hit;
+  }
+
+  return best;
+}
+
 function updateNodeHint(x: number, z: number): void {
   camera.getWorldDirection(aimDirection);
   aimRay.set(camera.position, aimDirection);
@@ -740,11 +774,22 @@ function updateNodeHint(x: number, z: number): void {
    */
   aimedPlace = null;
   aimedChest = null;
+  aimedBag = null;
   if (undergroundNow) {
     if (Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) <= DUNGEON_EXIT_RANGE) {
       aimedPlace = 'portal';
       aimedNode = null;
       ui.setNodeHint('Портал наверх', null, true, 'выйти');
+      return;
+    }
+
+    const bag = bagAt(x, z);
+    if (bag) {
+      // Мешок перебивает сундук: он лежит там, где кто-то уже не дошёл,
+      // и решение подобрать его дороже решения вскрыть ящик.
+      aimedNode = null;
+      aimedBag = bag;
+      ui.setNodeHint('Мешок павшего', null, true, 'обыскать');
       return;
     }
 
@@ -823,6 +868,41 @@ function consumeSnapshot(now: number): void {
   }
 
   syncProjectiles(snapshot.projectiles);
+  syncBags(snapshot.bags);
+}
+
+/**
+ * Мешки на полу. Держим сцену в соответствии со снапшотом: мешок истлевает
+ * сам, и пропасть он должен вместе с правом его обыскать.
+ */
+function syncBags(list: readonly { id: string; x: number; y: number; z: number }[]): void {
+  const seen = new Set<string>();
+
+  for (const bag of list) {
+    seen.add(bag.id);
+    let entry = bags.get(bag.id);
+    if (!entry) {
+      const mesh = createBagMesh();
+      scene.add(mesh);
+      entry = { mesh, x: bag.x, y: bag.y, z: bag.z };
+      bags.set(bag.id, entry);
+    }
+    entry.x = bag.x;
+    entry.y = bag.y;
+    entry.z = bag.z;
+    entry.mesh.position.set(bag.x, bag.y, bag.z);
+  }
+
+  for (const [id, entry] of bags) {
+    if (seen.has(id)) continue;
+    scene.remove(entry.mesh);
+    entry.mesh.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      if (mesh.isMesh) mesh.geometry.dispose();
+    });
+    bags.delete(id);
+    if (aimedBag === id) aimedBag = null;
+  }
 }
 
 /** Снаряды живут недолго — просто держим сцену в соответствии со снапшотом. */

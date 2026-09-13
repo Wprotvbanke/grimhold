@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -197,6 +197,18 @@ export const OpenChestSchema = z.object({
   chestId: z.string().max(32),
 });
 
+/**
+ * Обыскать мешок, оставшийся от павшего.
+ *
+ * Клиент шлёт только имя мешка: дошёл ли до него игрок и лежит ли он ещё,
+ * решает сервер. Дальше мешок работает как казна — тем же сообщением и теми
+ * же переносами.
+ */
+export const OpenBagSchema = z.object({
+  t: z.literal('openBag'),
+  bagId: z.string().max(32),
+});
+
 export const CraftSchema = z.object({
   t: z.literal('craft'),
   recipeId: z.string().max(48),
@@ -343,6 +355,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   UseHotbarSchema,
   HarvestSchema,
   OpenChestSchema,
+  OpenBagSchema,
   CraftSchema,
   OpenBankSchema,
   CloseBankSchema,
@@ -375,6 +388,7 @@ export type SetHotbarMessage = z.infer<typeof SetHotbarSchema>;
 export type UseHotbarMessage = z.infer<typeof UseHotbarSchema>;
 export type HarvestMessage = z.infer<typeof HarvestSchema>;
 export type OpenChestMessage = z.infer<typeof OpenChestSchema>;
+export type OpenBagMessage = z.infer<typeof OpenBagSchema>;
 export type CraftMessage = z.infer<typeof CraftSchema>;
 export type OpenBankMessage = z.infer<typeof OpenBankSchema>;
 export type CloseBankMessage = z.infer<typeof CloseBankSchema>;
@@ -507,13 +521,18 @@ export interface InventoryMessage {
 }
 
 /**
- * Содержимое казны. Приходит только когда сундук открыт: закрытый банк клиенту
- * не нужен, а вещи в нём — самое ценное, что есть у игрока.
+ * Содержимое открытого хранилища: городской казны или мешка павшего.
+ *
+ * Одно сообщение на оба, потому что для игрока это одно и то же окно с чужой
+ * сеткой, и правила переноса в нём те же. Приходит только пока хранилище
+ * открыто: закрытое клиенту не нужно, а лежит в нём самое ценное.
  */
 export interface BankMessage {
   t: 'bank';
   open: boolean;
   grid: Grid;
+  /** Что именно открыто — подписью над сеткой. */
+  title: string;
 }
 
 /** Одна строка на столе обмена. */
@@ -679,6 +698,22 @@ export interface SnapshotMessage {
    * или нет. Наверху список всегда пуст.
    */
   openedChests: string[];
+  /**
+   * Мешки павших поблизости.
+   *
+   * Отдельным списком, а не сущностями снапшота: у мешка нет ни имени, ни
+   * здоровья, ни действий — только место. Пихать его в общий список значило бы
+   * тащить с ним половину полей, которых у него нет.
+   */
+  bags: BagSnapshot[];
+}
+
+/** Мешок, оставшийся от павшего. Всё остальное про него знает сервер. */
+export interface BagSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface ErrorMessage {

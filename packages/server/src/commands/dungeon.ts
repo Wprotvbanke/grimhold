@@ -43,8 +43,22 @@ export const handleEnterDungeon: CommandHandler<EnterDungeonMessage> = (ctx) => 
   );
   if (distance > DUNGEON_GATE.range) return refuse('До спуска надо дойти');
 
-  // Зерно у каждого забега своё: два спуска подряд не должны дать один
-  // и тот же зал, иначе подземелье перестаёт быть незнакомым местом.
+  /**
+   * Сначала ищем, к кому подсесть.
+   *
+   * Из замысла: инстанс на двенадцать человек, соло и группы вместе, внутри
+   * все всем враги. Зал на одного — это не подземелье, а полоса препятствий:
+   * ни встречи, ни причины спешить, ни второго охотника за тем же сундуком.
+   */
+  const joined = ctx.world.joinableDungeon();
+  if (joined) {
+    ctx.world.moveToInstance(player, joined, DUNGEON_ENTRY);
+    console.log(`[подземелье] ${player.name} подсел в ${joined}`);
+    return [{ type: 'world' }, { type: 'criticalSave' }];
+  }
+
+  // Свободного нет — заводим свой. Зерно у каждого забега своё: два спуска
+  // подряд не должны дать один и тот же зал.
   counter += 1;
   const seed = (Date.now() ^ (counter * 2654435761)) >>> 0;
 

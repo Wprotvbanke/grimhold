@@ -7,6 +7,8 @@ import {
   SPELLS,
   SPRINT_DRAIN,
   addItem,
+  createBackpack,
+  isDungeon,
   itemDef,
   gainExperience,
   movementSpeedFactor,
@@ -29,6 +31,7 @@ import {
   type SpellId,
 } from '@grimhold/shared';
 import { craftingMessage, finishCraft } from './commands/craft.js';
+import { forgetMissing } from './commands/hotbar.js';
 import { flagFor, forgiveForMob } from './pvp.js';
 import { OVERWORLD } from './world.js';
 import { finishHarvest, workMessage, outOfReach } from './commands/harvest.js';
@@ -78,6 +81,14 @@ export interface Outbox {
   gathering: { playerId: string; message: GatheringMessage }[];
   /** Короткие объяснения игроку: почему не вышло. */
   itemErrors: { playerId: string; message: string }[];
+  /**
+   * Игроки, которым надо переслать состояние открытого хранилища.
+   *
+   * Мешок может истлеть или опустеть, пока игрок в него смотрит: панель
+   * обязана закрыться сама, иначе он будет перекладывать вещи из того,
+   * чего уже нет.
+   */
+  bank: Player[];
   /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
   criticalSaves: Player[];
 }
@@ -92,6 +103,7 @@ export function emptyOutbox(): Outbox {
     crafting: [],
     gathering: [],
     itemErrors: [],
+    bank: [],
     criticalSaves: [],
   };
 }
@@ -103,11 +115,32 @@ export function tickWorld(world: World, dt: number, outbox: Outbox): void {
   world.tick++;
   world.stepNpcs(dt);
   world.tickNodes(dt);
+  expireBags(world, outbox, dt);
 
   tickPlayers(world, dt, outbox);
   tickMobs(world, dt, outbox);
   tickProjectiles(world, dt, outbox);
   recordHistory(world);
+}
+
+/**
+ * Мешки истлевают, опустевшие убираются.
+ *
+ * Тот, кто смотрел внутрь, узнаёт об этом сразу: панель закрывается, а не
+ * остаётся окном в пустоту.
+ */
+function expireBags(world: World, outbox: Outbox, dt: number): void {
+  const gone = world.tickBags(dt);
+  if (gone.length === 0) return;
+
+  for (const player of world.players.values()) {
+    const open = player.container;
+    if (open?.kind !== 'bag' || !gone.includes(open.bag)) continue;
+
+    player.container = null;
+    outbox.bank.push(player);
+    outbox.itemErrors.push({ playerId: player.id, message: 'Мешок истлел' });
+  }
 }
 
 // ---------- игроки ----------
@@ -592,19 +625,58 @@ export function punishRedDeath(player: Player, outbox: Outbox): void {
   });
 }
 
-function handlePlayerDeath(
+/**
+ * Цена смерти в подземелье.
+ *
+ * **Надетое пропадает с убитым, рюкзак остаётся лежать.** Это и есть вторая
+ * половина вылазки: без неё добыча внизу — бесплатные конфеты, а спуск ничем
+ * не отличается от прогулки.
+ *
+ * Надетое именно пропадает, а не падает в мешок: иначе убийца уходил бы
+ * в чужом доспехе, и разница между «набрал добычи» и «убил того, кто набрал»
+ * исчезла бы. Добыча переходит, снаряжение — нет.
+ *
+ * Наверху ничего этого не происходит: там наказание — время и путь обратно.
+ */
+function spoilBelow(world: World, player: Player, outbox: Outbox): void {
+  const worn = Object.keys(player.equipment).length;
+  player.equipment = {};
+
+  const bag = world.dropBag(player.instanceId, player.state.pos, player.name, player.inventory);
+  if (bag) player.inventory = createBackpack();
+
+  // Панель быстрого доступа не должна показывать то, чего больше нет.
+  for (const id of new Set(player.hotbar.filter((entry): entry is ItemId => entry !== null))) {
+    forgetMissing(player, id);
+  }
+
+  refreshLoadout(player);
+  outbox.inventory.push(player);
+  outbox.itemErrors.push({
+    playerId: player.id,
+    message: bag
+      ? `Всё, что ты нёс, осталось внизу${worn > 0 ? '; снаряжение пропало' : ''}`
+      : 'Снаряжение пропало вместе с тобой',
+  });
+}
+
+/** Открыт наружу ради проверок: цена смерти внизу — правило, а не деталь. */
+export function handlePlayerDeath(
   world: World,
   player: Player,
   killerName: string,
   outbox: Outbox,
 ): void {
-  void world;
   player.combat.alive = false;
   player.combat.action = null;
   player.combat.blocking = false;
   player.deadFor = 0;
   player.dirty = true;
 
+  // Порядок важен: внизу снаряжение уже пропало, и красному нечего ронять
+  // сверх этого. Потеря опыта при этом остаётся — она про убийства, а не
+  // про место смерти.
+  if (isDungeon(player.instanceId)) spoilBelow(world, player, outbox);
   punishRedDeath(player, outbox);
 
   outbox.life.push({

@@ -14,6 +14,9 @@ import {
   maxStamina,
   mobsForChunk,
   mobsForDungeon,
+  BAG_SECONDS,
+  DUNGEON_CAPACITY,
+  DUNGEON_JOIN_SECONDS,
   DUNGEON_CENTER,
   DUNGEON_ENTRY,
   playerAabb,
@@ -115,6 +118,35 @@ export interface Work {
   node?: ResourceNode;
 }
 
+/**
+ * Мешок павшего.
+ *
+ * То, что осталось от игрока, убитого в подземелье: его рюкзак целиком, как он
+ * был уложен. Лежит на месте смерти и достаётся тому, кто дойдёт.
+ *
+ * Мешок живёт в памяти инстанса и умирает вместе с ним — как и всё остальное
+ * в подземелье. Хранить его в базе нечего: забег кончился, зала больше нет.
+ */
+export interface Bag {
+  id: string;
+  instanceId: InstanceId;
+  pos: { x: number; y: number; z: number };
+  /** Имя павшего: по нему видно, чья это добыча. */
+  owner: string;
+  grid: Grid;
+  /** Сколько секунд ещё лежать. */
+  ttl: number;
+}
+
+/**
+ * Что у игрока открыто: городская казна или чужой мешок.
+ *
+ * Одно поле, а не два флага. Два флага — это четыре состояния вместо двух,
+ * из которых два бессмысленны, и однажды игрок оказался бы одновременно
+ * у казны и у мешка, перекладывая вещи неизвестно куда.
+ */
+export type OpenContainer = { kind: 'vault' } | { kind: 'bag'; bag: Bag };
+
 export interface Player {
   id: string;
   /** Идентификатор персонажа в базе — по нему идёт сохранение. */
@@ -187,8 +219,8 @@ export interface Player {
    * в хранилище посреди тика. Пишется немедленно при каждой операции.
    */
   bank: Grid;
-  /** Открыт ли сундук. Пока открыт, клиент получает содержимое казны. */
-  bankOpen: boolean;
+  /** Что открыто: казна или мешок павшего. Пока открыто, клиент видит сетку. */
+  container: OpenContainer | null;
   /** Стол обмена, если игрок за ним сидит. Общий объект с собеседником. */
   trade: Trade | null;
   equipment: Equipment;
@@ -285,7 +317,7 @@ export class World {
       spellCooldowns: {},
       inventory: character.inventory ?? createBackpack(),
       bank: character.bank ?? createBank(),
-      bankOpen: false,
+      container: null,
       trade: null,
       equipment: character.equipment ?? {},
       knownRecipes: character.knownRecipes ?? [],
@@ -484,6 +516,7 @@ export class World {
    * безопасную зону.
    */
   populateDungeon(instanceId: InstanceId): number {
+    this.dungeonsOpenedAt.set(instanceId, Date.now());
     const terrain = this.terrainOf(instanceId);
     const seed = dungeonSeed(instanceId);
     const random = seededRandom(instanceId);
@@ -521,6 +554,8 @@ export class World {
     this.mobs.delete(instanceId);
     this.npcs.delete(instanceId);
     this.terrain.delete(instanceId);
+    this.bags.delete(instanceId);
+    this.dungeonsOpenedAt.delete(instanceId);
 
     const prefix = `${instanceId}|`;
     for (const key of this.openedChests) {
@@ -701,6 +736,99 @@ export class World {
   }
 
   // ---------- ресурсные ноды ----------
+
+  /** Когда заведён каждый зал: по этому решается, принимает ли он ещё. */
+  private readonly dungeonsOpenedAt = new Map<InstanceId, number>();
+
+  /**
+   * Зал, в который ещё можно подсесть.
+   *
+   * Лобби пока нет, и окно по времени его заменяет: спустившиеся в одну минуту
+   * попадают вместе. Выбирается самый свежий из подходящих — так компания
+   * собирается вокруг последнего спустившегося, а не растекается по залам.
+   */
+  joinableDungeon(): InstanceId | null {
+    const now = Date.now();
+    const crowd = new Map<InstanceId, number>();
+    for (const player of this.players.values()) {
+      if (!isDungeon(player.instanceId)) continue;
+      crowd.set(player.instanceId, (crowd.get(player.instanceId) ?? 0) + 1);
+    }
+
+    let best: InstanceId | null = null;
+    let freshest = 0;
+
+    for (const [instanceId, since] of this.dungeonsOpenedAt) {
+      if ((crowd.get(instanceId) ?? 0) >= DUNGEON_CAPACITY) continue;
+      if (now - since > DUNGEON_JOIN_SECONDS * 1000) continue;
+      if (since < freshest) continue;
+      best = instanceId;
+      freshest = since;
+    }
+
+    return best;
+  }
+
+  /** Мешки павших по инстансам. */
+  private readonly bags = new Map<InstanceId, Bag[]>();
+
+  /** Кладёт мешок на пол. Пустой не роняем: обыскивать в нём нечего. */
+  dropBag(instanceId: InstanceId, pos: { x: number; y: number; z: number }, owner: string, grid: Grid): Bag | null {
+    if (grid.items.length === 0) return null;
+
+    const bag: Bag = {
+      id: this.nextEntityId('bag'),
+      instanceId,
+      pos: { ...pos },
+      owner,
+      grid,
+      ttl: BAG_SECONDS,
+    };
+    const list = this.bags.get(instanceId) ?? [];
+    list.push(bag);
+    this.bags.set(instanceId, list);
+    return bag;
+  }
+
+  bagById(instanceId: InstanceId, id: string): Bag | null {
+    return (this.bags.get(instanceId) ?? []).find((bag) => bag.id === id) ?? null;
+  }
+
+  /**
+   * Отсчёт времени жизни мешков.
+   *
+   * Опустевший убирается сразу: мешок, из которого вынесли всё, — это мусор
+   * на полу, который выглядит как добыча.
+   */
+  tickBags(dt: number): Bag[] {
+    const gone: Bag[] = [];
+
+    for (const [instanceId, list] of this.bags) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const bag = list[i]!;
+        bag.ttl -= dt;
+        if (bag.ttl > 0 && bag.grid.items.length > 0) continue;
+
+        list.splice(i, 1);
+        gone.push(bag);
+      }
+      if (list.length === 0) this.bags.delete(instanceId);
+    }
+
+    return gone;
+  }
+
+  /** Мешки в поле зрения: клиент рисует по ним метки на полу. */
+  bagsFor(viewer: Player): { id: string; x: number; y: number; z: number }[] {
+    const origin = viewer.state.pos;
+    const result: { id: string; x: number; y: number; z: number }[] = [];
+
+    for (const bag of this.bags.get(viewer.instanceId) ?? []) {
+      if (!withinAoi(origin, bag.pos)) continue;
+      result.push({ id: bag.id, x: round(bag.pos.x), y: round(bag.pos.y), z: round(bag.pos.z) });
+    }
+    return result;
+  }
 
   /**
    * Вскрытые сундуки подземелий.

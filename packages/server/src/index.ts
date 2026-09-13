@@ -14,6 +14,7 @@ import { dispatch } from './commands/index.js';
 import { canRespawn, emptyOutbox, respawnPlayer, tickWorld } from './gameloop.js';
 import { craftingMessage } from './commands/craft.js';
 import { workMessage } from './commands/harvest.js';
+import { containerGrid, containerTitle } from './commands/bank.js';
 import { endTrade, tradeMessages } from './commands/trade.js';
 import { Persistence } from './persistence.js';
 import { Session } from './session.js';
@@ -111,7 +112,13 @@ wss.on('connection', (socket) => {
       // Содержимое казны уходит только пока сундук открыт: закрытый банк
       // клиенту не нужен, а лежит в нём самое ценное.
       if (event.type === 'bank') {
-        session.send({ t: 'bank', open: player.bankOpen, grid: player.bank });
+        const grid = containerGrid(player);
+        session.send({
+          t: 'bank',
+          open: grid !== null,
+          grid: grid ?? player.bank,
+          title: containerTitle(player),
+        });
       }
       // Операция с ценностями — пишем немедленно, иначе падение сервера
       // откатит перекладывание и породит дюп.
@@ -207,6 +214,15 @@ setInterval(() => {
   for (const entry of outbox.loot) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.crafting) sendTo(entry.playerId, entry.message);
   for (const entry of outbox.gathering) sendTo(entry.playerId, entry.message);
+  // Хранилище закрылось само — панель у игрока обязана погаснуть.
+  for (const player of new Set(outbox.bank)) {
+    sendTo(player.id, {
+      t: 'bank',
+      open: containerGrid(player) !== null,
+      grid: containerGrid(player) ?? player.bank,
+      title: containerTitle(player),
+    });
+  }
   for (const entry of outbox.itemErrors) {
     sendTo(entry.playerId, { t: 'itemError', message: entry.message });
   }
@@ -232,6 +248,7 @@ setInterval(() => {
       projectiles: world.projectilesFor(player),
       depletedNodes: world.depletedNodesFor(player),
       openedChests: world.openedChestsIn(player.instanceId),
+      bags: world.bagsFor(player),
     });
   }
 }, TICK_MS);

@@ -487,6 +487,34 @@ export function createProjectileMesh(spellId: SpellId): THREE.Object3D {
   return group;
 }
 
+/**
+ * Мешок павшего: мешковина, перетянутая верёвкой.
+ *
+ * Геометрия своя, а не из пака: мешок должен читаться мгновенно и с любого
+ * ракурса — это единственная вещь в зале, ради которой стоит рискнуть,
+ * и искать её в полумраке игрок будет глазами, а не подсказкой.
+ */
+export function createBagMesh(): THREE.Object3D {
+  const group = new THREE.Group();
+
+  const cloth = new THREE.MeshStandardMaterial({ color: 0x7a6a4f, roughness: 1 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), cloth);
+  body.scale.set(1, 0.85, 1);
+  body.position.y = 0.27;
+  body.castShadow = true;
+  group.add(body);
+
+  // Горловина: по ней мешок отличается от камня, которых в зале хватает.
+  const neck = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.1, 0.16, 0.22, 8),
+    new THREE.MeshStandardMaterial({ color: 0x5f5238, roughness: 1 }),
+  );
+  neck.position.y = 0.56;
+  group.add(neck);
+
+  return group;
+}
+
 /** Сколько снарядов освещают мир одновременно. */
 const PROJECTILE_LIGHTS = 3;
 

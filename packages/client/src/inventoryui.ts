@@ -103,6 +103,7 @@ export class InventoryUi {
   private readonly ghost = el<HTMLDivElement>('dragGhost');
   private readonly errorLine = el<HTMLParagraphElement>('itemError');
   private readonly bankCol = el<HTMLDivElement>('bankCol');
+  private readonly bankTitle = el<HTMLDivElement>('bankTitle');
   private readonly bankCells = el<HTMLDivElement>('bankCells');
   private readonly bankWrap = el<HTMLDivElement>('bankWrap');
   private readonly tradeCol = el<HTMLDivElement>('tradeCol');
@@ -228,6 +229,8 @@ export class InventoryUi {
    */
   setBank(message: BankMessage): void {
     this.bankOpen = message.open;
+    // Казна или мешок павшего — окно одно, и подпись должна говорить, какое.
+    if (message.open) this.bankTitle.textContent = message.title;
     this.bankCol.hidden = !message.open;
     // Казна велика, и впятером колонки не помещаются даже в широкий экран.
     // У сундука ремесло и справка не нужны — человек пришёл убрать добычу.
