@@ -106,13 +106,26 @@ const TAVERN_LIGHTS: { x: number; y: number; z: number; color: number; intensity
 const LIGHT_POOL = 6;
 
 /**
+ * Затухание света с расстоянием.
+ *
+ * Физически верное — квадратичное (2), и именно оно давало жалобу «свет виден,
+ * только когда подойдёшь вплотную»: на трёх метрах от факела остаётся девятая
+ * часть яркости, на шести — тридцать шестая. Для тёмного средневекового города
+ * это честно и бесполезно: игрок видит чёрное поле с точками огня.
+ *
+ * Полтора — свет стелется дальше и мягче. Это не физика, это освещение сцены:
+ * дальше видно, куда идти, и город читается как обитаемый.
+ */
+const LIGHT_DECAY = 1.5;
+
+/**
  * Фора тому, кто уже держит лампу.
  *
  * Новый претендент должен быть заметно нужнее, а не на волос — иначе набор
  * дёргается от малейшего шага в сторону. Треть разницы глаз не замечает,
  * а мигание прекращает.
  */
-const KEEP_BONUS = 1.35;
+const KEEP_BONUS = 2;
 
 export interface WorldLights {
   /**
@@ -139,7 +152,7 @@ export function createLights(scene: THREE.Scene): WorldLights {
   // Пул ламп. Заводится один раз и живёт, не меняя ни числа, ни видимости.
   const pool: THREE.PointLight[] = [];
   for (let i = 0; i < LIGHT_POOL; i++) {
-    const light = new THREE.PointLight(0xffffff, 0, 20, 2);
+    const light = new THREE.PointLight(0xffffff, 0, 20, LIGHT_DECAY);
     group.add(light);
     pool.push(light);
   }
@@ -154,9 +167,10 @@ export function createLights(scene: THREE.Scene): WorldLights {
       y: spot.y,
       z: TAVERN.centerZ + spot.z,
       color: spot.color,
-      range: 12,
+      range: 18,
       glow: null,
-      base: spot.intensity,
+      // Затухание стало мягче — прежние числа слепили бы вблизи.
+      base: spot.intensity * 0.55,
       phase: index * 2.1,
       outdoor: false,
     });
@@ -276,16 +290,71 @@ export function createLights(scene: THREE.Scene): WorldLights {
 }
 
 /**
+ * Ореол вокруг огня.
+ *
+ * Сам источник света издалека не виден вовсе: освещённая им стена — да,
+ * а огонёк в двенадцать сантиметров превращается в пиксель. Отсюда и было
+ * ощущение, что свет «пропадает через два-три метра»: пропадал не свет,
+ * пропадал **вид** огня.
+ *
+ * Ореол — картинка, всегда повёрнутая к игроку, с мягким спадом к краям
+ * и сложением цветов. Она не освещает ничего, она только показывает, что здесь
+ * горит, — и видна с другого конца площади.
+ */
+function makeHalo(color: number, size: number): THREE.Sprite {
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: haloTexture(),
+      color,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      // Туман ореол не трогает: он и нужен, чтобы его было видно сквозь мглу.
+      fog: false,
+    }),
+  );
+  sprite.scale.setScalar(size);
+  return sprite;
+}
+
+/** Картинка ореола: мягкое пятно. Рисуется кодом — файла ради этого не нужно. */
+let halo: THREE.Texture | null = null;
+
+function haloTexture(): THREE.Texture {
+  if (halo) return halo;
+
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+
+  const paint = canvas.getContext('2d')!;
+  const gradient = paint.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  paint.fillStyle = gradient;
+  paint.fillRect(0, 0, size, size);
+
+  halo = new THREE.CanvasTexture(canvas);
+  halo.colorSpace = THREE.SRGBColorSpace;
+  return halo;
+}
+
+/**
  * Факел-заглушка: кронштейн и огонёк примитивами.
  *
  * Модели у настенного факела нет, и она не нужна: на стене он читается
  * пятном света, а не силуэтом.
  */
 function makeTorch(group: THREE.Group, x: number, y: number, z: number, index: number): Flame {
-  const glow = new THREE.Mesh(
+  const glow = new THREE.Group();
+  const core = new THREE.Mesh(
     new THREE.SphereGeometry(0.12, 10, 8),
     new THREE.MeshBasicMaterial({ color: 0xffcf7a }),
   );
+  glow.add(core);
+  glow.add(makeHalo(0xffb257, 1.4));
   glow.position.set(x, y, z);
   group.add(glow);
 
@@ -296,7 +365,9 @@ function makeTorch(group: THREE.Group, x: number, y: number, z: number, index: n
   bracket.position.set(x, y - 0.3, z);
   group.add(bracket);
 
-  return { x, y, z, color: 0xff9a3c, range: 20, glow, base: 34, phase: index * 1.7, outdoor: true };
+  // Дальность и яркость подобраны под мягкое затухание: факел должен
+  // доставать до соседнего, а не гаснуть в двух шагах.
+  return { x, y, z, color: 0xff9a3c, range: 32, glow, base: 10, phase: index * 1.7, outdoor: true };
 }
 
 /**
@@ -421,15 +492,20 @@ async function loadModels(group: THREE.Group, flames: Flame[]): Promise<void> {
         model.position.z = spot.z;
         group.add(model);
 
-        // Свет висит в плафоне, а не в центре модели.
+        // Свет висит в плафоне, а не в центре модели. Там же ореол —
+        // по нему фонарь виден с другого конца площади.
+        const lampGlow = makeHalo(0xffc27a, 1.6);
+        lampGlow.position.set(spot.x, LAMP_HEIGHT - 0.35, spot.z);
+        group.add(lampGlow);
+
         flames.push({
           x: spot.x,
           y: LAMP_HEIGHT - 0.35,
           z: spot.z,
           color: 0xffc27a,
-          range: 18,
-          glow: null,
-          base: 26,
+          range: 30,
+          glow: lampGlow,
+          base: 9,
           phase: index * 0.9,
           outdoor: true,
         });
@@ -458,9 +534,9 @@ async function loadModels(group: THREE.Group, flames: Flame[]): Promise<void> {
           y: spot.y + 0.6,
           z: spot.z,
           color: 0xff7a28,
-          range: 16,
+          range: 22,
           glow: model,
-          base: 30,
+          base: 12,
           phase: 4 + index * 1.3,
           outdoor: spot.outdoor,
         });

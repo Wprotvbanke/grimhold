@@ -1264,6 +1264,18 @@ function animateCorpse(avatar: Avatar, dt: number): void {
 /** Были ли ники показаны в прошлом кадре — чтобы не писать в DOM впустую. */
 let tagsShown = false;
 
+/**
+ * Насколько далеко читаются ники, метры.
+ *
+ * Радиус интереса — сорок пять метров, и подписи на всю эту даль превращали
+ * Alt в разведку: с одного конца площади видно, кто стоит на другом. Двенадцать
+ * метров — это «рядом»: разглядеть собеседника, прежде чем заговорить, и узнать
+ * того, кто уже подошёл вплотную. Дальше — силуэт, и решать по нему.
+ *
+ * В подземелье это и есть часть напряжения: чужого видно, а кто он — нет.
+ */
+const NAME_RANGE = 12;
+
 function updateNametags(): void {
   /**
    * Пока ники скрыты, в DOM не пишем вовсе.
@@ -1283,9 +1295,13 @@ function updateNametags(): void {
 
   const projected = new THREE.Vector3();
 
+  const eye = camera.position;
+
   for (const avatar of avatars.values()) {
-    // У мёртвых подписи нет: тело уже не цель.
-    if (!controls.showNames || !avatar.entity.alive) {
+    // У мёртвых подписи нет: тело уже не цель. И у далёких — тоже.
+    const far =
+      Math.hypot(avatar.group.position.x - eye.x, avatar.group.position.z - eye.z) > NAME_RANGE;
+    if (!avatar.entity.alive || far) {
       avatar.tag.style.display = 'none';
       continue;
     }
