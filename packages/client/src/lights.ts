@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
-  DUNGEON_LAMPS,
-  DUNGEON_LAMP_HEIGHT,
   LAMP_HEIGHT,
   TAVERN,
   TOWN_LAMPS,
@@ -206,18 +204,9 @@ export function createLights(scene: THREE.Scene): WorldLights {
     });
   }
 
-  /**
-   * Факелы подземелья.
-   *
-   * Тот же огонь, что в городе, только не гаснет днём: под землёй дня нет.
-   * Лампы им достаются из общего пула — он выбирает ближайшие, а город
-   * в восьми километрах и в выбор не попадает никогда.
-   */
-  for (const [index, spot] of DUNGEON_LAMPS.entries()) {
-    const flame = makeTorch(group, spot.x, DUNGEON_LAMP_HEIGHT, spot.z, index + TORCHES.length);
-    flame.outdoor = false;
-    flames.push(flame);
-  }
+  // Постоянного огня в подземелье нет: свет туда приносят в руке.
+  // Городские огни отсюда всё равно не видны — до города восемь километров,
+  // и в отбор ближайших он не попадает никогда.
 
   void loadModels(group, flames);
 
