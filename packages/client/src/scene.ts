@@ -218,6 +218,13 @@ export interface World3D {
    * у всех одновременно.
    */
   update(elapsed: number, worldTime: number, camera: THREE.Camera): void;
+  /**
+   * Игрок зажёг или погасил свой огонь.
+   *
+   * Нужно мгле: она отступает перед факелом. Говорит об этом тот, кто знает
+   * про надетое, — сцена сама в рюкзак не смотрит.
+   */
+  setTorch(lit: boolean): void;
   /** Ресурсные ноды: вид, выбор цели и состояние с сервера. */
   readonly nodes: NodeField;
   loadedChunks: number;
@@ -411,6 +418,8 @@ export function createScene(): World3D {
   scene.add(exitHaze.group);
 
   let instanceId = 'overworld';
+  /** Метка прошлого кадра — из неё выводится шаг времени для плавностей. */
+  let lastFrame = 0;
   let underground = false;
   let terrain = new ChunkedWorld();
   const loaded = new Map<string, THREE.Group>();
@@ -497,8 +506,16 @@ export function createScene(): World3D {
       api.loadedChunks = loaded.size;
     },
 
+    setTorch(lit) {
+      daynight.torch = lit;
+    },
+
     update(elapsed, worldTime, camera) {
-      daynight.update(worldTime, camera);
+      // Шаг времени берём из самих кадров: отдельного dt сюда не передают,
+      // а привязывать плавность к частоте кадров нельзя.
+      const dt = Math.min(0.1, Math.max(0, elapsed - lastFrame));
+      lastFrame = elapsed;
+      daynight.update(worldTime, dt, camera);
 
       if (exitMark.visible) {
         // Знак дышит: неподвижное пятно на стене глаз принимает за текстуру,

@@ -154,8 +154,29 @@ export interface DayNight {
    * раньше, чем появится переносной огонь, значит отдать игроку чёрный экран.
    */
   underground: boolean;
-  update(time: number, camera: THREE.Camera): void;
+  /**
+   * Игрок несёт огонь.
+   *
+   * Мгла от него **раздвигается**: дальше видно ровно настолько, насколько
+   * хватает своего света. Туман в сцене один на всё и гуще в одном месте быть
+   * не умеет — зато он считается от камеры, а факел едет вместе с ней. Значит
+   * «дальше вокруг себя» выражается единственным честным способом: подвинуть
+   * границу тумана, пока огонь горит.
+   */
+  torch: boolean;
+  update(time: number, dt: number, camera: THREE.Camera): void;
 }
+
+/** Подземная мгла: где начинается и где становится глухой. */
+const DUNGEON_FOG = { near: 1, far: 5.5 };
+/**
+ * Насколько мгла отступает перед огнём.
+ *
+ * Полтора-два метра — немного, и это намеренно: факел даёт **преимущество**,
+ * а не отменяет темноту. Увидеть сундук на шаг раньше — уже много, когда
+ * видно на пять.
+ */
+const TORCH_FOG_BONUS = 2;
 
 const scratch = new THREE.Color();
 const other = new THREE.Color();
@@ -291,8 +312,9 @@ export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
     sun,
     daylight: true,
     underground: false,
+    torch: false,
 
-    update(time, camera) {
+    update(time, dt, camera) {
       /**
        * Под землёй небо и солнце выключены целиком.
        *
@@ -337,8 +359,16 @@ export function createDayNight(scene: THREE.Scene, sky: Sky): DayNight {
          * а поломку. На этом уже обжигались.
          */
         fog.color.setHex(0x0e090b);
-        fog.near = 1;
-        fog.far = 5.5;
+        fog.near = DUNGEON_FOG.near;
+
+        /**
+         * Граница подходит и отходит плавно.
+         *
+         * Мгновенный скачок при зажжении факела читается как подмена мира:
+         * зал будто становится другим. Полсекунды — и это уже «разгорелось».
+         */
+        const wanted = DUNGEON_FOG.far + (api.torch ? TORCH_FOG_BONUS : 0);
+        fog.far += (wanted - fog.far) * Math.min(1, dt * 2);
         scene.background = fog.color;
         api.daylight = false;
         return;

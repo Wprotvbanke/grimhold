@@ -812,6 +812,8 @@ renderer.setAnimationLoop((frameTime: number) => {
     const burning = (self?.light ?? 0) > 0;
     const wantLight = burning ? (torch ? TORCH_LIGHT.base * flicker(now / 1000, 0) : 34) : 0;
 
+    // Мгла отступает перед своим огнём — сцене об этом надо сказать.
+    world.setTorch(burning);
     lanternLight.color.setHex(torch ? TORCH_LIGHT.color : 0xffd9a0);
     lanternLight.distance = torch ? TORCH_LIGHT.range : 16;
     lanternLight.decay = torch ? TORCH_LIGHT.decay : 2;
