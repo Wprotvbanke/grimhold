@@ -793,8 +793,19 @@ async function loadBag(): Promise<void> {
     const height = bounds.max.y - bounds.min.y;
     const scale = height > 0 ? BAG_HEIGHT / height : 1;
     model.scale.setScalar(scale);
-    // Основанием в ноль: сервер присылает точку на полу.
-    model.position.y = -bounds.min.y * scale;
+    /**
+     * Ставим **основанием в ноль и серединой на точку**.
+     *
+     * Сервер присылает точку на полу, а модель приезжает как её собрали:
+     * у фотограмметрии начало координат вообще где попало. Без поправки по
+     * X и Z мешок лежит рядом со своим местом — наводишься на него, а сервер
+     * говорит «далеко».
+     */
+    model.position.set(
+      -((bounds.min.x + bounds.max.x) / 2) * scale,
+      -bounds.min.y * scale,
+      -((bounds.min.z + bounds.max.z) / 2) * scale,
+    );
     model.traverse((node) => {
       if ((node as THREE.Mesh).isMesh) node.castShadow = true;
     });
@@ -805,8 +816,14 @@ async function loadBag(): Promise<void> {
   }
 }
 
-/** Высота мешка в мире. */
-const BAG_HEIGHT = 0.55;
+/**
+ * Высота мешка в мире.
+ *
+ * Тридцать сантиметров — это кисет, а не баул: столько, чтобы его было видно
+ * на мостовой и не принимали за камень. Полметра было под дорожный саквояж,
+ * и мешочек в том же росте выглядел мешком с мукой.
+ */
+const BAG_HEIGHT = 0.3;
 
 /** Заглушка на время загрузки: мешковина, перетянутая верёвкой. */
 function sackStub(): THREE.Object3D {

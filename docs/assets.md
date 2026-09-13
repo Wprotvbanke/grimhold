@@ -17,13 +17,19 @@
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
-| `public/models/loot_bag.glb` | от владельца проекта, собран `scripts/prepare-bag.ts` | уточнить |
+| `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
 | `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
 | `public/models/nature.glb` | от владельца проекта, собран `scripts/prepare-nature.ts` | уточнить |
 | `public/models/lights.glb` | от владельца проекта, собран `scripts/prepare-lights.ts` | уточнить |
 | `public/models/tavern_props.glb` | от владельца проекта, собран `scripts/prepare-tavern.ts` | уточнить |
 | `public/textures/sky.webp` | от владельца проекта, извлечена `scripts/prepare-sky.ts` | уточнить |
+
+**Единственный не-CC0 в списке — мешочек.** CC-BY разрешает и брать,
+и переделывать, но **требует указания авторства**: оно лежит в
+`public/models/LICENSE-loot-bag.txt`, и удалять этот файл нельзя. Все остальные
+модели ничего не требуют. Если правило «только CC0» решат держать строго,
+мешочек придётся заменить, а не просто вычистить файл лицензии.
 
 Убраны за ненадобностью и лежат в истории git: пак таверны KayKit (заменён
 `tavern_props.glb`), скелет Quaternius (заменён человеческим) и клип ходьбы
@@ -42,7 +48,7 @@ npx tsx scripts/prepare-nature.ts     # 68 моделей растительно
 npx tsx scripts/prepare-tavern.ts     # обстановка таверны: 34.5 МБ → 0.8 МБ
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
 npx tsx scripts/prepare-gnome.ts      # житель площади: 2 МБ FBX → 0.12 МБ
-npx tsx scripts/prepare-bag.ts        # мешок с добычей: 2 МБ → 0.06 МБ
+npx tsx scripts/prepare-bag.ts        # мешочек с добычей: 0.64 МБ → 0.04 МБ
 npx tsx scripts/prepare-symbol.ts     # знак выхода: 98 КБ → 50 КБ
 npx tsx scripts/prepare-sky.ts        # панорама неба: 12 КБ
 ```

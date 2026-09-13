@@ -9,6 +9,12 @@
  *
  * Исходник уже в GLB, разбирать FBX не нужно — только сжать и поставить
  * основанием в ноль: сервер присылает точку на полу, а не центр модели.
+ *
+ * **Мешочек, а не портфель.** Сначала с убитых падал дорожный саквояж — вещь
+ * сама по себе хорошая, но на волке и скелете она читалась как чужая: откуда
+ * у зверя чемодан. Портфель не выброшен, он лежит тем же путём с именем
+ * `adventure_bag.glb` и ждёт своего места (сундук в городе, поклажа торговца);
+ * чтобы собрать его, достаточно поменять `SOURCE`.
  */
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -19,7 +25,7 @@ import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const SOURCE = 'C:/Users/Wprot/OneDrive/Рабочий стол/bag/adventure_bag.glb';
+const SOURCE = 'C:/Users/Wprot/OneDrive/Рабочий стол/bag/pouch/photoscan_bag.glb';
 const OUTPUT = resolve(ROOT, 'packages/client/public/models/loot_bag.glb');
 
 const kilobytes = (bytes: number): string => `${(bytes / 1024).toFixed(0)} КБ`;
