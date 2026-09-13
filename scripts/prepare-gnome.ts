@@ -143,7 +143,7 @@ function inPlace(clip: AnimationClip): void {
  * поэтому весь разворот тела лежит в одной дорожке таза и тонет в сумме по трём
  * десяткам костей. Первый прогон именно так и выбрал момент посреди разворота.
  */
-function trimToLoop(clip: AnimationClip): AnimationClip {
+function trimToLoop(clip: AnimationClip): { walk: AnimationClip; metresPerSecond: number } {
   const turns = clip.tracks.filter((track: KeyframeTrack) => track.name.endsWith('.quaternion'));
   const poses = turns.map((track) => sampler(track));
   const pose = (time: number): Quaternion[] =>
@@ -223,12 +223,29 @@ function trimToLoop(clip: AnimationClip): AnimationClip {
     );
   }
 
+  /**
+   * Собственная скорость клипа — по тому самому движению корня, которое дальше
+   * убирается.
+   *
+   * Без неё клиент не может свести шаг с движением: он знает, с какой скоростью
+   * везёт сущность сервер, но не знает, на какую скорость нарисована анимация.
+   * Разойдись эти два числа — и ноги едут по земле, как на льду.
+   */
+  const root = clip.tracks.find((track: KeyframeTrack) => track.name.endsWith('Hips.position'));
+  let metresPerSecond = 0;
+  if (root) {
+    const from = Array.from(sampler(root).evaluate(bestFrom));
+    const upto = Array.from(sampler(root).evaluate(bestFrom + bestPeriod));
+    const travelled = Math.hypot((upto[0] ?? 0) - (from[0] ?? 0), (upto[2] ?? 0) - (from[2] ?? 0));
+    metresPerSecond = (travelled * TO_METRES) / bestPeriod;
+  }
+
   console.log(
     `прямой участок: ${straight.toFixed(2)} с из ${clip.duration.toFixed(2)}; ` +
       `шаг ${bestPeriod.toFixed(2)} с с ${bestFrom.toFixed(2)} ` +
       `(расхождение поз ${((closest * 180) / Math.PI).toFixed(0)}° на ${turns.length} костей)`,
   );
-  return new THREE.AnimationClip('Walk', bestPeriod, tracks);
+  return { walk: new THREE.AnimationClip('Walk', bestPeriod, tracks), metresPerSecond };
 }
 
 function standing(walk: AnimationClip): AnimationClip {
@@ -367,8 +384,16 @@ model.traverse((node) => {
 if (!uv) throw new Error('у модели нет развёртки — текстуру наложить некуда');
 
 const raw = model.animations[0]!;
-inPlace(raw);
-const walk = trimToLoop(raw);
+// Цикл вырезается до того, как убрано движение корня: по нему и считается,
+// на какую скорость нарисована ходьба.
+const { walk, metresPerSecond } = trimToLoop(raw);
+inPlace(walk);
+
+console.log(
+  `собственная скорость ходьбы: ${metresPerSecond.toFixed(2)} м/с ` +
+    `при росте модели ${(bounds.max.y - bounds.min.y).toFixed(2)} м ` +
+    '— число идёт в WALK_PACE (client/src/models.ts)',
+);
 
 const clips = [walk, standing(walk)];
 console.log(`клипы: ${clips.map((clip) => `${clip.name} ${clip.duration.toFixed(2)}с`).join(', ')}`);

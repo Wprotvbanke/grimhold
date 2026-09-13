@@ -59,6 +59,33 @@ const MODEL_YAW: Partial<Record<MobId, number>> = {
   skeleton: -Math.PI / 2,
 };
 
+/**
+ * На какую скорость нарисована ходьба, м/с при собственном росте модели.
+ *
+ * Без этого числа шаг не свести с движением: клиент знает, с какой скоростью
+ * везёт сущность сервер, но не знает, под какую скорость сделан клип. Разойдись
+ * они — и ноги едут по земле, как по льду; именно это и было видно у жителя,
+ * которого несло впятеро быстрее его же анимации.
+ *
+ * Меряется по движению корня в исходнике и печатается сборочным скриптом
+ * (`npx tsx scripts/prepare-gnome.ts`). У моделей, которых тут нет, клип идёт
+ * как есть — так было и раньше.
+ */
+const WALK_PACE: Partial<Record<string, number>> = {
+  '/models/gnome.glb': 0.51,
+};
+
+/**
+ * Пределы подгонки темпа.
+ *
+ * Растягивать и ужимать клип без края нельзя: вдвое замедленная ходьба
+ * превращается в крадущийся шаг, а втрое ускоренная — в мельтешение. Если
+ * упёрлись в предел, значит расходятся не темпы, а замысел: сущность движется
+ * не с той скоростью, на которую рассчитана её анимация.
+ */
+const PACE_MIN = 0.6;
+const PACE_MAX = 2;
+
 export type ClipName = 'idle' | 'walk' | 'attack' | 'hurt' | 'death';
 
 /**
@@ -103,6 +130,11 @@ export interface CharacterModel {
   /** Корень для добавления в сцену: модель уже отмасштабирована под рост. */
   root: THREE.Group;
   play(clip: ClipName): void;
+  /**
+   * Свести шаг с движением: на вход — настоящая скорость сущности, м/с.
+   * Для моделей без известного темпа клипа не делает ничего.
+   */
+  pace(metresPerSecond: number): void;
   update(dt: number): void;
   /** Есть ли такой клип: смерть и атака есть не у всех моделей. */
   has(clip: ClipName): boolean;
@@ -247,9 +279,20 @@ async function buildModel(
   let current: THREE.AnimationAction | null = null;
   let currentName: ClipName | null = null;
 
+  // Своя скорость клипа растёт вместе с моделью: ужатой вдвое модели и шаг
+  // достаётся вдвое короче.
+  const natural = (WALK_PACE[url] ?? 0) * scale;
+
   return {
     root,
     has: (clip) => actions.has(clip),
+    pace(metresPerSecond) {
+      const walk = actions.get('walk');
+      if (!walk || natural <= 0) return;
+
+      const wanted = metresPerSecond / natural;
+      walk.timeScale = Math.min(PACE_MAX, Math.max(PACE_MIN, wanted));
+    },
     play(name) {
       // Повторный удар должен вздрагивать заново, даже если предыдущий
       // ещё не доиграл. Остальные состояния переключаются только при смене.

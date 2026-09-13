@@ -27,6 +27,19 @@ export interface Npc {
 const ARRIVE_DISTANCE = 0.6;
 const REST_SECONDS = 2.5;
 
+/**
+ * Доля от беговой скорости расы: житель не спешит.
+ *
+ * `WALK_SPEED` — это темп игрока в драке, пять метров в секунду; горожанин,
+ * идущий так же, выглядит не жителем, а курьером. Сбоку это и видно: ноги
+ * анимации не поспевают за перемещением, и шаги едут по мостовой.
+ *
+ * Число подобрано под шаг **и под анимацию**: три четверти метра в секунду —
+ * это и неспешная походка, и почти ровно та скорость, на которую нарисован
+ * клип жителя. Тогда клиенту остаётся подгонять темп на проценты, а не в разы.
+ */
+const STROLL = 0.19;
+
 export function createNpc(id: string, name: string, race: Race, waypoints: Vec3[]): Npc {
   const profile = RACES[race];
   const first = waypoints[0] ?? { x: 0, y: 0, z: 0 };
@@ -36,7 +49,7 @@ export function createNpc(id: string, name: string, race: Race, waypoints: Vec3[
     race,
     state: createMoveState(first, {
       body: { radius: profile.radius, height: profile.height },
-      speedScale: profile.speedScale,
+      speedScale: profile.speedScale * STROLL,
     }),
     waypoints,
     waypointIndex: 0,

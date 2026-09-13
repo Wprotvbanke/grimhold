@@ -1088,7 +1088,10 @@ function updateAvatars(now: number, dt: number): void {
 
     if (avatar.model) {
       if (!flinching && (!winding || !avatar.model.has('attack'))) {
-        avatar.model.play(avatar.pose.speed > 0.4 ? 'walk' : 'idle');
+        const moving = avatar.pose.speed > 0.4;
+        // Темп шага задаётся настоящей скоростью: иначе ноги едут по земле.
+        if (moving) avatar.model.pace(avatar.pose.speed);
+        avatar.model.play(moving ? 'walk' : 'idle');
       }
       avatar.model.update(dt);
     }
