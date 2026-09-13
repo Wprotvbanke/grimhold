@@ -732,7 +732,7 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   combatUi.show(true);
   combatUi.hideDeath();
   ui.system(`Добро пожаловать, ${character.name}.`);
-  ui.system('ЛКМ — удар, СКМ — тяжёлый, ПКМ — блок, Shift — бег, C — рывок в сторону.');
+  ui.system('ЛКМ — удар, СКМ — тяжёлый, ПКМ — блок, Shift — бег, Ctrl — рывок в сторону.');
   ui.system('1…6 — панель, Tab — рюкзак. Вещи на панель кладутся перетаскиванием.');
   ui.setResumeHint(true);
 }
