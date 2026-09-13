@@ -495,6 +495,9 @@ export class World {
 
     // Ввод, накопленный в прежнем месте, к новому отношения не имеет.
     player.pendingInputs.length = 0;
+    // Хранилище остаётся в том мире, где стоит: открытый сундук или мешок
+    // не едет с игроком наверх.
+    player.container = null;
     // В новом мире знакомых нет: всех представят заново.
     player.introduced = new Set();
     this.history.forget(player.id);
@@ -915,17 +918,27 @@ export class World {
   /**
    * Отсчёт времени жизни мешков.
    *
-   * Опустевший убирается сразу: мешок, из которого вынесли всё, — это мусор
-   * на полу, который выглядит как добыча.
+   * Опустевший убирается: мешок, из которого вынесли всё, — это мусор на полу,
+   * который выглядит как добыча.
+   *
+   * Но **не пока в него смотрят**. Иначе разбор мешка выходил односторонним:
+   * вынул последнюю вещь — мешок исчез вместе с окном, и передумать уже
+   * нельзя. А разбирают именно так: достал посмотреть, прикинул вес, положил
+   * обратно. Пустой мешок под открытой панелью живёт до тех пор, пока её
+   * не закроют, — и уходит на следующем же тике после этого.
+   *
+   * Истёкшее время жизни важнее: истлевший мешок исчезает и из-под руки —
+   * иначе его можно держать вечно, не закрывая окна.
    */
   tickBags(dt: number): Bag[] {
     const gone: Bag[] = [];
+    const watched = this.watchedBags();
 
     for (const [instanceId, list] of this.bags) {
       for (let i = list.length - 1; i >= 0; i--) {
         const bag = list[i]!;
         bag.ttl -= dt;
-        if (bag.ttl > 0 && bag.grid.items.length > 0) continue;
+        if (bag.ttl > 0 && (bag.grid.items.length > 0 || watched.has(bag))) continue;
 
         list.splice(i, 1);
         gone.push(bag);
@@ -934,6 +947,15 @@ export class World {
     }
 
     return gone;
+  }
+
+  /** Мешки, в которые прямо сейчас кто-то смотрит. */
+  private watchedBags(): Set<Bag> {
+    const open = new Set<Bag>();
+    for (const player of this.players.values()) {
+      if (player.container?.kind === 'bag') open.add(player.container.bag);
+    }
+    return open;
   }
 
   /** Мешки в поле зрения: клиент рисует по ним метки на полу. */

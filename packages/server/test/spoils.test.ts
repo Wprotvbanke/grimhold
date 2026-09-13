@@ -122,4 +122,39 @@ describe('мешок не лежит вечно', () => {
     world.tickBags(0.05);
     expect(world.bagsFor(player)).toHaveLength(0);
   });
+
+  it('но не из-под руки того, кто в него смотрит', () => {
+    /**
+     * Разбор мешка двусторонний: достал посмотреть — можешь положить обратно.
+     * Пока пустой мешок исчезал сразу, окно закрывалось на последней вещи,
+     * и передумать было уже нельзя.
+     */
+    const world = new World();
+    const player = spawn(world, dungeonInstance(13));
+    const looter = spawn(world, dungeonInstance(13));
+    handlePlayerDeath(world, player, 'Умертвие', emptyOutbox());
+
+    const bag = world.bagById(player.instanceId, world.bagsFor(player)[0]!.id)!;
+    bag.grid = { ...bag.grid, items: [] };
+    looter.container = { kind: 'bag', bag };
+
+    world.tickBags(0.05);
+    expect(world.bagsFor(looter)).toHaveLength(1);
+
+    // Закрыл панель — и мешка нет уже на следующем тике.
+    looter.container = null;
+    expect(world.tickBags(0.05)).toContain(bag);
+  });
+
+  it('истлевший уходит и из-под руки', () => {
+    // Иначе мешок держат вечно, просто не закрывая окна.
+    const world = new World();
+    const player = spawn(world, dungeonInstance(14));
+    handlePlayerDeath(world, player, 'Умертвие', emptyOutbox());
+
+    const bag = world.bagById(player.instanceId, world.bagsFor(player)[0]!.id)!;
+    player.container = { kind: 'bag', bag };
+
+    expect(world.tickBags(BAG_SECONDS + 1)).toContain(bag);
+  });
 });
