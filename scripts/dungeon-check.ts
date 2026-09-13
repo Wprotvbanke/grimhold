@@ -278,8 +278,10 @@ async function main(): Promise<void> {
   await sleep(300);
   check(digger.errors.length > 0, 'от входа выйти нельзя — до портала надо дойти', digger.errors[0] ?? 'молча');
 
-  const toPortal = await walkTo(digger, DUNGEON_EXIT, 1.5);
-  check(toPortal <= 2.6, 'дошли до портала', `${toPortal.toFixed(2)} м`);
+  // Портал теперь у самого знака, и отклик у него узкий: подойти надо
+  // вплотную, а не «примерно туда».
+  const toPortal = await walkTo(digger, DUNGEON_EXIT, 0.9);
+  check(toPortal <= 1.6, 'дошли до портала', `${toPortal.toFixed(2)} м`);
 
   digger.send({ t: 'leaveDungeon' });
   await sleep(700);

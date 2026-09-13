@@ -5,6 +5,8 @@ import {
   DUNGEON_CENTER,
   DUNGEON_ENTRY,
   DUNGEON_EXIT,
+  DUNGEON_EXIT_MARK_HEIGHT,
+  DUNGEON_EXIT_WALL,
   DUNGEON_ORIGIN_CHUNK,
   dungeonChests,
   dungeonInstance,
@@ -96,6 +98,35 @@ describe('подземелье стоит в стороне от мира', () =
     const source = generateDungeonChunk(7);
     expect(source(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK).length).toBeGreaterThan(0);
     expect(source(0, 0)).toHaveLength(0);
+  });
+
+  it('знак выхода нарисован на видимой стене, а не внутри камня', () => {
+    /**
+     * Ловушка, на которой уже обожглись: карман ниши кончается **за** краевой
+     * стеной этажа, и знак по задней стенке кармана ушёл в камень целиком.
+     * В игре это выглядело как светящееся пятно без рисунка — ошибки нигде,
+     * просто краска с той стороны стены.
+     *
+     * Проверяем то же, что видит глаз: точка краски лежит в пустоте, а камень
+     * начинается сразу за ней.
+     */
+    const boxes = generateDungeonChunk(11)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
+    const paint = { x: DUNGEON_EXIT.x, y: DUNGEON_EXIT_MARK_HEIGHT, z: DUNGEON_EXIT_WALL + 0.05 };
+
+    const inside = (point: { x: number; y: number; z: number }) =>
+      boxes.filter(
+        (entry) =>
+          entry.box.minX <= point.x &&
+          entry.box.maxX >= point.x &&
+          entry.box.minY <= point.y &&
+          entry.box.maxY >= point.y &&
+          entry.box.minZ <= point.z &&
+          entry.box.maxZ >= point.z,
+      );
+
+    expect(inside(paint)).toHaveLength(0);
+    // И это именно стена, а не воздух посреди зала: на полметра глубже камень.
+    expect(inside({ ...paint, z: DUNGEON_EXIT_WALL - 0.5 }).length).toBeGreaterThan(0);
   });
 
   it('к порталу можно подойти: на его месте ничего не преграждает путь', () => {
