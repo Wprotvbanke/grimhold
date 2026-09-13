@@ -236,3 +236,28 @@ export class TestClient {
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/**
+ * Ждёт **факта**, а не времени.
+ *
+ * Паузы в проверках — главный источник провалов, которые «не воспроизводятся»:
+ * сервер стал отвечать на полсекунды дольше, и шаг, ждавший ровно столько,
+ * сколько было вчера, не дождался. Такой провал невозможно объяснить по логу —
+ * он просто говорит, что чего-то нет, и молчит о том, чего ждали.
+ *
+ * Поэтому здесь ждут условия и возвращают, сколько прождали. Не дождались —
+ * это тоже ответ: `ok` ложно, и вызывающий скажет вслух, чего именно не было.
+ */
+export async function waitUntil(
+  condition: () => boolean,
+  timeoutMs: number,
+  stepMs = 100,
+): Promise<{ ok: boolean; waited: number }> {
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    if (condition()) return { ok: true, waited: Date.now() - started };
+    await sleep(stepMs);
+  }
+  return { ok: condition(), waited: Date.now() - started };
+}

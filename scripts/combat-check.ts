@@ -11,8 +11,14 @@
  *   5. заклинание порождает летящий снаряд;
  *   6. смерть и воскрешение работают.
  */
-import { INPUT_DT, RESPAWN_DELAY, TICK_RATE, type EntitySnapshot } from '@grimhold/shared';
-import { TestClient, sleep } from './testClient.js';
+import {
+  INPUT_DT,
+  RESPAWN_DELAY,
+  RESPAWN_STREAK_MAX,
+  TICK_RATE,
+  type EntitySnapshot,
+} from '@grimhold/shared';
+import { TestClient, sleep, waitUntil } from './testClient.js';
 
 const failures: string[] = [];
 
@@ -281,9 +287,22 @@ async function main(): Promise<void> {
       'сразу после смерти подъём ещё не происходит',
     );
 
-    // Ждём срок лежания, а не зашитое число: он вырос до десяти секунд
-    // и растёт дальше с каждой быстрой смертью.
-    await sleep(RESPAWN_DELAY * 1000 + 800);
+    /**
+     * Ждём **подъёма**, а не срока.
+     *
+     * Срок лежания растёт с каждой быстрой смертью, и число, верное сегодня,
+     * назавтра коротко. Ждём факта и печатаем, сколько ждали: если однажды
+     * не дождёмся, в логе будет видно, сколько сервер держал павшего.
+     */
+    const risen = await waitUntil(
+      () => client.latestSnapshot?.self.alive === true,
+      RESPAWN_DELAY * 2 ** RESPAWN_STREAK_MAX * 1000 + 3000,
+    );
+    // Печатаем всегда, а не только при провале: срок лежания растёт от числа
+    // смертей, и ползущее время видно заранее — до того, как оно упрётся
+    // в предел и проверка начнёт падать «непонятно почему».
+    console.log(`  ···  подъём занял ${(risen.waited / 1000).toFixed(1)} с`);
+
     const self = client.latestSnapshot?.self;
     check(self?.alive === true, 'ранняя просьба о воскрешении не потерялась');
     check(

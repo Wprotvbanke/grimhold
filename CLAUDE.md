@@ -48,6 +48,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | `npm run roster` | сводка по населению мира |
 
 Сквозные проверки работают **против запущенного сервера** — сначала `npm run dev`.
+Как они устроены и почему ждут факта, а не паузы, — [docs/checks.md](docs/checks.md).
 
 ## Правила, которые нельзя нарушать
 
@@ -97,6 +98,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/architecture.md](docs/architecture.md) | сеть, протокол, слой команд, пакеты, меню ведущего (F2) |
 | [docs/storage.md](docs/storage.md) | база, миграции, что должно переживать перезаход |
 | [docs/assets.md](docs/assets.md) | нужна модель, текстура, анимация или звук |
+| [docs/checks.md](docs/checks.md) | пишешь или чинишь сквозную проверку из `scripts/` |
 | [docs/git.md](docs/git.md) | что попадает в репозиторий, как поднять проект с нуля |
 | [DESIGN.md](DESIGN.md) | замысел игры, вехи, что делать дальше |
 | [README.md](README.md) | описание для человека, управление в игре |

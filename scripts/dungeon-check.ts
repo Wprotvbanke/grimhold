@@ -28,7 +28,7 @@ import {
   isDungeon,
 } from '@grimhold/shared';
 import { carried, reviveIfDead, walkTo } from './fieldwork.js';
-import { TestClient, sleep } from './testClient.js';
+import { TestClient, sleep, waitUntil } from './testClient.js';
 
 const failures: string[] = [];
 let seq = 0;
@@ -113,7 +113,9 @@ async function descendAgain(client: TestClient): Promise<boolean> {
 
   await walkTo(client, DUNGEON_GATE, 1.2);
   client.send({ t: 'enterDungeon' });
-  await sleep(700);
+  // Ждём, пока сервер объявит переезд, а не «примерно столько, сколько надо»:
+  // после воскрешения в очереди у сервера уже лежит целый забег событий.
+  await waitUntil(() => isDungeon(where(client)), 5000);
   return true;
 }
 

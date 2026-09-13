@@ -11,6 +11,7 @@ import {
   NODES,
   RECIPES,
   RESPAWN_DELAY,
+  RESPAWN_STREAK_MAX,
   TICK_RATE,
   generateNodes,
   type ItemId,
@@ -18,7 +19,7 @@ import {
   type RecipeId,
   type ResourceNode,
 } from '@grimhold/shared';
-import { TestClient, sleep } from './testClient.js';
+import { TestClient, sleep, waitUntil } from './testClient.js';
 
 let seq = 0;
 
@@ -95,14 +96,31 @@ export function carried(client: TestClient, defId: string): number {
  * Пока добыча была мгновенной, проверки почти не рисковали. Теперь игрок
  * стоит у ноды секундами, и волк успевает подойти — это ровно та цена, ради
  * которой добыча и сделана работой. Проверке остаётся её пережить.
+ *
+ * Ждём **подъёма**, а не времени. Фиксированная пауза тут неверна
+ * по построению: срок лежания удваивается с каждой быстрой смертью, и в долгом
+ * прогоне, где проверку убивают не раз, вчерашних десяти секунд однажды
+ * не хватает. Так и вышло — прогон дал два провала, которые на повторе
+ * не воспроизвелись и ничего о себе не сказали.
+ *
+ * Предел — самый долгий срок, какой сервер вообще может назначить, плюс запас
+ * на дорогу пакетов. Не дождались — говорим вслух, чего не дождались:
+ * молчаливый провал обходится дороже самого падения.
  */
 export async function reviveIfDead(client: TestClient): Promise<boolean> {
   if (client.latestSnapshot?.self.alive !== false) return false;
 
   client.send({ t: 'respawn' });
   // Ранняя просьба не пропадает: сервер поднимет, как только выйдет срок.
-  // Срок берём из общего правила — он растёт с каждой быстрой смертью.
-  await sleep(RESPAWN_DELAY * 1000 + 1500);
+  const limit = RESPAWN_DELAY * 2 ** RESPAWN_STREAK_MAX * 1000 + 3000;
+  const risen = await waitUntil(() => client.latestSnapshot?.self.alive === true, limit);
+
+  if (!risen.ok) {
+    console.log(
+      `  ЖДАЛИ подъёма ${(risen.waited / 1000).toFixed(1)} с и не дождались — ` +
+        'сервер держит павшего дольше предельного срока лежания',
+    );
+  }
   return true;
 }
 
