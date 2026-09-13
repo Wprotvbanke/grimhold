@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BACKSTAB_ARC,
+  BLOCK_REDUCTION,
+  BLOCK_REDUCTION_VS_HEAVY,
   HEAVY_ATTACK,
   LIGHT_ATTACK,
   MAX_SKILL_LEVEL,
@@ -8,6 +10,8 @@ import {
   applyArmor,
   attributesFor,
   beginAction,
+  blockStaminaScale,
+  blockedShare,
   experienceForLevel,
   gainExperience,
   inAttackCone,
@@ -162,5 +166,38 @@ describe('рост навыков', () => {
     const capped = gainExperience({ level: MAX_SKILL_LEVEL, experience: 0 }, 100000);
     expect(capped.progress.level).toBe(MAX_SKILL_LEVEL);
     expect(capped.levelsGained).toBe(0);
+  });
+});
+
+describe('навык блока', () => {
+  /**
+   * Две половины одного: щит гасит больше, а стойка ест меньше. Вместе это
+   * и есть роль щитовика — держать строй умеет тот, кто этому учился.
+   */
+  it('гасит тем больше, чем выше уровень', () => {
+    expect(blockedShare(BLOCK_REDUCTION, 0)).toBe(BLOCK_REDUCTION);
+    expect(blockedShare(BLOCK_REDUCTION, 50)).toBeGreaterThan(BLOCK_REDUCTION);
+    expect(blockedShare(BLOCK_REDUCTION, 100)).toBeGreaterThan(
+      blockedShare(BLOCK_REDUCTION, 50),
+    );
+  });
+
+  it('но полностью не гасит никогда', () => {
+    // Иначе на высоком уровне щит отменял бы бой.
+    expect(blockedShare(BLOCK_REDUCTION, 100)).toBeLessThan(1);
+    expect(blockedShare(BLOCK_REDUCTION_VS_HEAVY, 100)).toBeLessThan(1);
+  });
+
+  it('тяжёлый удар остаётся тяжелее лёгкого на любом уровне', () => {
+    expect(blockedShare(BLOCK_REDUCTION_VS_HEAVY, 100)).toBeLessThan(
+      blockedShare(BLOCK_REDUCTION, 100),
+    );
+  });
+
+  it('стойка дешевеет вдвое, но не больше', () => {
+    expect(blockStaminaScale(0)).toBe(1);
+    expect(blockStaminaScale(50)).toBeLessThan(1);
+    expect(blockStaminaScale(100)).toBe(0.5);
+    expect(blockStaminaScale(1000)).toBe(0.5);
   });
 });

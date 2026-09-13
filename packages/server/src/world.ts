@@ -472,6 +472,7 @@ export class World {
         invulnerable: 0,
         sinceStaminaUse: 99,
         exhaustedFor: 0,
+        blockSkill: skills.block.level,
         wardArmor: 0,
         wardRemaining: 0,
         slowFactor: 1,

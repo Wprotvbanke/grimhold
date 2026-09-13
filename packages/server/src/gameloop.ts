@@ -4,6 +4,7 @@ import {
   RESPAWN_STREAK_MAX,
   MAX_INPUTS_PER_TICK,
   BLOCK_DRAIN,
+  blockStaminaScale,
   MOBS,
   SPAWN_POINT,
   SPELLS,
@@ -312,9 +313,10 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     const before = combat.action?.phase;
     const { enteredActive } = tickCombatant(combat, dt, player.maxima);
 
-    // Блок ест стамину, пока поднят щит.
+    // Блок ест стамину, пока поднят щит, — и тем меньше, чем выше навык:
+    // мастер стоит вдвое дольше на том же запасе.
     if (combat.blocking) {
-      combat.vitals.stamina -= BLOCK_DRAIN * dt;
+      combat.vitals.stamina -= BLOCK_DRAIN * blockStaminaScale(combat.blockSkill) * dt;
       combat.sinceStaminaUse = 0;
       if (combat.vitals.stamina <= 0) {
         combat.vitals.stamina = 0;
@@ -894,6 +896,8 @@ function grantExperience(
 
   const result = gainExperience(player.skills[skill], amount);
   player.skills[skill] = result.progress;
+  // Уровень блока едет с бойцом: удар принимают там, где книги навыков нет.
+  if (skill === 'block') player.combat.blockSkill = result.progress.level;
   player.dirty = true;
   // Числа в панели изменились — панель должна это увидеть.
   outbox.progress.push(player);

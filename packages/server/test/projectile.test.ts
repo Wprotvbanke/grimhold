@@ -35,6 +35,7 @@ function makeCombatant(overrides: Partial<Combatant> = {}): Combatant {
     invulnerable: 0,
     sinceStaminaUse: 99,
     exhaustedFor: 0,
+    blockSkill: 0,
     wardArmor: 0,
     wardRemaining: 0,
     slowFactor: 1,

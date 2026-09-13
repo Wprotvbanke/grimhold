@@ -2,6 +2,8 @@ import {
   STAMINA_IDLE_DELAY,
   advanceAction,
   applyArmor,
+  blockStaminaScale,
+  blockedShare,
   staminaRegen,
   manaRegen,
   timingOf,
@@ -58,6 +60,11 @@ export interface Combatant {
    * и правило одно на всех.
    */
   exhaustedFor: number;
+  /**
+   * Уровень навыка блока: им же считается, сколько урона погасит щит
+   * и во сколько обойдётся стойка. У зверья ноль — щитов у них нет.
+   */
+  blockSkill: number;
   /** Временная прибавка к броне от заклинания и сколько ей осталось. */
   wardArmor: number;
   wardRemaining: number;
@@ -108,8 +115,16 @@ export function applyDamage(
 
   if (target.blocking && target.vitals.stamina > 0) {
     blocked = true;
-    damage *= 1 - options.blockReduction;
-    target.vitals.stamina = Math.max(0, target.vitals.stamina - options.staminaOnBlock);
+    /**
+     * Насколько хорошо принят удар, решает **навык того, кто принимает**.
+     *
+     * Уровень едет вместе с бойцом (`blockSkill`), а не ищется по книге
+     * навыков: бить могут и по мобу, и по игроку, а applyDamage должен
+     * оставаться одним на всех.
+     */
+    damage *= 1 - blockedShare(options.blockReduction, target.blockSkill);
+    const cost = options.staminaOnBlock * blockStaminaScale(target.blockSkill);
+    target.vitals.stamina = Math.max(0, target.vitals.stamina - cost);
     target.sinceStaminaUse = 0;
     // Стамина кончилась — стойка сломана, блок падает.
     if (target.vitals.stamina <= 0) target.blocking = false;
