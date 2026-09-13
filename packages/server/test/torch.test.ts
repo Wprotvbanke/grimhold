@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { MOBS, TORCH_SECONDS } from '@grimhold/shared';
+import { MOBS, TORCH_SECONDS, addItem, countOf } from '@grimhold/shared';
 import { emptyOutbox, tickWorld } from '../src/gameloop.js';
+import { handleUseHotbar } from '../src/commands/hotbar.js';
 import { createMob, decideMob } from '../src/mob.js';
 import { OVERWORLD, World, isLit, refreshLoadout, type Player } from '../src/world.js';
 
@@ -78,6 +79,36 @@ describe('факел', () => {
     run(world, TORCH_SECONDS + 1);
     expect(player.equipment.offHand).toBeUndefined();
     expect(isLit(player)).toBe(false);
+  });
+
+  it('гасится тем же нажатием панели, каким зажжён', () => {
+    /**
+     * Панель искала факел в рюкзаке, а он в руке — и отвечала «нет
+     * в рюкзаке». Погасить его можно было только через окно вещей.
+     */
+    const world = new World();
+    const player = spawn(world);
+    player.inventory = addItem(player.inventory, 'torch', 1).grid;
+    player.hotbar[0] = 'torch';
+
+    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
+    expect(isLit(player)).toBe(true);
+
+    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
+    expect(isLit(player)).toBe(false);
+    expect(countOf(player.inventory, 'torch')).toBe(1);
+  });
+
+  it('а меч и щит вторым нажатием не снимаются', () => {
+    // Иначе двойное нажатие в бою обезоружило бы владельца.
+    const world = new World();
+    const player = spawn(world);
+    player.inventory = addItem(player.inventory, 'wooden_shield', 1).grid;
+    player.hotbar[0] = 'wooden_shield';
+
+    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
+    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
+    expect(player.equipment.offHand?.defId).toBe('wooden_shield');
   });
 
   it('несущего огонь зверьё замечает дальше', () => {

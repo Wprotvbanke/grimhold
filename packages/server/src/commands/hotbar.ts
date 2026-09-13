@@ -11,7 +11,7 @@ import {
 } from '@grimhold/shared';
 import { canAct, payForSpell } from '../combat.js';
 import type { Player } from '../world.js';
-import { handleEquip, handleUseItem } from './items.js';
+import { handleEquip, handleUnequip, handleUseItem } from './items.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
 /**
@@ -69,10 +69,27 @@ export const handleUseHotbar: CommandHandler<UseHotbarMessage> = (ctx, payload) 
   const defId = player.hotbar[payload.index];
   if (!defId) return [];
 
-  const item = findByDefId(player.inventory, defId);
-  if (!item) return refuse(`${itemDef(defId).name}: нет в рюкзаке`);
-
   const def = itemDef(defId);
+
+  /**
+   * Надетый факел тем же нажатием и гасится.
+   *
+   * Панель — это «сделать то, что на ней нарисовано», и для факела таких
+   * действий два: зажечь и потушить. Пока их было одно, погасить его можно
+   * было только через рюкзак: нажатие уходило искать факел в сетке, а он
+   * в руке — и получало отказ «нет в рюкзаке».
+   *
+   * Только для расходников в слоте, то есть для того, что носят ради
+   * действия, а не ради защиты. Меч и щит так не снимаются намеренно:
+   * второе нажатие в бою обезоружило бы владельца, а это не то, чего
+   * от панели ждут.
+   */
+  if (def.slot && def.kind === 'consumable' && player.equipment[def.slot]?.defId === defId) {
+    return handleUnequip(ctx, { t: 'unequip', slot: def.slot });
+  }
+
+  const item = findByDefId(player.inventory, defId);
+  if (!item) return refuse(`${def.name}: нет в рюкзаке`);
 
   // Заклинание читается, а не тратится: свиток остаётся в рюкзаке.
   if (def.kind === 'spell' && def.spellId) {
