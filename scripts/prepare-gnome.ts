@@ -113,16 +113,22 @@ function sampler(track: KeyframeTrack): { evaluate(time: number): ArrayLike<numb
  * от подписи над головой и от коробки столкновений.
  *
  * Вертикаль остаётся: покачивание на шаге — это и есть походка.
+ *
+ * Отсчёт идёт **от начала исходного клипа**, где персонаж стоит в нуле, а не
+ * от начала вырезанного куска. Разница стоила заметной поломки: кусок вырезан
+ * с середины прохода, и таз замирал там, где персонаж уже прошёл почти метр.
+ * Модель вставала в метре впереди собственной позиции — а смещение это местное,
+ * оно поворачивается вместе с ней, и на развороте жителя проносило через
+ * два метра, будто его отбрасывало в сторону.
  */
-function inPlace(clip: AnimationClip): void {
+function inPlace(clip: AnimationClip, home: { x: number; z: number }): void {
   for (const track of clip.tracks) {
     if (!track.name.endsWith('Hips.position')) continue;
 
     const values = track.values;
-    const [startX, , startZ] = Array.from(sampler(track).evaluate(0));
     for (let i = 0; i < values.length; i += 3) {
-      values[i] = startX ?? 0;
-      values[i + 2] = startZ ?? 0;
+      values[i] = home.x;
+      values[i + 2] = home.z;
     }
   }
 }
@@ -387,7 +393,12 @@ const raw = model.animations[0]!;
 // Цикл вырезается до того, как убрано движение корня: по нему и считается,
 // на какую скорость нарисована ходьба.
 const { walk, metresPerSecond } = trimToLoop(raw);
-inPlace(walk);
+
+// Дом — то место, где персонаж стоит в начале исходного клипа: относительно
+// него и собрана модель.
+const rootTrack = raw.tracks.find((track: KeyframeTrack) => track.name.endsWith('Hips.position'));
+const rest = rootTrack ? Array.from(sampler(rootTrack).evaluate(0)) : [0, 0, 0];
+inPlace(walk, { x: rest[0] ?? 0, z: rest[2] ?? 0 });
 
 console.log(
   `собственная скорость ходьбы: ${metresPerSecond.toFixed(2)} м/с ` +
