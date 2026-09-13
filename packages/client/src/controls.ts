@@ -16,6 +16,26 @@ export interface IntentSample {
 const MOUSE_SENSITIVITY = 0.0022;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
 
+/**
+ * Как быстро взгляд догоняет мышь, единиц в секунду.
+ *
+ * Нужно потому, что мышь и экран живут по разным часам. Мышь опрашивается
+ * 125 раз в секунду (у игровых — до тысячи), кадров шестьдесят: на один кадр
+ * приходится то два отсчёта, то три, и скорость поворота скачет на четверть
+ * туда-сюда. Пока смотришь вперёд, это незаметно; стоит вести взглядом
+ * предмет — и он дёргается в руках, особенно если идёшь боком, когда
+ * картинка и так едет по экрану.
+ *
+ * Сорок пять — это отставание примерно в двадцать миллисекунд: рывки мыши
+ * сглаживаются, а задержка меньше кадра. Больше — резче и дёрганее, меньше —
+ * плавнее, но прицел начинает «плыть» за рукой. Единственное число, которым
+ * это настраивается.
+ *
+ * Игроку с мышью на тысячу герц сглаживание почти не нужно — там разброс
+ * и без него мал.
+ */
+const AIM_FOLLOW = 45;
+
 export interface ControlsHooks {
   /** Открыть чат: Enter — локальный, Shift+Enter — общий. */
   onChatKey(channel: 'local' | 'global'): void;
@@ -34,8 +54,12 @@ export interface ControlsHooks {
 }
 
 export class Controls {
+  /** Куда смотрит камера сейчас: догоняет мышь, а не прыгает за ней. */
   yaw = 0;
   pitch = 0;
+  /** Куда игрок уже довёл мышь — сумма всех её движений. */
+  private targetYaw = 0;
+  private targetPitch = 0;
   locked = false;
   /** Показывать ники — только пока зажата клавиша. */
   showNames = false;
@@ -58,9 +82,9 @@ export class Controls {
 
     document.addEventListener('mousemove', (event) => {
       if (!this.locked) return;
-      this.yaw -= event.movementX * MOUSE_SENSITIVITY;
-      this.pitch -= event.movementY * MOUSE_SENSITIVITY;
-      this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch));
+      this.targetYaw -= event.movementX * MOUSE_SENSITIVITY;
+      this.targetPitch -= event.movementY * MOUSE_SENSITIVITY;
+      this.targetPitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.targetPitch));
     });
 
     window.addEventListener('keydown', (event) => {
@@ -182,6 +206,17 @@ export class Controls {
 
   requestLock(): void {
     this.canvas.requestPointerLock();
+  }
+
+  /**
+   * Подтягивает взгляд к мыши. Зовётся раз в кадр, до всего остального:
+   * и намерение движения, и камера, и прицел обязаны видеть один и тот же
+   * угол — иначе целишься не туда, куда смотришь.
+   */
+  update(dt: number): void {
+    const follow = 1 - Math.exp(-AIM_FOLLOW * dt);
+    this.yaw += (this.targetYaw - this.yaw) * follow;
+    this.pitch += (this.targetPitch - this.pitch) * follow;
   }
 
   sample(): IntentSample {
