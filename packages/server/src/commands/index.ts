@@ -6,6 +6,8 @@ import { handleBankMove, handleCloseBank, handleOpenBag, handleOpenBank } from '
 import { handleChat } from './chat.js';
 import { handleOpenChest } from './chest.js';
 import { handleEnterDungeon, handleLeaveDungeon } from './dungeon.js';
+import { handleStairs } from './stairs.js';
+import { handleParty } from './party.js';
 import { handleCraft } from './craft.js';
 import { handleHarvest } from './harvest.js';
 import { handleSetHotbar, handleUseHotbar } from './hotbar.js';
@@ -84,6 +86,10 @@ export function dispatch(ctx: CommandContext, message: ClientMessage): GameEvent
       return handleEnterDungeon(ctx, message);
     case 'leaveDungeon':
       return handleLeaveDungeon(ctx, message);
+    case 'stairs':
+      return handleStairs(ctx, message);
+    case 'party':
+      return handleParty(ctx, message);
     case 'tradeInvite':
       return handleTradeInvite(ctx, message);
     case 'tradeRespond':

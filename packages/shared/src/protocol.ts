@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 26;
+export const PROTOCOL_VERSION = 27;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -143,7 +143,7 @@ export const SpendPointSchema = z.object({
 
 export const AdminSchema = z.object({
   t: z.literal('admin'),
-  do: z.enum(['give', 'time']),
+  do: z.enum(['give', 'time', 'portals']),
   itemId: z.string().max(64).optional(),
   count: z.number().int().min(1).max(999).optional(),
   /** Время суток: 0 — полночь, 0.25 — рассвет, 0.5 — полдень, 0.75 — закат. */
@@ -354,6 +354,32 @@ export const LeaveDungeonSchema = z.object({
   t: z.literal('leaveDungeon'),
 });
 
+/**
+ * Переход по лестнице между этажами подземелья.
+ *
+ * Этажи живут в **одном** инстансе, поэтому это не спуск и не выход, а перенос
+ * внутри своего мира: компания остаётся компанией, а босс открывает порталы
+ * сразу всем. Клиент шлёт лишь направление — стоит ли он у лестницы и есть ли
+ * она тут вообще, решает сервер.
+ */
+export const StairsSchema = z.object({
+  t: z.literal('stairs'),
+  down: z.boolean(),
+});
+
+/**
+ * Группа: приглашение, согласие и уход.
+ *
+ * Внизу флаги не действуют и все всем враги, поэтому **своих надо как-то
+ * отличать** — на этом группа и держится. Ничего, кроме меток, она не даёт:
+ * ни общей добычи, ни общего опыта.
+ */
+export const PartySchema = z.object({
+  t: z.literal('party'),
+  action: z.enum(['invite', 'accept', 'decline', 'leave']),
+  targetId: z.string().max(64).optional(),
+});
+
 export const ChatSchema = z.object({
   t: z.literal('chat'),
   channel: z.enum(['local', 'global']),
@@ -401,6 +427,8 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   BankMoveSchema,
   EnterDungeonSchema,
   LeaveDungeonSchema,
+  StairsSchema,
+  PartySchema,
   TradeInviteSchema,
   TradeRespondSchema,
   TradeOfferSchema,
@@ -434,6 +462,8 @@ export type CloseBankMessage = z.infer<typeof CloseBankSchema>;
 export type BankMoveMessage = z.infer<typeof BankMoveSchema>;
 export type EnterDungeonMessage = z.infer<typeof EnterDungeonSchema>;
 export type LeaveDungeonMessage = z.infer<typeof LeaveDungeonSchema>;
+export type StairsMessage = z.infer<typeof StairsSchema>;
+export type PartyMessage = z.infer<typeof PartySchema>;
 export type TradeInviteMessage = z.infer<typeof TradeInviteSchema>;
 export type TradeRespondMessage = z.infer<typeof TradeRespondSchema>;
 export type TradeOfferMessage = z.infer<typeof TradeOfferSchema>;
@@ -486,6 +516,15 @@ export interface EntitySnapshot {
    * можно бить без последствий, и решение это принимается на глаз, за секунду.
    */
   flag?: PvpFlag;
+  /**
+   * Свой.
+   *
+   * Считается **для каждого получателя отдельно**: группа — это отношение,
+   * а не свойство игрока, и «свой» у двоих из разных отрядов разный. Внизу
+   * флаги не действуют и все всем враги, поэтому метка на своих — единственное,
+   * что отличает спутника от чужака в пяти метрах видимости.
+   */
+  ally?: boolean;
 }
 
 /** Карточка персонажа для экрана выбора. */
@@ -784,6 +823,21 @@ export interface SelfState {
   /** Свой флаг и карма: игрок должен видеть, во что он себя вогнал. */
   flag: PvpFlag;
   karma: number;
+  /**
+   * Этаж подземелья, считая с нуля. Наверху поля нет.
+   *
+   * Могло бы считаться клиентом из координаты, и считается — но в снапшоте
+   * оно всё равно нужно: по нему же едут состояние босса и порталов, и все
+   * три числа обязаны меняться одним кадром, иначе на границе этажей
+   * подпись разъедется с обратным отсчётом.
+   */
+  floor?: number;
+  /** Жив ли хозяин глубины. Пока жив — порталы заперты всему инстансу. */
+  bossAlive?: boolean;
+  /** Сколько секунд порталы ещё открыты. Ноль и пусто — заперты. */
+  portalsFor?: number;
+  /** Сколько человек в отряде, включая себя. Пусто — один. */
+  party?: number;
 }
 
 /** Летящий снаряд заклинания. От него можно отойти, поэтому он в снапшоте. */

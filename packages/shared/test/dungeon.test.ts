@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ChunkedWorld } from '../src/chunks.js';
+import { ChunkedWorld, CHUNK_SIZE } from '../src/chunks.js';
 import { isSafe } from '../src/level.js';
 import {
   DUNGEON_CENTER,
@@ -13,10 +13,23 @@ import {
   dungeonSeed,
   findChest,
   hallLayout,
+  floorLayout,
+  floorCenter,
+  floorArrival,
+  floorOf,
+  stairsDown,
+  stairsUp,
+  chestLoot,
   mobsForDungeon,
   generateDungeonChunk,
   isDungeon,
+  DUNGEON_FLOORS,
+  FLOOR_STRIDE,
+  DUNGEON_BOSS,
+  BOSS_FLOOR,
 } from '../src/dungeon.js';
+import { MOBS, experienceFor } from '../src/mobs.js';
+import { AOI_RADIUS } from '../src/protocol.js';
 
 /**
  * Подземелье.
@@ -238,8 +251,90 @@ describe('сундуки', () => {
   it('стоят в зале телесно — в них упираются', () => {
     const boxes = generateDungeonChunk(2024)(DUNGEON_ORIGIN_CHUNK, DUNGEON_ORIGIN_CHUNK);
     const crates = boxes.filter((entry) => entry.kind === 'chest');
-    expect(crates).toHaveLength(dungeonChests(2024).length);
+    // Только сундуки своего этажа: всего их больше, но чанк один на этаж.
+    expect(crates).toHaveLength(floorLayout(2024, 0).chests.length);
     expect(crates.every((entry) => !entry.noCollide)).toBe(true);
+  });
+
+  it('чем глубже, тем щедрее', () => {
+    // Путь назад с третьего этажа длиннее, и награда обязана это знать.
+    const top = chestLoot(0);
+    const deep = chestLoot(DUNGEON_FLOORS - 1);
+    expect(deep[0]!.max).toBeGreaterThan(top[0]!.max);
+    expect(deep.every((entry) => entry.chance <= 0.95)).toBe(true);
+  });
+});
+
+describe('этажи', () => {
+  /**
+   * Три этажа живут в одном инстансе и рядом в координатах. Это и есть условие
+   * всего остального: босс отпирает порталы всему забегу, а отряд остаётся
+   * отрядом при переходе вниз.
+   */
+  it('каждый этаж знает себя по координате', () => {
+    for (let floor = 0; floor < DUNGEON_FLOORS; floor++) {
+      const center = floorCenter(floor);
+      expect(floorOf(center.x)).toBe(floor);
+      expect(floorOf(floorArrival(floor).x)).toBe(floor);
+    }
+  });
+
+  it('этажи разнесены дальше радиуса интереса', () => {
+    // Иначе обитатели соседнего этажа попадали бы в снапшот и ходили бы
+    // сквозь камень на виду.
+    for (let floor = 1; floor < DUNGEON_FLOORS; floor++) {
+      const gap = floorCenter(floor).x - floorCenter(floor - 1).x - CHUNK_SIZE;
+      expect(gap).toBeGreaterThan(AOI_RADIUS);
+    }
+  });
+
+  it('у каждого этажа своя земля, а между ними пусто', () => {
+    const source = generateDungeonChunk(7);
+    for (let floor = 0; floor < DUNGEON_FLOORS; floor++) {
+      expect(source(DUNGEON_ORIGIN_CHUNK + floor * FLOOR_STRIDE, DUNGEON_ORIGIN_CHUNK).length)
+        .toBeGreaterThan(0);
+    }
+    expect(source(DUNGEON_ORIGIN_CHUNK + 1, DUNGEON_ORIGIN_CHUNK)).toHaveLength(0);
+    expect(source(DUNGEON_ORIGIN_CHUNK + DUNGEON_FLOORS * FLOOR_STRIDE, DUNGEON_ORIGIN_CHUNK))
+      .toHaveLength(0);
+  });
+
+  it('лестницы ведут туда и обратно, и только оттуда, откуда есть ход', () => {
+    expect(stairsUp(0)).toBeNull();
+    expect(stairsDown(DUNGEON_FLOORS - 1)).toBeNull();
+    for (let floor = 1; floor < DUNGEON_FLOORS; floor++) {
+      const up = stairsUp(floor)!;
+      // Пришёл сверху — стоишь на том, по чему вернёшься.
+      expect(Math.hypot(up.x - floorArrival(floor).x, up.z - floorArrival(floor).z)).toBeLessThan(
+        0.01,
+      );
+    }
+  });
+
+  it('на месте лестницы пусто, а за ней камень', () => {
+    /**
+     * Та же проверка, что у знака выхода, и по той же причине: ниша, отмеренная
+     * не от стены, уходит в камень целиком, и в игре на её месте светится
+     * пустое пятно.
+     */
+    const source = generateDungeonChunk(4242);
+    for (const [floor, niche] of [
+      [0, stairsDown(0)!],
+      [DUNGEON_FLOORS - 1, stairsUp(DUNGEON_FLOORS - 1)!],
+    ] as const) {
+      const boxes = source(DUNGEON_ORIGIN_CHUNK + floor * FLOOR_STRIDE, DUNGEON_ORIGIN_CHUNK);
+      const standing = { x: niche.x, y: 1.5, z: niche.z };
+      const inside = boxes.filter(
+        (entry) =>
+          entry.box.minX <= standing.x &&
+          entry.box.maxX >= standing.x &&
+          entry.box.minY <= standing.y &&
+          entry.box.maxY >= standing.y &&
+          entry.box.minZ <= standing.z &&
+          entry.box.maxZ >= standing.z,
+      );
+      expect(inside).toHaveLength(0);
+    }
   });
 });
 
@@ -253,5 +348,22 @@ describe('обитатели зала', () => {
     // Крыс и волков внизу нет: спуск обязан быть страшнее прогулки за околицу.
     expect(mobsForDungeon(12)).not.toContain('rat');
     expect(mobsForDungeon(12)).not.toContain('wolf');
+  });
+
+  it('глубже — злее', () => {
+    // Обещание вехи целиком: считаем цену этажа по его составу.
+    const price = (floor: number) =>
+      mobsForDungeon(2024, floor).reduce((sum, id) => sum + experienceFor(MOBS[id]), 0);
+    for (let floor = 1; floor < DUNGEON_FLOORS; floor++) {
+      expect(price(floor)).toBeGreaterThan(price(floor - 1));
+    }
+  });
+
+  it('хозяин глубины тяжелее всех и ждёт на дне', () => {
+    expect(BOSS_FLOOR).toBe(DUNGEON_FLOORS - 1);
+    const boss = MOBS[DUNGEON_BOSS];
+    for (const id of mobsForDungeon(1, BOSS_FLOOR)) {
+      expect(boss.health).toBeGreaterThan(MOBS[id].health);
+    }
   });
 });

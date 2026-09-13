@@ -244,6 +244,18 @@ setInterval(() => {
   for (const player of new Set(outbox.progress)) {
     sendTo(player.id, progressMessage(player));
   }
+  /**
+   * Весть всему инстансу: хозяин глубины пал, порталы открыты.
+   *
+   * Не «рядом», как события боя: развязка касается каждого, кто внизу,
+   * где бы он в эту минуту ни стоял.
+   */
+  for (const entry of outbox.announce) {
+    for (const player of world.players.values()) {
+      if (player.instanceId !== entry.instanceId) continue;
+      sendTo(player.id, { t: 'chatMessage', channel: 'system', from: '', text: entry.text });
+    }
+  }
   for (const entry of outbox.itemErrors) {
     sendTo(entry.playerId, { t: 'itemError', message: entry.message });
   }

@@ -18,6 +18,7 @@ import {
   createBackpack,
   createSack,
   isDungeon,
+  PORTAL_SECONDS,
   itemDef,
   gainExperience,
   experienceFor,
@@ -111,6 +112,14 @@ export interface Outbox {
   progress: Player[];
   /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
   criticalSaves: Player[];
+  /**
+   * Весть, которую слышит весь инстанс сразу.
+   *
+   * Не «рядом», как события боя: падение хозяина глубины касается всех, кто
+   * внизу, включая тех, кто в эту минуту роется в сундуке тремя этажами выше.
+   * В этом и смысл развязки — сигнал один на забег.
+   */
+  announce: { instanceId: string; text: string }[];
 }
 
 export function emptyOutbox(): Outbox {
@@ -126,6 +135,7 @@ export function emptyOutbox(): Outbox {
     bank: [],
     progress: [],
     criticalSaves: [],
+    announce: [],
   };
 }
 
@@ -700,6 +710,23 @@ function handleDeath(
   if (!mob) return;
 
   killMob(mob);
+
+  /**
+   * Хозяин глубины отпирает порталы — всему инстансу и на время.
+   *
+   * Стоит **здесь, в разборе смерти**, а не в команде выхода: уронить его
+   * можно чем угодно — мечом, стрелой, заклинанием, чужими руками, — и
+   * проверять это в каждом из путей значило бы однажды забыть один.
+   */
+  if (world.isDungeonBoss(mob.instanceId, mob.id)) {
+    world.openPortals(mob.instanceId);
+    const minutes = Math.floor(PORTAL_SECONDS / 60);
+    const seconds = String(PORTAL_SECONDS % 60).padStart(2, '0');
+    outbox.announce.push({
+      instanceId: mob.instanceId,
+      text: `${mob.name} пал. Порталы открыты на ${minutes}:${seconds} — наверх!`,
+    });
+  }
 
   /**
    * Победа кормит обе дорожки, и по-разному.

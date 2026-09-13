@@ -29,6 +29,7 @@ export class Ui {
   private readonly resumeHint = el<HTMLDivElement>('resumeHint');
   private readonly captureHint = el<HTMLDivElement>('captureHint');
   private readonly nodeHint = el<HTMLDivElement>('nodeHint');
+  private readonly delve = el<HTMLDivElement>('delve');
   private readonly gatherBar = el<HTMLDivElement>('gatherBar');
   /** Текущая добыча: полосу двигает клиент по присланной длительности. */
   private gathering: { duration: number; endsAt: number } | null = null;
@@ -193,6 +194,24 @@ export class Ui {
     this.nodeHint.innerHTML = html;
     this.nodeHint.hidden = false;
   }
+
+  /**
+   * Строка вылазки: этаж, хозяин глубины и обратный отсчёт порталов.
+   *
+   * Три вещи в одной строке, потому что они об одном: сколько тебе ещё
+   * осталось. Наверху её нет вовсе — там не от кого убегать.
+   *
+   * Пишется только при изменении текста: строка обновляется каждый кадр,
+   * а запись в DOM на ста восьмидесяти кадрах стоит дороже самой строки.
+   */
+  setDelve(html: string): void {
+    if (html === this.lastDelve) return;
+    this.lastDelve = html;
+    this.delve.innerHTML = html;
+    this.delve.hidden = html === '';
+  }
+
+  private lastDelve = '';
 
   /**
    * Сообщает, кому принадлежат клавиши браузера. Показывается ненадолго при

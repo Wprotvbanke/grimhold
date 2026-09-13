@@ -20,6 +20,13 @@ import {
   DUNGEON_JOIN_SECONDS,
   DUNGEON_CENTER,
   DUNGEON_ENTRY,
+  DUNGEON_FLOORS,
+  DUNGEON_BOSS,
+  BOSS_FLOOR,
+  PORTAL_SECONDS,
+  floorCenter,
+  floorArrival,
+  floorOf,
   playerAabb,
   step,
   NODES,
@@ -280,6 +287,16 @@ export interface Player {
    * забыть его аватар, получил бы сущность без имени.
    */
   introduced: Set<string>;
+  /**
+   * Отряд, если игрок в нём состоит.
+   *
+   * Живёт только в памяти и только на время сессии: внизу флаги не действуют,
+   * и группа нужна ровно на один забег. Переживать перезаход ей незачем —
+   * зато и разбирать её при выходе не надо.
+   */
+  partyId: string | null;
+  /** От кого лежит непринятое приглашение. */
+  partyInviteFrom: string | null;
 }
 
 export class World {
@@ -452,6 +469,8 @@ export class World {
       pitch: 0,
       pendingViewTick: null,
       introduced: new Set(),
+      partyId: null,
+      partyInviteFrom: null,
       combat: {
         id,
         kind: 'player',
@@ -495,7 +514,12 @@ export class World {
   removePlayer(id: string): void {
     const player = this.players.get(id);
     const left = player?.instanceId;
-    if (player) this.moved.delete(player);
+    if (player) {
+      this.moved.delete(player);
+      // Отряд не переживает разрыв связи: метка на том, кого больше нет,
+      // хуже отсутствия метки.
+      this.leaveParty(player);
+    }
     this.players.delete(id);
     this.history.forget(id);
     if (left) this.closeIfEmpty(left);
@@ -661,17 +685,145 @@ export class World {
     const random = seededRandom(instanceId);
     const list: Mob[] = [];
 
-    for (const mobId of mobsForDungeon(seed)) {
-      const home = findFreeSpot(terrain, DUNGEON_CENTER.x, DUNGEON_CENTER.z, random, {
-        spread: CHUNK_SIZE - 16,
-        away: { ...DUNGEON_ENTRY, range: 20 },
-      });
-      if (!home) continue;
-      list.push(createMob(`m${this.nextId++}`, mobId, home, instanceId));
+    // Заселяются **все этажи сразу**, а не по мере прихода. Обитатели должны
+    // стоять там, где они стояли до игрока: заселение по приходу означало бы,
+    // что спускающийся вторым застаёт другой этаж, чем спустившийся первым.
+    for (let floor = 0; floor < DUNGEON_FLOORS; floor++) {
+      const center = floorCenter(floor);
+      const arrival = floorArrival(floor);
+      for (const mobId of mobsForDungeon(seed, floor)) {
+        const home = findFreeSpot(terrain, center.x, center.z, random, {
+          spread: CHUNK_SIZE - 16,
+          away: { x: arrival.x, z: arrival.z, range: 20 },
+        });
+        if (!home) continue;
+        list.push(createMob(`m${this.nextId++}`, mobId, home, instanceId));
+      }
     }
+
+    // Хозяин глубины ставится отдельно от раскладки: он один на забег, и от
+    // него зависит не картинка, а порталы. Место у него дальнее — на дне
+    // последнего этажа, подальше от лестницы наверх.
+    const lair = floorCenter(BOSS_FLOOR);
+    const arrival = floorArrival(BOSS_FLOOR);
+    const spot = findFreeSpot(terrain, lair.x, lair.z, random, {
+      spread: CHUNK_SIZE - 24,
+      away: { x: arrival.x, z: arrival.z, range: 22 },
+    }) ?? { x: lair.x, y: 0.1, z: lair.z };
+    const boss = createMob(`m${this.nextId++}`, DUNGEON_BOSS, spot, instanceId);
+    list.push(boss);
+    this.dungeonBosses.set(instanceId, boss.id);
+    this.portalsUntil.delete(instanceId);
 
     this.mobs.set(instanceId, list);
     return list.length;
+  }
+
+  // ---------- хозяин глубины и порталы ----------
+
+  /** Кто в этом инстансе босс. Имя моба, а не сам моб: мобов чистят целиком. */
+  private readonly dungeonBosses = new Map<InstanceId, string>();
+  /** До какой секунды игрового времени порталы открыты. */
+  private readonly portalsUntil = new Map<InstanceId, number>();
+
+  /** Этот ли моб — хозяин глубины. Спрашивается в разборе смерти. */
+  isDungeonBoss(instanceId: InstanceId, mobId: string): boolean {
+    return this.dungeonBosses.get(instanceId) === mobId;
+  }
+
+  /**
+   * Жив ли хозяин глубины.
+   *
+   * Пока жив — порталы заперты **всему инстансу**, а не тому, кто с ним дерётся.
+   * В этом весь смысл: вылазка кончается общей развязкой, а не двенадцатью
+   * личными.
+   */
+  bossAlive(instanceId: InstanceId): boolean {
+    const id = this.dungeonBosses.get(instanceId);
+    if (!id) return false;
+    return this.mobByCombatantId(instanceId, id)?.alive === true;
+  }
+
+  /** Босс пал: порталы открываются на `PORTAL_SECONDS`. */
+  openPortals(instanceId: InstanceId): void {
+    this.portalsUntil.set(instanceId, this.elapsed + PORTAL_SECONDS);
+  }
+
+  /** Сколько секунд порталы ещё открыты. Ноль — заперты. */
+  portalsFor(instanceId: InstanceId): number {
+    const until = this.portalsUntil.get(instanceId);
+    return until === undefined ? 0 : Math.max(0, until - this.elapsed);
+  }
+
+  // ---------- отряды ----------
+
+  /**
+   * Отряды: имя отряда — набор игроков.
+   *
+   * Живут только в памяти сервера и только на время сессии. Внизу флаги не
+   * действуют, и отряд нужен ровно затем, чтобы отличить своего от чужого
+   * в пяти метрах видимости; ничего больше он не даёт — ни общей добычи,
+   * ни общего опыта, ни защиты от своего же удара.
+   */
+  private readonly parties = new Map<string, Set<string>>();
+  private nextParty = 1;
+
+  /** Сколько человек в отряде игрока, включая его самого. */
+  partySize(player: Player): number {
+    if (!player.partyId) return 1;
+    return this.parties.get(player.partyId)?.size ?? 1;
+  }
+
+  /** Свои ли эти двое. */
+  allies(a: Player, b: Player): boolean {
+    return a.partyId !== null && a.partyId === b.partyId;
+  }
+
+  /** Принимает гостя в отряд зовущего, заводя отряд, если его ещё нет. */
+  joinParty(host: Player, guest: Player): void {
+    this.leaveParty(guest);
+    if (!host.partyId) {
+      const id = `p${this.nextParty++}`;
+      host.partyId = id;
+      this.parties.set(id, new Set([host.id]));
+    }
+    guest.partyId = host.partyId;
+    this.parties.get(host.partyId)!.add(guest.id);
+  }
+
+  /**
+   * Выводит игрока из отряда.
+   *
+   * Отряд из одного распускается: метка «свой» на самого себя бессмысленна,
+   * а пустые отряды копились бы на каждый распавшийся.
+   */
+  leaveParty(player: Player): void {
+    const id = player.partyId;
+    player.partyId = null;
+    if (!id) return;
+    const members = this.parties.get(id);
+    if (!members) return;
+    members.delete(player.id);
+    if (members.size > 1) return;
+    for (const memberId of members) {
+      const member = this.players.get(memberId);
+      if (member) member.partyId = null;
+    }
+    this.parties.delete(id);
+  }
+
+  /** Кто в отряде игрока, кроме него самого. */
+  partyMates(player: Player): Player[] {
+    if (!player.partyId) return [];
+    const members = this.parties.get(player.partyId);
+    if (!members) return [];
+    const result: Player[] = [];
+    for (const memberId of members) {
+      if (memberId === player.id) continue;
+      const member = this.players.get(memberId);
+      if (member) result.push(member);
+    }
+    return result;
   }
 
   /**
@@ -695,6 +847,8 @@ export class World {
     this.terrain.delete(instanceId);
     this.bags.delete(instanceId);
     this.dungeonsOpenedAt.delete(instanceId);
+    this.dungeonBosses.delete(instanceId);
+    this.portalsUntil.delete(instanceId);
 
     const prefix = `${instanceId}|`;
     for (const key of this.openedChests) {
@@ -776,6 +930,16 @@ export class World {
       light: round(Math.max(combat.lightRemaining, player.torchLeft)),
       flag: flagFor(combat),
       karma: Math.round(combat.karma),
+      // Подземельное едет только под землёй: наверху этих полей нет вовсе,
+      // и клиент по их отсутствию понимает, что показывать нечего.
+      ...(isDungeon(player.instanceId)
+        ? {
+            floor: floorOf(player.state.pos.x),
+            bossAlive: this.bossAlive(player.instanceId),
+            portalsFor: Math.round(this.portalsFor(player.instanceId)),
+          }
+        : {}),
+      ...(player.partyId ? { party: this.partySize(player) } : {}),
     };
   }
 
@@ -813,6 +977,9 @@ export class World {
         flag: flagFor(player.combat),
         // Огонь в чужой руке виден всем — в этом вся цена факела.
         ...(isLit(player) ? { lit: true } : {}),
+        // «Свой» считается для каждого получателя: это отношение, а не
+        // свойство. И не едет в карточке опознания — отряд меняется, имя нет.
+        ...(player.id !== viewer.id && this.allies(viewer, player) ? { ally: true } : {}),
       });
     }
 

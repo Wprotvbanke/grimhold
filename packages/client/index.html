@@ -574,6 +574,21 @@
         white-space: nowrap;
       }
       #nodeHint[hidden] { display: none; }
+
+      /* Строка вылазки: этаж, хозяин глубины и обратный отсчёт порталов.
+         Сверху по центру — там, где её видно, не отводя взгляда от прицела,
+         но где она не спорит с подсказкой о том, что под прицелом. */
+      #delve {
+        position: fixed; left: 50%; top: 14px; transform: translateX(-50%);
+        z-index: 8; padding: 5px 14px; border-radius: 4px; text-align: center;
+        background: rgba(6, 6, 8, 0.72); border: 1px solid var(--line);
+        color: var(--dim); font-size: 13px; pointer-events: none;
+        white-space: nowrap;
+      }
+      #delve[hidden] { display: none; }
+      #delve b { color: var(--text); font-weight: 500; }
+      #delve i { color: var(--gold); font-style: normal; }
+      #delve u { color: #e2553c; text-decoration: none; }
       #nodeHint b { color: var(--gold); font-weight: 500; }
       #nodeHint span { color: var(--dim); }
     </style>
@@ -808,6 +823,8 @@
     <div id="captureHint" hidden></div>
 
     <div id="nodeHint" hidden></div>
+
+    <div id="delve" hidden></div>
 
     <div id="gatherBar" hidden>
       <div id="gatherName"></div>

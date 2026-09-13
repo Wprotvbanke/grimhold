@@ -1,4 +1,4 @@
-import { isItemId, addItem, type ClientMessage } from '@grimhold/shared';
+import { isItemId, addItem, isDungeon, type ClientMessage } from '@grimhold/shared';
 import type { CommandContext, GameEvent } from './types.js';
 
 /**
@@ -35,6 +35,33 @@ export function handleAdmin(
       events.push({ type: 'itemError', reason: `Не поместилось: ${leftover}` });
     }
     return events;
+  }
+
+  /**
+   * Отпереть порталы подземелья, не убивая хозяина глубины.
+   *
+   * Отладочный ключ, и нужен он ровно затем же, зачем выдача вещей: проверить
+   * выход с добычей, перезаход и мешок павшего, не проводя перед этим боя
+   * с боссом. Сквозные проверки ходят этим же путём — см. docs/checks.md.
+   */
+  if (message.do === 'portals') {
+    if (!isDungeon(actor.instanceId)) return [{ type: 'itemError', reason: 'Ты не внизу' }];
+    world.openPortals(actor.instanceId);
+    const recipients = [...world.players.values()]
+      .filter((player) => player.instanceId === actor.instanceId)
+      .map((player) => player.id);
+    return [
+      {
+        type: 'chat',
+        broadcast: {
+          t: 'chatMessage',
+          channel: 'system',
+          from: '',
+          text: 'Порталы отперты словом ведущего',
+        },
+        recipients,
+      },
+    ];
   }
 
   /**

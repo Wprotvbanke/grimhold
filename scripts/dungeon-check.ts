@@ -22,12 +22,13 @@ import {
   dungeonChests,
   dungeonSeed,
   DUNGEON_ENTRY,
+  stairsDown,
   DUNGEON_EXIT,
   DUNGEON_GATE,
   SPAWN_POINT,
   isDungeon,
 } from '@grimhold/shared';
-import { carried, reviveIfDead, walkTo } from './fieldwork.js';
+import { carried, reviveIfDead, walkRoute, walkTo } from './fieldwork.js';
 import { TestClient, sleep, waitUntil } from './testClient.js';
 
 const failures: string[] = [];
@@ -111,7 +112,7 @@ async function descendAgain(client: TestClient): Promise<boolean> {
    */
   check(where(client) === 'overworld', 'воскресшему сказали, что он в городе', where(client));
 
-  await walkTo(client, DUNGEON_GATE, 1.2);
+  await walkToGate(client);
   client.send({ t: 'enterDungeon' });
   // Ждём, пока сервер объявит переезд, а не «примерно столько, сколько надо»:
   // после воскрешения в очереди у сервера уже лежит целый забег событий.
@@ -119,9 +120,32 @@ async function descendAgain(client: TestClient): Promise<boolean> {
   return true;
 }
 
+/**
+ * Ведёт к люку в обход городской стены.
+ *
+ * Прямая от точки появления до люка упирается в стену города, и ходок
+ * протискивался мимо неё через раз — проверка падала на втором шаге, так
+ * и не дойдя до подземелья. Навигации в игре нет, поэтому дорога здесь
+ * задана точками: южнее стены, потом на восток, потом к люку.
+ */
+async function walkToGate(client: TestClient): Promise<number> {
+  await walkTo(client, { x: 3, z: -2 }, 1.5);
+  await walkTo(client, { x: 8, z: -2 }, 1.5);
+  return walkTo(client, DUNGEON_GATE, 1.2);
+}
+
 async function main(): Promise<void> {
   const stamp = Date.now().toString(36);
-  const digger = new TestClient({ username: `Копатель${stamp}` });
+  /**
+   * Имя копателя **постоянное**, а не со штампом времени.
+   *
+   * Этим аккаунтом проверка отпирает порталы служебным словом ведущего: без
+   * этого дойти до конца вылазки значило бы сперва убить хозяина глубины,
+   * а бой с ним — это минуты и удача, и проверять он будет уже не связку
+   * «вошёл и вышел». Право выдаётся по имени аккаунта при запуске сервера
+   * (`GRIMHOLD_ADMINS`), а имя со штампом в такой список не впишешь.
+   */
+  const digger = new TestClient({ username: 'Копатель' });
   await digger.ready;
   await sleep(400);
   const stayer = new TestClient({ username: `Зевака${stamp}` });
@@ -141,7 +165,7 @@ async function main(): Promise<void> {
   const bandages = carried(digger, 'bandage');
   check(bandages > 0, 'взяли что-то с собой', `бинтов ${bandages}`);
 
-  const distance = await walkTo(digger, DUNGEON_GATE, 1.2);
+  const distance = await walkToGate(digger);
   check(distance <= DUNGEON_GATE.range, 'дошли до спуска', `${distance.toFixed(2)} м`);
 
   digger.errors.length = 0;
@@ -178,7 +202,8 @@ async function main(): Promise<void> {
     (a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z),
   )[0]!;
 
-  const toChest = await walkTo(digger, chest, 1.4);
+  const seed = dungeonSeed(where(digger));
+  const toChest = await walkRoute(digger, seed, chest, 1.4);
   check(toChest <= CHEST_RANGE, 'дошли до сундука', `${toChest.toFixed(2)} м`);
 
   digger.loot.length = 0;
@@ -212,13 +237,43 @@ async function main(): Promise<void> {
     console.log('  ···  второй заход не проверен: копателя убили у сундука');
   }
 
-  console.log('\n6. Зал общий, и павший оставляет мешок');
+  console.log('\n6. Лестница ведёт глубже');
+  /**
+   * Этажи живут в одном инстансе: переход по лестнице не меняет имени мира,
+   * меняет только место. Проверяется именно это — иначе отряд разваливался бы
+   * на каждом спуске, а хозяин глубины отпирал бы порталы не тем.
+   */
+  {
+    const above = where(digger);
+    const down = stairsDown(0)!;
+    const toStairs = await walkRoute(digger, dungeonSeed(above), down, 0.9);
+    check(toStairs <= 1.6, 'дошли до лестницы вниз', `${toStairs.toFixed(2)} м`);
+
+    digger.send({ t: 'stairs', down: true });
+    await sleep(700);
+    check(where(digger) === above, 'инстанс тот же — этажи в одном забеге', where(digger));
+    check(
+      digger.latestSnapshot?.self.floor === 1,
+      'оказались на втором этаже',
+      `этаж ${(digger.latestSnapshot?.self.floor ?? 0) + 1}`,
+    );
+
+    digger.send({ t: 'stairs', down: false });
+    await sleep(700);
+    check(
+      digger.latestSnapshot?.self.floor === 0,
+      'и вернулись на первый',
+      `этаж ${(digger.latestSnapshot?.self.floor ?? 0) + 1}`,
+    );
+  }
+
+  console.log('\n7. Зал общий, и павший оставляет мешок');
   // Подземелье на одного — это полоса препятствий: ни встречи, ни второго
   // охотника за тем же сундуком. Из замысла зал принимает двенадцать.
   const marauder = new TestClient({ username: `Мародёр${stamp}` });
   await marauder.ready;
   await sleep(600);
-  await walkTo(marauder, DUNGEON_GATE, 1.2);
+  await walkToGate(marauder);
   marauder.send({ t: 'enterDungeon' });
   await sleep(800);
 
@@ -229,7 +284,7 @@ async function main(): Promise<void> {
 
   // Сходимся вплотную: удар считается по дистанции, а не по намерению.
   const prey = digger.latestSnapshot!.self;
-  await walkTo(marauder, { x: prey.x, z: prey.z }, 1.0);
+  await walkRoute(marauder, dungeonSeed(where(marauder)), { x: prey.x, z: prey.z }, 1.0);
 
   const killed = await beatDown(marauder, digger);
   if (killed) {
@@ -239,7 +294,7 @@ async function main(): Promise<void> {
 
     if (spoils.length > 0) {
       const sack = spoils[0]!;
-      const toBag = await walkTo(marauder, sack, 1.0);
+      const toBag = await walkRoute(marauder, dungeonSeed(where(marauder)), sack, 1.0);
       check(toBag <= BAG_RANGE, 'дошли до мешка', `${toBag.toFixed(2)} м`);
 
       marauder.send({ t: 'openBag', bagId: sack.id });
@@ -263,7 +318,7 @@ async function main(): Promise<void> {
   marauder.close();
   await sleep(300);
 
-  console.log('\n7. Портал возвращает наверх');
+  console.log('\n8. Портал возвращает наверх');
   // Зал обитаем, и до портала можно не дойти — это и есть подземелье.
   // Проверяем правило выхода, а не выносливость: павшего поднимаем и спускаем
   // заново, иначе проверка будет падать через раз по совершенно честной причине.
@@ -282,8 +337,38 @@ async function main(): Promise<void> {
 
   // Портал теперь у самого знака, и отклик у него узкий: подойти надо
   // вплотную, а не «примерно туда».
-  const toPortal = await walkTo(digger, DUNGEON_EXIT, 0.9);
+  const toPortal = await walkRoute(digger, dungeonSeed(where(digger)), DUNGEON_EXIT, 0.9);
   check(toPortal <= 1.6, 'дошли до портала', `${toPortal.toFixed(2)} м`);
+
+  /**
+   * Порталы заперты, пока жив хозяин глубины, — и это правило, а не помеха
+   * проверке: дойти до портала мало.
+   *
+   * Босса проверка не убивает: бой с ним — это минуты и удача, а здесь
+   * проверяется связка «вошёл и вышел». Порталы отпираются служебным словом
+   * ведущего, тем же, каким выдают вещи.
+   */
+  digger.errors.length = 0;
+  digger.send({ t: 'leaveDungeon' });
+  await sleep(300);
+  check(
+    digger.errors.length > 0,
+    'портал заперт, пока жив хозяин глубины',
+    digger.errors[0] ?? 'молча',
+  );
+  check(
+    digger.latestSnapshot?.self.bossAlive === true,
+    'и клиенту об этом сказано',
+    `этаж ${(digger.latestSnapshot?.self.floor ?? 0) + 1}`,
+  );
+
+  digger.send({ t: 'admin', do: 'portals' });
+  await sleep(400);
+  check(
+    (digger.latestSnapshot?.self.portalsFor ?? 0) > 0,
+    'порталы отперты и идёт отсчёт',
+    `${Math.round(digger.latestSnapshot?.self.portalsFor ?? 0)} с`,
+  );
 
   digger.send({ t: 'leaveDungeon' });
   await sleep(700);
@@ -301,11 +386,11 @@ async function main(): Promise<void> {
     `предметов ${digger.inventory?.backpack.items.length ?? 0} из ${carriedDown}`,
   );
 
-  console.log('\n8. Перезаход помнит, где ты');
+  console.log('\n9. Перезаход помнит, где ты');
   digger.close();
   await sleep(700);
 
-  const again = new TestClient({ username: `Копатель${stamp}` });
+  const again = new TestClient({ username: 'Копатель' });
   await again.ready;
   await sleep(700);
   check(where(again) === 'overworld', 'зашли обратно в мир, а не в пустоту', where(again));

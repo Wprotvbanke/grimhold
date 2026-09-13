@@ -31,6 +31,8 @@ export interface ControlsHooks {
   onHarvest(): void;
   /** Предложить обмен тому, на кого смотрит игрок. */
   onTrade(): void;
+  /** Отряд: позвать того, на кого смотришь, или принять приглашение. */
+  onParty(): void;
 }
 
 export class Controls {
@@ -175,6 +177,12 @@ export class Controls {
          * проверяем здесь, чтобы руки зря не дёргались и откат не тикал.
          */
         if (!event.repeat && this.dashDirection()) this.hooks.onAction('dodge');
+        return;
+      }
+
+      if (event.code === 'KeyG') {
+        event.preventDefault();
+        if (!event.repeat) this.hooks.onParty();
         return;
       }
 

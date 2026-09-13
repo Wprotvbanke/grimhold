@@ -1,5 +1,5 @@
 import {
-  CHEST_LOOT,
+  chestLoot,
   createSack,
   CHEST_RANGE,
   CHEST_TIME,
@@ -105,7 +105,8 @@ export function finishChest(player: Player, world: World): GameEvent[] {
    * намеренно, и выбор «взять это или то» начинается уже здесь.
    */
   let loot = createSack();
-  for (const entry of CHEST_LOOT) {
+  // Чем глубже этаж, тем щедрее сундук: путь назад оттуда длиннее.
+  for (const entry of chestLoot(chest.floor)) {
     if (Math.random() > entry.chance) continue;
     // Опечатка в таблице не должна ронять забег — несуществующее пропускаем.
     if (!isItemId(entry.itemId)) continue;

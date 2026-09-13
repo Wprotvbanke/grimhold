@@ -10,6 +10,9 @@ import {
   isDungeon,
   DUNGEON_EXIT,
   DUNGEON_EXIT_RANGE,
+  floorOf,
+  stairsDown,
+  stairsUp,
   DUNGEON_GATE,
   FLAG_COLORS,
   DASH_WEIGHT_LIMIT,
@@ -280,6 +283,10 @@ const controls = new Controls(renderer.domElement, {
       connection.send({ t: 'leaveDungeon' });
       return;
     }
+    if (aimedPlace === 'stairsDown' || aimedPlace === 'stairsUp') {
+      connection.send({ t: 'stairs', down: aimedPlace === 'stairsDown' });
+      return;
+    }
     if (aimedBag) {
       connection.send({ t: 'openBag', bagId: aimedBag });
       return;
@@ -289,6 +296,25 @@ const controls = new Controls(renderer.domElement, {
       return;
     }
     if (aimedNode) connection.send({ t: 'harvest', nodeId: aimedNode });
+  },
+  /**
+   * Одна клавиша на всё, что касается отряда.
+   *
+   * Смотришь на человека — зовёшь; зовут тебя — принимаешь. Две клавиши здесь
+   * были бы двумя, о которых надо помнить, а зовут и принимают в игре раз
+   * за вылазку.
+   */
+  onParty: () => {
+    if (!game || combatUi.dead) return;
+    const target = playerInFront();
+    // Смотришь на человека — зовёшь; смотришь в пустоту — принимаешь. Признака
+    // «мне пришло приглашение» клиент не держит: кто кого звал, помнит сервер,
+    // и он же ответит, если звать было некому.
+    connection.send(
+      target
+        ? { t: 'party', action: 'invite', targetId: target.id }
+        : { t: 'party', action: 'accept' },
+    );
   },
   onTrade: () => {
     if (!game || combatUi.dead || tradeOpen) return;
@@ -818,6 +844,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     if (now - lastAim > 33) {
       lastAim = now;
       updateNodeHint(renderPos.x, renderPos.z);
+      updateDelve();
     }
 
     // 6. Руки: поза берётся из авторитетного состояния, скорость — из предсказания.
@@ -916,8 +943,8 @@ let aimedNode: string | null = null;
 let bankOpen = false;
 /** Внизу ли игрок. От этого зависит, что предлагает клавиша взаимодействия. */
 let undergroundNow = false;
-/** На что нацелен игрок из рукотворного: казна, спуск, портал. */
-let aimedPlace: 'vault' | 'descent' | 'portal' | null = null;
+/** На что нацелен игрок из рукотворного: казна, спуск, портал, лестница. */
+let aimedPlace: 'vault' | 'descent' | 'portal' | 'stairsDown' | 'stairsUp' | null = null;
 /** Сундук под перекрестием и его имя — по нему уходит намерение вскрыть. */
 let aimedChest: string | null = null;
 /**
@@ -1067,6 +1094,38 @@ function bagAt(x: number, z: number): string | null {
   return best;
 }
 
+/**
+ * Строка вылазки: этаж, хозяин глубины и обратный отсчёт порталов.
+ *
+ * Всё берётся из снапшота, а не считается на месте: этаж клиент вывести бы
+ * смог, а вот жив ли босс и сколько секунд открыты порталы — нет. И меняться
+ * все три обязаны одним кадром, иначе на границе этажей подпись разъедется
+ * с отсчётом.
+ */
+function updateDelve(): void {
+  const self = connection.latestSnapshot?.self;
+  if (!self || self.floor === undefined) {
+    ui.setDelve('');
+    return;
+  }
+
+  const parts = [`<b>Этаж ${self.floor + 1}</b>`];
+  const left = Math.round(self.portalsFor ?? 0);
+
+  if (self.bossAlive) {
+    parts.push('<u>порталы заперты</u>');
+  } else if (left > 0) {
+    const minutes = Math.floor(left / 60);
+    const seconds = String(left % 60).padStart(2, '0');
+    parts.push(`<i>порталы открыты ${minutes}:${seconds}</i>`);
+  } else {
+    parts.push('порталы закрылись');
+  }
+
+  if (self.party && self.party > 1) parts.push(`отряд: ${self.party}`);
+  ui.setDelve(parts.join(' · '));
+}
+
 function updateNodeHint(x: number, z: number): void {
   camera.getWorldDirection(aimDirection);
   aimRay.set(camera.position, aimDirection);
@@ -1097,10 +1156,42 @@ function updateNodeHint(x: number, z: number): void {
   }
 
   if (undergroundNow) {
-    if (Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) <= DUNGEON_EXIT_RANGE) {
+    const floor = floorOf(x);
+
+    if (
+      floor === 0 &&
+      Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) <= DUNGEON_EXIT_RANGE
+    ) {
       aimedPlace = 'portal';
       aimedNode = null;
-      ui.setNodeHint('Выход наверх', null, true, 'выйти');
+      // Запертый портал говорит об этом заранее: молчаливый отказ по нажатию
+      // читается как поломка, а не как правило.
+      const locked = connection.latestSnapshot?.self.bossAlive === true;
+      ui.setNodeHint(
+        locked ? 'Портал заперт: хозяин глубины жив' : 'Выход наверх',
+        null,
+        true,
+        locked ? 'попробовать' : 'выйти',
+      );
+      return;
+    }
+
+    // Лестницы: те же ниши и та же клавиша, что у портала. Вниз — на восток,
+    // наверх — на запад; где именно, знает общий код, а не число здесь.
+    for (const [place, stairs] of [
+      ['stairsDown', stairsDown(floor)],
+      ['stairsUp', stairsUp(floor)],
+    ] as const) {
+      if (!stairs) continue;
+      if (Math.hypot(x - stairs.x, z - stairs.z) > DUNGEON_EXIT_RANGE) continue;
+      aimedPlace = place;
+      aimedNode = null;
+      ui.setNodeHint(
+        place === 'stairsDown' ? `Спуск на этаж ${floor + 2}` : `Подъём на этаж ${floor}`,
+        null,
+        true,
+        place === 'stairsDown' ? 'спуститься' : 'подняться',
+      );
       return;
     }
 
@@ -1453,6 +1544,17 @@ let tagsShown = false;
  */
 const NAME_RANGE = 12;
 
+/** Цвет метки своего: тёплая зелень, ни на один флаг не похожая. */
+const ALLY_COLOR = '#8fd694';
+
+/** Есть ли рядом хоть один свой. Без этого ники не зажигаются вовсе. */
+function hasAllies(): boolean {
+  for (const avatar of avatars.values()) {
+    if (avatar.entity.ally === true) return true;
+  }
+  return false;
+}
+
 function updateNametags(): void {
   /**
    * Пока ники скрыты, в DOM не пишем вовсе.
@@ -1461,7 +1563,15 @@ function updateNametags(): void {
    * при том, что ники видно только с зажатым Alt. На ста восьмидесяти кадрах
    * такая запись стоит дороже, чем сами ники.
    */
-  if (!controls.showNames) {
+  /**
+   * Свои — исключение из этого правила.
+   *
+   * Внизу флаги не действуют, все всем враги, и видно на пять метров: без
+   * постоянной метки отряд не отличить от чужаков, а держать Alt всю вылазку
+   * невозможно. Поэтому ники своих висят всегда, и только они.
+   */
+  const allies = hasAllies();
+  if (!controls.showNames && !allies) {
     if (tagsShown) {
       for (const avatar of avatars.values()) avatar.tag.style.display = 'none';
       tagsShown = false;
@@ -1475,10 +1585,17 @@ function updateNametags(): void {
   const eye = camera.position;
 
   for (const avatar of avatars.values()) {
-    // У мёртвых подписи нет: тело уже не цель. И у далёких — тоже.
+    const ally = avatar.entity.ally === true;
+    if (!controls.showNames && !ally) {
+      avatar.tag.style.display = 'none';
+      continue;
+    }
+
+    // У мёртвых подписи нет: тело уже не цель. И у далёких — тоже, кроме
+    // своих: метка на спутнике за мглой и есть то, ради чего отряд заводят.
     const far =
       Math.hypot(avatar.group.position.x - eye.x, avatar.group.position.z - eye.z) > NAME_RANGE;
-    if (!avatar.entity.alive || far) {
+    if (!avatar.entity.alive || (far && !ally)) {
       avatar.tag.style.display = 'none';
       continue;
     }
@@ -1495,10 +1612,11 @@ function updateNametags(): void {
       continue;
     }
 
-    avatar.tag.textContent = nameFor(avatar.entity);
+    avatar.tag.textContent = ally ? `${avatar.entity.name} ◆` : nameFor(avatar.entity);
     // Цвет ника говорит, кого можно бить без последствий. Решение это
     // принимается на глаз и за секунду, поэтому оно в имени, а не в меню.
-    avatar.tag.style.color = FLAG_COLORS[avatar.entity.flag ?? 'white'];
+    // У своих он свой и перебивает флаг: внизу флагов всё равно нет.
+    avatar.tag.style.color = ally ? ALLY_COLOR : FLAG_COLORS[avatar.entity.flag ?? 'white'];
     avatar.tag.style.display = 'block';
     avatar.tag.style.left = `${((projected.x + 1) / 2) * innerWidth}px`;
     avatar.tag.style.top = `${((1 - projected.y) / 2) * innerHeight}px`;

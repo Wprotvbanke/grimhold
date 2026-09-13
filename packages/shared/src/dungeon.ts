@@ -7,14 +7,15 @@ import type { LevelBox } from './level.js';
  * Подземелье.
  *
  * Устроено как **тот же мир с другим `instanceId` и другой землёй под ногами**,
- * а не как отдельный уровень. Замысел обещал «смещение в мировом пространстве»,
- * но за краем мира генератор чанков отдавал пустоту — пола там нет. Смещение
- * и не нужно: инстанс уже изолирует, поэтому подземелье занимает те же
- * координаты вокруг нуля, просто в своём инстансе.
+ * а не как отдельный уровень. Раскладка **выводится из зерна**, как и дикие
+ * земли: сервер и клиент строят одинаковые стены, ничего не пересылая. Зерно
+ * лежит прямо в имени инстанса — `dungeon.7f3a`, — поэтому клиенту достаточно
+ * знать, где он.
  *
- * Раскладка **выводится из зерна**, как и дикие земли: сервер и клиент строят
- * одинаковые стены, ничего не пересылая. Зерно лежит прямо в имени инстанса —
- * `dungeon.7f3a`, — поэтому клиенту достаточно знать, где он.
+ * Этажей три, и все они живут **в одном инстансе**. Это не мелочь: босс
+ * открывает порталы всему забегу сразу, а группа обязана оставаться группой
+ * при переходе вниз. Раздай этажи по инстансам — и то и другое пришлось бы
+ * сшивать поверх изоляции, которая для того и сделана, чтобы не сшивалось.
  */
 
 export const DUNGEON_PREFIX = 'dungeon.';
@@ -37,6 +38,22 @@ export const DUNGEON_PREFIX = 'dungeon.';
  */
 export const DUNGEON_ORIGIN_CHUNK = 128;
 
+/** Сколько этажей в подземелье. Глубже — злее обитатели и богаче сундуки. */
+export const DUNGEON_FLOORS = 3;
+
+/**
+ * Сколько чанков между этажами.
+ *
+ * Этажи стоят **в одном инстансе и рядом в координатах**, а не друг под другом:
+ * поток чанков плоский, и этаж под этажом грузился бы вместе с ним — тройная
+ * геометрия в кадре ради того, чего сквозь потолок не видно.
+ *
+ * Три чанка — это 192 метра между серединами и 128 между краями, то есть
+ * заведомо больше радиуса интереса (58). Иначе обитатели соседнего этажа
+ * попадали бы в снапшот и ходили бы сквозь камень на виду.
+ */
+export const FLOOR_STRIDE = 3;
+
 /**
  * Сколько человек помещается в один зал.
  *
@@ -55,15 +72,35 @@ export const DUNGEON_CAPACITY = 12;
  */
 export const DUNGEON_JOIN_SECONDS = 90;
 
-/** Сколько чанков в ширину занимает этаж. Один — этого хватает первому срезу. */
+/** Сколько чанков в ширину занимает один этаж. */
 export const DUNGEON_RADIUS = 0;
 
-/** Середина этажа в мировых координатах. */
+/** Середина первого этажа в мировых координатах. */
 export const DUNGEON_CENTER = {
   x: DUNGEON_ORIGIN_CHUNK * CHUNK_SIZE,
   z: DUNGEON_ORIGIN_CHUNK * CHUNK_SIZE,
 };
 
+/** Середина этажа по его номеру. Этажи выстроены вдоль X с шагом `FLOOR_STRIDE`. */
+export function floorCenter(floor: number): { x: number; z: number } {
+  return {
+    x: (DUNGEON_ORIGIN_CHUNK + floor * FLOOR_STRIDE) * CHUNK_SIZE,
+    z: DUNGEON_ORIGIN_CHUNK * CHUNK_SIZE,
+  };
+}
+
+/**
+ * На каком этаже точка.
+ *
+ * Нужно обеим сторонам: сервер по этому решает, куда ведёт лестница, клиент —
+ * какие знаки зажечь. Считается из координаты, а не хранится полем: поле
+ * пришлось бы держать в трёх местах и синхронизировать при каждом переносе.
+ */
+export function floorOf(x: number): number {
+  const offset = Math.round(x / CHUNK_SIZE) - DUNGEON_ORIGIN_CHUNK;
+  const floor = Math.round(offset / FLOOR_STRIDE);
+  return Math.min(DUNGEON_FLOORS - 1, Math.max(0, floor));
+}
 
 /**
  * Настенных факелов в подземелье **нет**.
@@ -72,34 +109,110 @@ export const DUNGEON_CENTER = {
  * светить было нечем, темнота читалась как поломка — ни стен, ни пола,
  * ни текстур. Факел в руке снял эту нужду, и огонь со стен убран: свет
  * в подземелье теперь приносят с собой.
- *
- * Что осталось видно сквозь мглу — знак выхода: он один и служит маяком
- * (`fog: false`, см. scene.ts). Возвращать сюда постоянный огонь — значит
- * возвращать и бесплатный свет; если понадобится ориентир, честнее добавить
- * редкие, а не сплошные огни.
  */
 
 /** Высота зала: в потолок упираться не должно, но и неба тут нет. */
 const HALL_HEIGHT = 4;
 const WALL = 1;
 
-/** Где игрок появляется, войдя вниз. */
+/**
+ * Комнат по стороне этажа.
+ *
+ * Нечётное число взято не для красоты: при нечётной сетке середина этажа —
+ * это **середина комнаты**, а не шов между ними. Ниши выхода и лестниц стоят
+ * ровно на середине своих стен, и при чётной сетке внутренняя стена резала бы
+ * их пополам.
+ */
+const GRID = 3;
+/** Сторона комнаты. Двадцать метров при видимости в пять — комната, а не зал. */
+const CELL = CHUNK_SIZE / GRID;
+/** Ширина прохода между комнатами. */
+const DOOR = 4.4;
+
+/** Где игрок появляется, войдя вниз из города. */
 export const DUNGEON_ENTRY = {
   x: DUNGEON_CENTER.x,
   y: 0.1,
   z: DUNGEON_CENTER.z + 24,
 };
 
+// ---------- ниши: выход и лестницы ----------
+
 /**
- * Стена, на которой нарисован знак выхода, — **край этажа**.
+ * Ниша в краевой стене этажа: карман, у задней стенки которого что-то есть.
  *
- * Это уже стоило одного захода. Карман ниши кончается за краевой стеной зала:
- * та занимает полосу в метр толщиной по границе чанка, и всё, что дальше,
- * оказывается внутри камня. Знак, поставленный по задней стенке кармана, ушёл
- * за неё целиком — в игре на его месте светилось пустое пятно.
+ * Таких три вида, и все устроены одинаково: выход наверх (север первого
+ * этажа), спуск глубже (восток) и подъём назад (запад). Одинаково —
+ * намеренно: стена, которая расступается, читается как «здесь дверь»
+ * издалека, и второй раз этому учить игрока не надо.
+ */
+export type NicheSide = 'north' | 'east' | 'west';
+
+export interface Niche {
+  /** Плоскость камня, на котором нарисован знак. */
+  wallX: number;
+  wallZ: number;
+  /** Куда смотрит знак: поворот плоскости вокруг вертикали. */
+  faceYaw: number;
+  /** Где надо стоять, чтобы сработало «E». */
+  x: number;
+  z: number;
+}
+
+/** Половина стороны знака и высота его середины — на уровне глаз идущего. */
+export const DUNGEON_EXIT_MARK = 1.7;
+export const DUNGEON_EXIT_MARK_HEIGHT = 1.95;
+
+/**
+ * Насколько знак отходит от камня.
  *
- * Считается от геометрии, а не числом: сдвинется край этажа — краска поедет
- * за ним. Числом она молча осталась бы в камне.
+ * Шесть сантиметров, а не один: подземелье стоит в восьми километрах от начала
+ * координат, а там шаг числа с плавающей точкой — миллиметр. Сантиметрового
+ * зазора не хватало, и краска спорила со стеной за пиксель.
+ */
+export const MARK_OFFSET = 0.06;
+
+/** Ширина и глубина кармана ниши. */
+const NICHE_WIDTH = 6.6;
+const NICHE_DEPTH = 6;
+
+/** Сколько метров от стены до точки, где стоят. */
+const NICHE_STAND = 1.2;
+
+/**
+ * Ниша на стороне этажа.
+ *
+ * Считается **от геометрии стены**, а не числом. Это уже стоило одного захода:
+ * знак, отмеренный от точки выхода, ушёл за краевую стену целиком, и в игре
+ * на его месте светилось пустое пятно без рисунка. Сдвинется край этажа —
+ * ниша поедет за ним.
+ */
+export function nicheOf(floor: number, side: NicheSide): Niche {
+  const center = floorCenter(floor);
+  const half = CHUNK_SIZE / 2;
+  if (side === 'north') {
+    const wallZ = center.z - half + WALL / 2;
+    return { wallX: center.x, wallZ, faceYaw: 0, x: center.x, z: wallZ + NICHE_STAND };
+  }
+  if (side === 'east') {
+    const wallX = center.x + half - WALL / 2;
+    return {
+      wallX,
+      wallZ: center.z,
+      faceYaw: -Math.PI / 2,
+      x: wallX - NICHE_STAND,
+      z: center.z,
+    };
+  }
+  const wallX = center.x - half + WALL / 2;
+  return { wallX, wallZ: center.z, faceYaw: Math.PI / 2, x: wallX + NICHE_STAND, z: center.z };
+}
+
+/**
+ * Стена, на которой нарисован знак выхода первого этажа.
+ *
+ * Оставлено отдельным именем: на неё смотрят и клиент, и проверки, и это
+ * единственное место в подземелье, где знак значит «наружу».
  */
 export const DUNGEON_EXIT_WALL = DUNGEON_CENTER.z - CHUNK_SIZE / 2 + WALL / 2;
 
@@ -107,36 +220,46 @@ export const DUNGEON_EXIT_WALL = DUNGEON_CENTER.z - CHUNK_SIZE / 2 + WALL / 2;
  * Портал наружу — у самого знака, в шаге от стены.
  *
  * Стоял в четырёх с половиной метрах, и вместе с широким откликом это значило,
- * что «E» срабатывало ещё на подходе, метрах в трёх до стены: игрок выходил
- * наверх, так и не дойдя до знака. Выход — последнее действие вылазки, и он
- * обязан случиться **там, где нарисовано**.
+ * что «E» срабатывало ещё на подходе: игрок выходил наверх, так и не дойдя
+ * до знака. Выход — последнее действие вылазки, и он обязан случиться **там,
+ * где нарисовано**.
  */
 export const DUNGEON_EXIT = {
   x: DUNGEON_CENTER.x,
-  z: DUNGEON_EXIT_WALL + 1.2,
+  z: DUNGEON_EXIT_WALL + NICHE_STAND,
 };
+
 /**
- * С какого расстояния портал откликается.
+ * С какого расстояния портал и лестницы откликаются.
  *
  * Чуть шире самой метки: упираться в неё носом, чтобы нажать, было бы
- * наказанием за то, что её нашли. Но и не шире ниши — иначе выход снова
+ * наказанием за то, что её нашли. Но и не шире ниши — иначе переход снова
  * начнёт срабатывать на подходе.
  */
 export const DUNGEON_EXIT_RANGE = 2;
+
+/** Лестница вниз есть на всех этажах, кроме последнего. */
+export function stairsDown(floor: number): Niche | null {
+  return floor < DUNGEON_FLOORS - 1 ? nicheOf(floor, 'east') : null;
+}
+
+/** Лестница вверх — на всех, кроме первого: с первого уходят порталом. */
+export function stairsUp(floor: number): Niche | null {
+  return floor > 0 ? nicheOf(floor, 'west') : null;
+}
+
 /**
- * Знак выхода: половина стороны и место, где он нарисован.
+ * Где игрок оказывается, попав на этаж.
  *
- * Сперва он лежал краской на полу, но пол видно только под ногами: идущий
- * смотрит вперёд, и семиметровый знак под собой замечал не сразу. На задней
- * стене ниши он оказывается ровно на линии взгляда и читается через весь зал.
- *
- * Размер поэтому и меньше — вдвое против напольного. Не из экономии: стена
- * высотой четыре метра, и знак обязан на ней помещаться, а не упираться
- * в потолок обрезанным краем.
+ * На первом — у люка, на остальных — **у лестницы вверх**: пришёл сверху,
+ * значит стоишь на том, по чему вернёшься. Обратную дорогу искать не надо,
+ * её надо помнить.
  */
-export const DUNGEON_EXIT_MARK = 1.7;
-/** Середина знака по высоте: на уровне глаз идущего, а не под потолком. */
-export const DUNGEON_EXIT_MARK_HEIGHT = 1.95;
+export function floorArrival(floor: number): { x: number; y: number; z: number } {
+  if (floor <= 0) return { ...DUNGEON_ENTRY };
+  const niche = nicheOf(floor, 'west');
+  return { x: niche.x, y: 0.1, z: niche.z };
+}
 
 export function isDungeon(instanceId: string): boolean {
   return instanceId.startsWith(DUNGEON_PREFIX);
@@ -162,20 +285,21 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+// ---------- геометрия этажа ----------
+
 /**
- * Один этаж: зал с колоннами и глухими стенами по краю.
+ * Земля подземелья: три этажа, каждый в своём чанке.
  *
- * Это ещё не процедурная сборка комнат из вехи 6 — это самый тонкий ломоть,
- * на котором видно, работает ли связка «вошёл, походил, вышел». Комнаты,
- * коридоры и этажи встанут сюда же, когда связка окажется живой.
+ * За их пределами пусто, и туда не выйти — край каждого этажа закрыт стеной,
+ * как и край мира.
  */
 export function generateDungeonChunk(seed: number): ChunkSource {
   return (cx: number, cz: number): LevelBox[] => {
-    // Этаж один и конечен: за его пределами ничего нет, и туда не выйти —
-    // край закрыт стеной, как и край мира.
-    const dx = cx - DUNGEON_ORIGIN_CHUNK;
-    const dz = cz - DUNGEON_ORIGIN_CHUNK;
-    if (Math.abs(dx) > DUNGEON_RADIUS || Math.abs(dz) > DUNGEON_RADIUS) return [];
+    if (cz !== DUNGEON_ORIGIN_CHUNK) return [];
+    const offset = cx - DUNGEON_ORIGIN_CHUNK;
+    if (offset % FLOOR_STRIDE !== 0) return [];
+    const floor = offset / FLOOR_STRIDE;
+    if (floor < 0 || floor >= DUNGEON_FLOORS) return [];
 
     const { x: originX, z: originZ } = chunkCenter(cx, cz);
     const half = CHUNK_SIZE / 2;
@@ -205,10 +329,19 @@ export function generateDungeonChunk(seed: number): ChunkSource {
       });
     }
 
-    const layout = hallLayout(seed);
+    const layout = floorLayout(seed, floor);
 
-    // Колонны: укрытия и ориентиры. Без них зал — пустая коробка, в которой
-    // некуда спрятаться и не за что зацепиться глазом.
+    // Перегородки между комнатами. Проход там, где комнаты связаны; глухая
+    // стена там, где нет. Связность даёт остов лабиринта — см. `roomLinks`.
+    for (const wall of layout.walls) {
+      boxes.push({
+        kind: 'wall',
+        box: boxFromCenter(wall.x, HALL_HEIGHT / 2, wall.z, wall.width, HALL_HEIGHT, wall.depth),
+      });
+    }
+
+    // Колонны: укрытия и ориентиры. Без них комната — пустая коробка,
+    // в которой некуда спрятаться и не за что зацепиться глазом.
     for (const pillar of layout.pillars) {
       boxes.push({
         kind: 'pillar',
@@ -223,7 +356,7 @@ export function generateDungeonChunk(seed: number): ChunkSource {
       });
     }
 
-    // Сундуки стоят прямо в геометрии зала: так они и видны, и телесны,
+    // Сундуки стоят прямо в геометрии этажа: так они и видны, и телесны,
     // и приходят на обе стороны одним генератором — пересылать нечего.
     for (const chest of layout.chests) {
       boxes.push({
@@ -232,60 +365,53 @@ export function generateDungeonChunk(seed: number): ChunkSource {
       });
     }
 
-    addExitMark(boxes);
+    if (floor === 0) addNiche(boxes, floor, 'north');
+    if (stairsDown(floor)) addNiche(boxes, floor, 'east');
+    if (stairsUp(floor)) addNiche(boxes, floor, 'west');
     return boxes;
   };
 }
 
 /**
- * Метка выхода: ниша в стене.
+ * Карман ниши: боковины, упирающиеся в краевую стену.
  *
- * Портал был невидим — просто точка на полу, — и игрок в первом же забеге
- * заблудился в собственном зале. Ниша нужна не для красоты: стена, которая
- * расступается, читается как выход издалека. Где именно встать, говорит знак
- * на полу; и знак, и свет над ним ставит клиент.
+ * Своего пола, потолка и задней стенки у ниши нет. Они были — и в точности
+ * повторяли пол и потолок зала, слой в слой. Две совпадающие поверхности
+ * в одном месте — это дрожание текстуры: видеокарта на каждом кадре выбирает
+ * между ними заново, и у самого знака камень «кипел». Заднюю стенку закрывает
+ * краевая стена этажа: карман упирается в неё раньше, чем кончается сам.
  */
-function addExitMark(boxes: LevelBox[]): void {
-  const x = DUNGEON_EXIT.x;
+function addNiche(boxes: LevelBox[], floor: number, side: NicheSide): void {
+  const niche = nicheOf(floor, side);
+  const inward = side === 'east' ? -1 : 1;
 
-  // Ниша строится **от стены**, а не от точки выхода: стена — то, что видно,
-  // и от неё же считается всё остальное. Пока карман отмеряли от портала,
-  // его задняя половина уходила в камень.
-  const pocket = 6.6;
-  const depth = 6;
-  const middle = DUNGEON_EXIT_WALL + depth / 2;
-
-  /**
-   * Своего пола и потолка у ниши нет.
-   *
-   * Они были — и в точности повторяли пол и потолок зала, слой в слой.
-   * Две совпадающие поверхности в одном месте — это дрожание текстуры:
-   * видеокарта на каждом кадре выбирает между ними заново, и у самого знака
-   * камень «кипел». Ниша лежит внутри зала, и пол ей достаётся оттуда же,
-   * откуда всем.
-   */
-
-  // Боковины кармана, чтобы он был карманом, а не дырой в стене.
-  for (const side of [-1, 1]) {
-    boxes.push({
-      kind: 'brick',
-      box: boxFromCenter(
-        x + side * (pocket / 2),
-        HALL_HEIGHT / 2,
-        middle,
-        WALL,
-        HALL_HEIGHT,
-        depth,
-      ),
-    });
+  for (const shift of [-1, 1]) {
+    if (side === 'north') {
+      boxes.push({
+        kind: 'brick',
+        box: boxFromCenter(
+          niche.wallX + shift * (NICHE_WIDTH / 2),
+          HALL_HEIGHT / 2,
+          niche.wallZ + inward * (NICHE_DEPTH / 2),
+          WALL,
+          HALL_HEIGHT,
+          NICHE_DEPTH,
+        ),
+      });
+    } else {
+      boxes.push({
+        kind: 'brick',
+        box: boxFromCenter(
+          niche.wallX + inward * (NICHE_DEPTH / 2),
+          HALL_HEIGHT / 2,
+          niche.wallZ + shift * (NICHE_WIDTH / 2),
+          NICHE_DEPTH,
+          HALL_HEIGHT,
+          WALL,
+        ),
+      });
+    }
   }
-  // Задней стенки у кармана нет и не нужно: его закрывает краевая стена
-  // этажа — карман упирается в неё раньше, чем кончается сам. Стояла лишняя
-  // коробка целиком внутри камня; см. `DUNGEON_EXIT_WALL`.
-
-  // Кольца на полу больше нет: на его месте знак, нарисованный краской.
-  // Он ничего не преграждает и живёт целиком на клиенте — см. scene.ts,
-  // `exitMark`. Серверу знать о краске нечего.
 }
 
 // ---------- сундуки ----------
@@ -299,10 +425,11 @@ function addExitMark(boxes: LevelBox[]): void {
  * что обе считают его одним генератором.
  */
 export interface DungeonChest {
-  /** Устойчивое имя вида `chest.номер`: по нему сервер находит сундук заново. */
+  /** Устойчивое имя вида `chest.этаж.номер`: по нему сервер находит сундук. */
   id: string;
   x: number;
   z: number;
+  floor: number;
 }
 
 /** Сторона сундука и его высота: по ним же строится коробка в зале. */
@@ -321,16 +448,15 @@ export const CHEST_RANGE = 3.2;
  */
 export const CHEST_TIME = 5;
 
-/** Сколько сундуков в зале: от и до. */
+/** Сколько сундуков на первом этаже. Каждый следующий добавляет по одному. */
 const CHESTS_MIN = 4;
-const CHESTS_MAX = 6;
+const CHESTS_MAX = 5;
 
 /**
  * Что лежит в сундуках.
  *
  * Свитки рецептов падают **здесь**, а не с умертвия: замысел с самого начала
- * привязывал рецептурный ярус к подземельям, и до сих пор они висели на мобе
- * временно, за неимением другого источника. Теперь у похода вниз есть причина,
+ * привязывал рецептурный ярус к подземельям. Теперь у похода вниз есть причина,
  * которой нет наверху.
  */
 export const CHEST_LOOT: readonly LootEntry[] = [
@@ -350,27 +476,94 @@ export const CHEST_LOOT: readonly LootEntry[] = [
 ];
 
 /**
- * Кто живёт в зале.
+ * Чем глубже, тем богаче.
+ *
+ * Награда растёт **вместе с риском и путём назад**: на третьем этаже игрок
+ * далеко от портала, и вынести добытое труднее, чем добыть. Множителем,
+ * а не отдельной таблицей на этаж: таблицу забудут поправить, когда добавят
+ * предмет, а множитель применится сам.
+ */
+export function chestLoot(floor: number): LootEntry[] {
+  const richer = 1 + 0.3 * floor;
+  return CHEST_LOOT.map((entry) => ({
+    ...entry,
+    chance: Math.min(0.95, entry.chance * richer),
+    min: Math.max(1, Math.round(entry.min * richer)),
+    max: Math.max(1, Math.round(entry.max * richer)),
+  }));
+}
+
+// ---------- обитатели ----------
+
+/**
+ * Кто живёт на этаже.
  *
  * Мало и тяжело, а не много и тяжело. Первый состав был из шести элитных
  * нежитей, и проверка это показала прямо: одиночка не доходил до портала
- * ни разу. Зал — одна комната, разойтись в ней негде, поэтому риск задаётся
- * качеством противника, а не количеством; толпа здесь читается не как
- * опасность, а как запертая дверь.
+ * ни разу. Разойтись в комнатах негде, поэтому риск задаётся качеством
+ * противника, а не количеством; толпа здесь читается не как опасность,
+ * а как запертая дверь.
  *
- * Умертвие — редкий гость и главная причина уйти с добычей, не жадничая.
+ * Глубина меняет состав, а не число: на первом этаже скелеты, на третьем
+ * умертвия и огры. Это и есть обещание вехи — «глубже злее».
  */
-export function mobsForDungeon(seed: number): MobId[] {
-  const random = mulberry32(seed ^ 0x5bf03635);
-  const roster: MobId[] = ['skeleton', 'skeleton', 'ghoul'];
-  const extra: MobId[] = ['skeleton', 'ghoul', 'ghoul', 'wight'];
+export function mobsForDungeon(seed: number, floor = 0): MobId[] {
+  const random = mulberry32((seed ^ 0x5bf03635) + floor * 0x9e3779b1);
+  const roster: MobId[] = [];
+  const extra: MobId[] = [];
+
+  if (floor === 0) {
+    roster.push('skeleton', 'skeleton', 'ghoul');
+    extra.push('skeleton', 'ghoul', 'ghoul', 'wight');
+  } else if (floor === 1) {
+    roster.push('skeleton', 'ghoul', 'ghoul', 'wight');
+    extra.push('wight', 'wight', 'ogre');
+  } else {
+    roster.push('ghoul', 'wight', 'wight', 'ogre');
+    extra.push('ogre', 'wight', 'ogre');
+  }
+
   roster.push(extra[Math.floor(random() * extra.length)]!);
   return roster;
 }
 
-interface HallLayout {
+/**
+ * Хозяин глубины: один на забег, стоит на последнем этаже.
+ *
+ * Пока он жив, порталы закрыты всему инстансу — поэтому он и не «ещё один
+ * тяжёлый моб», а условие возвращения. Ставится не раскладкой, а отдельно:
+ * босс один, и знать про него надо не только геометрии.
+ */
+export const DUNGEON_BOSS: MobId = 'crypt_lord';
+
+/** На каком этаже он ждёт. */
+export const BOSS_FLOOR = DUNGEON_FLOORS - 1;
+
+/**
+ * Сколько секунд порталы открыты после его смерти.
+ *
+ * Две с половиной минуты — это «беги», а не «собирайся». Вылазка кончается
+ * гонкой: все в инстансе получают один и тот же сигнал и бегут к одним и тем
+ * же порталам с полными карманами, и вот тут-то внизу и вспоминают, что флаги
+ * не действуют.
+ */
+export const PORTAL_SECONDS = 150;
+
+// ---------- раскладка этажа ----------
+
+interface RoomWall {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+}
+
+interface FloorLayout {
+  walls: RoomWall[];
   pillars: { x: number; z: number; width: number }[];
   chests: DungeonChest[];
+  /** Какие комнаты соединены проходами. Нужно не только стенам — см. `routeOn`. */
+  links: Set<string>;
 }
 
 /**
@@ -380,63 +573,297 @@ interface HallLayout {
  * сервер за сутки накопил бы раскладку каждого подземелья, которое когда-либо
  * заводили. Старые вытесняются — заново собрать их всё равно дёшево.
  */
-const layouts = new Map<number, HallLayout>();
+const layouts = new Map<string, FloorLayout>();
 const LAYOUT_CACHE = 32;
 
+/** Середина комнаты по её номеру в ряду, считая от края этажа. */
+function cellCenter(index: number): number {
+  return -CHUNK_SIZE / 2 + CELL * (index + 0.5);
+}
+
+/** Имя связи между двумя комнатами — одинаковое с обеих сторон. */
+function linkKey(ac: number, ar: number, bc: number, br: number): string {
+  return ac < bc || ar < br ? `${ac}:${ar}|${bc}:${br}` : `${bc}:${br}|${ac}:${ar}`;
+}
+
 /**
- * Раскладка зала: колонны и сундуки **из одного потока чисел**.
+ * Остов лабиринта: какие комнаты соединены проходами.
+ *
+ * Обход в глубину даёт **дерево**, то есть связность без петель: из любой
+ * комнаты есть путь в любую, и ровно один. Потом пара лишних проходов
+ * пробивается наугад — этаж без петель читается как коридор с тупиками,
+ * а в подземелье, где за тобой гонятся, тупик это смерть без выбора.
+ */
+function roomLinks(random: () => number): Set<string> {
+  const open = new Set<string>();
+  const visited = new Set<string>(['1:1']);
+  const stack: [number, number][] = [[1, 1]];
+
+  while (stack.length > 0) {
+    const [col, row] = stack[stack.length - 1]!;
+    const neighbours: [number, number][] = [];
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nc = col + dc;
+      const nr = row + dr;
+      if (nc < 0 || nr < 0 || nc >= GRID || nr >= GRID) continue;
+      if (visited.has(`${nc}:${nr}`)) continue;
+      neighbours.push([nc, nr]);
+    }
+
+    if (neighbours.length === 0) {
+      stack.pop();
+      continue;
+    }
+
+    const [nc, nr] = neighbours[Math.floor(random() * neighbours.length)]!;
+    open.add(linkKey(col, row, nc, nr));
+    visited.add(`${nc}:${nr}`);
+    stack.push([nc, nr]);
+  }
+
+  // Петли: без них этаж — дерево коридоров, и всякая погоня кончается углом.
+  for (let i = 0; i < 2; i++) {
+    const a = Math.floor(random() * (GRID - 1));
+    const b = Math.floor(random() * GRID);
+    open.add(random() < 0.5 ? linkKey(a, b, a + 1, b) : linkKey(b, a, b, a + 1));
+  }
+
+  return open;
+}
+
+/**
+ * Раскладка этажа: перегородки, колонны и сундуки **из одного потока чисел**.
  *
  * Порознь их считать нельзя: два независимых генератора рано или поздно
  * поставят сундук внутрь колонны, и вскрыть его будет неоткуда. Здесь сундуки
- * расставляются после колонн и знают про них.
+ * расставляются последними и знают про всё остальное.
  */
-export function hallLayout(seed: number): HallLayout {
-  const cached = layouts.get(seed);
+export function floorLayout(seed: number, floor = 0): FloorLayout {
+  const key = `${seed}:${floor}`;
+  const cached = layouts.get(key);
   if (cached) return cached;
 
-  const random = mulberry32(seed);
-  const { x: originX, z: originZ } = DUNGEON_CENTER;
-  const spread = CHUNK_SIZE / 2 - 6;
+  const random = mulberry32((seed + floor * 0x7f4a7c15) >>> 0);
+  const { x: originX, z: originZ } = floorCenter(floor);
 
-  const pillars: HallLayout['pillars'] = [];
-  const count = 8 + Math.floor(random() * 6);
-  for (let i = 0; i < count; i++) {
-    const width = 1.4 + random() * 1.2;
-    pillars.push({
-      x: originX + (random() - 0.5) * (CHUNK_SIZE - 12),
-      z: originZ + (random() - 0.5) * (CHUNK_SIZE - 12),
-      width,
-    });
+  const open = roomLinks(random);
+  const walls: RoomWall[] = [];
+
+  // Перегородки поперёк X: они делят этаж на столбцы комнат.
+  for (let col = 1; col < GRID; col++) {
+    const x = originX - CHUNK_SIZE / 2 + CELL * col;
+    for (let row = 0; row < GRID; row++) {
+      const middle = originZ + cellCenter(row);
+      if (open.has(linkKey(col - 1, row, col, row))) {
+        pushSegment(walls, x, middle - CELL / 2, middle - DOOR / 2, 'z');
+        pushSegment(walls, x, middle + DOOR / 2, middle + CELL / 2, 'z');
+      } else {
+        pushSegment(walls, x, middle - CELL / 2, middle + CELL / 2, 'z');
+      }
+    }
   }
 
+  // Перегородки поперёк Z.
+  for (let row = 1; row < GRID; row++) {
+    const z = originZ - CHUNK_SIZE / 2 + CELL * row;
+    for (let col = 0; col < GRID; col++) {
+      const middle = originX + cellCenter(col);
+      if (open.has(linkKey(col, row - 1, col, row))) {
+        pushSegment(walls, z, middle - CELL / 2, middle - DOOR / 2, 'x');
+        pushSegment(walls, z, middle + DOOR / 2, middle + CELL / 2, 'x');
+      } else {
+        pushSegment(walls, z, middle - CELL / 2, middle + CELL / 2, 'x');
+      }
+    }
+  }
+
+  // По колонне на комнату: укрытие и ориентир, но не лабиринт внутри комнаты.
+  const pillars: FloorLayout['pillars'] = [];
+  const reach = CELL / 2 - 6;
+  for (let col = 0; col < GRID; col++) {
+    for (let row = 0; row < GRID; row++) {
+      pillars.push({
+        x: originX + cellCenter(col) + (random() - 0.5) * 2 * reach,
+        z: originZ + cellCenter(row) + (random() - 0.5) * 2 * reach,
+        width: 1.3 + random() * 1.1,
+      });
+    }
+  }
+
+  // У лестниц, у люка и у портала сундуков нет: добычу надо унести, а не
+  // подобрать с порога. Между ними и лежит весь риск.
+  const away: { x: number; z: number }[] = [floorArrival(floor)];
+  for (const stairs of [stairsDown(floor), stairsUp(floor)]) {
+    if (stairs) away.push({ x: stairs.x, z: stairs.z });
+  }
+  if (floor === 0) away.push(DUNGEON_EXIT);
+
   const chests: DungeonChest[] = [];
-  const wanted = CHESTS_MIN + Math.floor(random() * (CHESTS_MAX - CHESTS_MIN + 1));
+  const wanted = CHESTS_MIN + floor + Math.floor(random() * (CHESTS_MAX - CHESTS_MIN + 1));
+  const room = CELL / 2 - 4;
 
-  for (let attempt = 0; attempt < 200 && chests.length < wanted; attempt++) {
-    const x = originX + (random() * 2 - 1) * spread;
-    const z = originZ + (random() * 2 - 1) * spread;
+  for (let attempt = 0; attempt < 300 && chests.length < wanted; attempt++) {
+    const col = Math.floor(random() * GRID);
+    const row = Math.floor(random() * GRID);
+    const x = originX + cellCenter(col) + (random() * 2 - 1) * room;
+    const z = originZ + cellCenter(row) + (random() * 2 - 1) * room;
 
-    // У входа и у портала сундуков нет: добычу надо унести, а не подобрать
-    // с порога. Между ними и лежит весь риск.
-    if (Math.hypot(x - DUNGEON_ENTRY.x, z - DUNGEON_ENTRY.z) < 10) continue;
-    if (Math.hypot(x - DUNGEON_EXIT.x, z - DUNGEON_EXIT.z) < 8) continue;
+    if (away.some((point) => Math.hypot(x - point.x, z - point.z) < 10)) continue;
 
     const blocked =
       pillars.some((p) => Math.hypot(x - p.x, z - p.z) < p.width / 2 + CHEST_SIZE) ||
       chests.some((c) => Math.hypot(x - c.x, z - c.z) < CHEST_RANGE * 2);
     if (blocked) continue;
 
-    chests.push({ id: `chest.${chests.length}`, x, z });
+    chests.push({ id: `chest.${floor}.${chests.length}`, x, z, floor });
   }
 
-  const layout: HallLayout = { pillars, chests };
-  if (layouts.size >= LAYOUT_CACHE) layouts.delete(layouts.keys().next().value as number);
-  layouts.set(seed, layout);
+  const layout: FloorLayout = { walls, pillars, chests, links: open };
+  if (layouts.size >= LAYOUT_CACHE) layouts.delete(layouts.keys().next().value as string);
+  layouts.set(key, layout);
   return layout;
 }
 
+/** Отрезок перегородки. Короткие куски отбрасываются: они только мусорят. */
+function pushSegment(
+  walls: RoomWall[],
+  fixed: number,
+  from: number,
+  to: number,
+  along: 'x' | 'z',
+): void {
+  const length = to - from;
+  if (length < 0.2) return;
+  const middle = (from + to) / 2;
+  if (along === 'z') {
+    walls.push({ x: fixed, z: middle, width: WALL, depth: length });
+  } else {
+    walls.push({ x: middle, z: fixed, width: length, depth: WALL });
+  }
+}
+
+// ---------- дорога по комнатам ----------
+
+/** В какой комнате точка. Номера столбца и ряда, считая от края этажа. */
+export function roomOf(floor: number, x: number, z: number): { col: number; row: number } {
+  const { x: originX, z: originZ } = floorCenter(floor);
+  const clamp = (value: number) => Math.min(GRID - 1, Math.max(0, value));
+  return {
+    col: clamp(Math.floor((x - originX + CHUNK_SIZE / 2) / CELL)),
+    row: clamp(Math.floor((z - originZ + CHUNK_SIZE / 2) / CELL)),
+  };
+}
+
+/**
+ * Дорога от точки до точки по этажу: середины проходов, через которые идти.
+ *
+ * Этаж — это комнаты с проходами, и прямая между двумя точками почти всегда
+ * упирается в перегородку. Обход в ширину по связям комнат даёт **список
+ * дверей**, а не путь по метрам: между дверями идти уже можно напрямую,
+ * комната пуста.
+ *
+ * Живёт в общем коде, потому что связи комнат знает генератор, а не тот, кто
+ * идёт. Зерно забега приходит снаружи: раскладка у каждого своя.
+ *
+ * Пригодится и сквозным проверкам, и ИИ, когда тот научится обходить стены,
+ * а не тереться о них.
+ */
+export function routeFor(
+  seed: number,
+  floor: number,
+  from: { x: number; z: number },
+  to: { x: number; z: number },
+): { x: number; z: number }[] {
+  return routeThrough(floorLayout(seed, floor).links, floor, from, to);
+}
+
+function routeThrough(
+  links: Set<string>,
+  floor: number,
+  from: { x: number; z: number },
+  to: { x: number; z: number },
+): { x: number; z: number }[] {
+  const start = roomOf(floor, from.x, from.z);
+  const goal = roomOf(floor, to.x, to.z);
+  const { x: originX, z: originZ } = floorCenter(floor);
+
+  const key = (col: number, row: number) => `${col}:${row}`;
+  const cameFrom = new Map<string, string>();
+  const queue: [number, number][] = [[start.col, start.row]];
+  const seen = new Set([key(start.col, start.row)]);
+
+  while (queue.length > 0) {
+    const [col, row] = queue.shift()!;
+    if (col === goal.col && row === goal.row) break;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nc = col + dc;
+      const nr = row + dr;
+      if (nc < 0 || nr < 0 || nc >= GRID || nr >= GRID) continue;
+      if (!links.has(linkKey(col, row, nc, nr))) continue;
+      if (seen.has(key(nc, nr))) continue;
+      seen.add(key(nc, nr));
+      cameFrom.set(key(nc, nr), key(col, row));
+      queue.push([nc, nr]);
+    }
+  }
+
+  // Дороги нет — идём напрямую и упираемся честно: врать о пути хуже, чем
+  // не знать его.
+  if (!seen.has(key(goal.col, goal.row))) return [{ x: to.x, z: to.z }];
+
+  const chain: [number, number][] = [];
+  for (let at = key(goal.col, goal.row); ; ) {
+    const [col, row] = at.split(':').map(Number) as [number, number];
+    chain.unshift([col, row]);
+    const previous = cameFrom.get(at);
+    if (!previous) break;
+    at = previous;
+  }
+
+  const doors: { x: number; z: number }[] = [];
+  for (let i = 1; i < chain.length; i++) {
+    const [pc, pr] = chain[i - 1]!;
+    const [nc, nr] = chain[i]!;
+    if (pc === nc) {
+      // Проход в перегородке поперёк Z: середина общей границы рядов.
+      doors.push({
+        x: originX + cellCenter(pc),
+        z: originZ - CHUNK_SIZE / 2 + CELL * Math.max(pr, nr),
+      });
+    } else {
+      doors.push({
+        x: originX - CHUNK_SIZE / 2 + CELL * Math.max(pc, nc),
+        z: originZ + cellCenter(pr),
+      });
+    }
+  }
+
+  doors.push({ x: to.x, z: to.z });
+  return doors;
+}
+
+/** Раскладка первого этажа. Оставлено для краткости в проверках. */
+export function hallLayout(seed: number): FloorLayout {
+  return floorLayout(seed, 0);
+}
+
+/** Все сундуки подземелья, со всех этажей сразу. */
 export function dungeonChests(seed: number): DungeonChest[] {
-  return hallLayout(seed).chests;
+  const all: DungeonChest[] = [];
+  for (let floor = 0; floor < DUNGEON_FLOORS; floor++) {
+    all.push(...floorLayout(seed, floor).chests);
+  }
+  return all;
 }
 
 /** Сундук по имени — как `findNode` у ресурсных нод: ничего не храня. */

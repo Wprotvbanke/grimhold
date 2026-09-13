@@ -14,6 +14,8 @@ import {
   RESPAWN_STREAK_MAX,
   TICK_RATE,
   generateNodes,
+  floorOf,
+  routeFor,
   type ItemId,
   type NodeId,
   type RecipeId,
@@ -31,6 +33,36 @@ let seq = 0;
  * несколько шагов боком и снова вперёд. Без этого проверка падала не на
  * добыче, а на первом же дереве по дороге.
  */
+/**
+ * Шагает к точке **через комнаты подземелья**, а не сквозь них.
+ *
+ * Этаж — это комнаты с проходами, и прямая между двумя точками почти всегда
+ * упирается в перегородку. Дорогу строит общий код (`routeFor`): он же знает,
+ * какие комнаты соединены, — а здесь остаётся пройти по её точкам подряд.
+ *
+ * Возвращает расстояние до цели в конце, как и `walkTo`.
+ */
+export async function walkRoute(
+  client: TestClient,
+  seed: number,
+  to: { x: number; z: number },
+  stop: number,
+): Promise<number> {
+  const self = client.latestSnapshot?.self;
+  if (!self) return Infinity;
+
+  const floor = floorOf(self.x);
+  const route = routeFor(seed, floor, { x: self.x, z: self.z }, to);
+
+  let last = Infinity;
+  for (const [index, point] of route.entries()) {
+    // В дверь надо войти, а не подойти к ней: проход узкий, и остановка
+    // в метре от него оставляет перегородку между ходоком и следующей комнатой.
+    last = await walkTo(client, point, index === route.length - 1 ? stop : 0.8);
+  }
+  return last;
+}
+
 export async function walkTo(
   client: TestClient,
   to: { x: number; z: number },

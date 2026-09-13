@@ -9,6 +9,11 @@ import {
   DUNGEON_EXIT_MARK,
   DUNGEON_EXIT_MARK_HEIGHT,
   DUNGEON_EXIT_WALL,
+  MARK_OFFSET,
+  floorOf,
+  stairsDown,
+  stairsUp,
+  type Niche,
   dungeonSeed,
   generateDungeonChunk,
   isDungeon,
@@ -389,19 +394,77 @@ export function createScene(): World3D {
    * Геометрии он не касается: сервер о краске ничего не знает, стена под ней
    * обычная.
    */
-  const exitMark = new THREE.Mesh(
-    new THREE.PlaneGeometry(DUNGEON_EXIT_MARK * 2, DUNGEON_EXIT_MARK * 2),
-    new THREE.MeshBasicMaterial({
-      map: symbolTexture(),
-      color: 0xff2a1e,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      // Глубину не пишем и слегка приподнимаем: краска на камне не должна
-      // спорить с полом за один и тот же пиксель.
-      depthWrite: false,
-      fog: false,
-    }),
-  );
+  function createMark(color: number): THREE.Mesh {
+    return new THREE.Mesh(
+      new THREE.PlaneGeometry(DUNGEON_EXIT_MARK * 2, DUNGEON_EXIT_MARK * 2),
+      new THREE.MeshBasicMaterial({
+        map: symbolTexture(),
+        color,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        // Глубину не пишем и слегка приподнимаем: краска на камне не должна
+        // спорить с полом за один и тот же пиксель.
+        depthWrite: false,
+        fog: false,
+      }),
+    );
+  }
+
+  const exitMark = createMark(0xff2a1e);
+
+  /**
+   * Знаки лестниц: тот же рисунок, другой цвет.
+   *
+   * Цветом, а не рисунком, потому что решение принимается на бегу и издалека:
+   * красный — наружу, янтарный — глубже, голубой — назад наверх. Форму на
+   * пяти метрах видимости не разобрать, цвет видно сразу.
+   *
+   * Живут они целиком на клиенте, как и знак выхода: серверу о краске знать
+   * нечего, камень под ней обычный.
+   */
+  const downMark = createMark(0xffa32a);
+  const upMark = createMark(0x66c6ff);
+  for (const mark of [downMark, upMark]) {
+    mark.visible = false;
+    scene.add(mark);
+  }
+
+  /** Этаж, под который уже расставлены знаки. −1 — ещё ни под какой. */
+  let markedFloor = -1;
+
+  /** Ставит знак на камень ниши и разворачивает лицом в зал. */
+  function placeMark(mark: THREE.Mesh, niche: Niche): void {
+    const inward = niche.faceYaw === 0 ? 1 : niche.faceYaw > 0 ? 1 : -1;
+    mark.position.set(
+      niche.faceYaw === 0 ? niche.wallX : niche.wallX + inward * MARK_OFFSET,
+      DUNGEON_EXIT_MARK_HEIGHT,
+      niche.faceYaw === 0 ? niche.wallZ + MARK_OFFSET : niche.wallZ,
+    );
+    mark.rotation.y = niche.faceYaw;
+  }
+
+  /**
+   * Знаки этажа, на котором стоит игрок.
+   *
+   * Этажи лежат в одном инстансе и рядом в координатах, поэтому «где я»
+   * выводится из положения камеры, а не приходит по сети: то же число, что
+   * считает сервер, тем же кодом.
+   */
+  function markFloor(floor: number): void {
+    if (floor === markedFloor) return;
+    markedFloor = floor;
+
+    exitMark.visible = floor === 0;
+    exitHaze.group.visible = floor === 0;
+
+    const down = stairsDown(floor);
+    downMark.visible = down !== null;
+    if (down) placeMark(downMark, down);
+
+    const up = stairsUp(floor);
+    upMark.visible = up !== null;
+    if (up) placeMark(upMark, up);
+  }
   /**
    * Плоскость смотрит в зал: поворачивать не нужно, у неё и так лицо на +Z.
    *
@@ -410,7 +473,7 @@ export function createScene(): World3D {
    * миллиметр: сантиметрового зазора не хватало, и краска спорила со стеной
    * за пиксель.
    */
-  exitMark.position.set(DUNGEON_EXIT.x, DUNGEON_EXIT_MARK_HEIGHT, DUNGEON_EXIT_WALL + 0.06);
+  exitMark.position.set(DUNGEON_EXIT.x, DUNGEON_EXIT_MARK_HEIGHT, DUNGEON_EXIT_WALL + MARK_OFFSET);
   exitMark.visible = false;
   scene.add(exitMark);
 
@@ -453,8 +516,12 @@ export function createScene(): World3D {
       sky.mesh.visible = !underground;
       // Портал светится только там, где он есть.
       portalLight.intensity = underground ? 9 : 0;
-      exitMark.visible = underground;
-      exitHaze.group.visible = underground;
+      if (!underground) {
+        for (const mark of [exitMark, downMark, upMark]) mark.visible = false;
+        exitHaze.group.visible = false;
+      }
+      // Знаки расставит первый же кадр под землёй: этаж известен по камере.
+      markedFloor = -1;
       terrain = new ChunkedWorld(
         underground ? generateDungeonChunk(dungeonSeed(next)) : undefined,
       );
@@ -517,14 +584,48 @@ export function createScene(): World3D {
       lastFrame = elapsed;
       daynight.update(worldTime, dt, camera);
 
-      if (exitMark.visible) {
+      if (underground) {
+        markFloor(floorOf(camera.position.x));
+
         // Знак дышит: неподвижное пятно на стене глаз принимает за текстуру,
         // а медленно разгорающееся — за живое место.
         const breath = 0.78 + 0.22 * Math.sin(elapsed * 1.6);
-        (exitMark.material as THREE.MeshBasicMaterial).opacity = breath;
-        portalLight.intensity = 7 + breath * 4;
+        for (const mark of [exitMark, downMark, upMark]) {
+          if (mark.visible) (mark.material as THREE.MeshBasicMaterial).opacity = breath;
+        }
+
+        /**
+         * Лампа у знака одна на все три.
+         *
+         * Число источников вшито в шейдер, и завести по лампе на знак значило
+         * бы пересобрать материалы сцены — см. performance.md. Поэтому
+         * единственная переезжает к ближайшему знаку: дальние всё равно
+         * за мглой, а вблизи горит ровно тот, к которому подошли.
+         */
+        let nearest: THREE.Mesh | null = null;
+        let best = Infinity;
+        for (const mark of [exitMark, downMark, upMark]) {
+          if (!mark.visible) continue;
+          const reach = mark.position.distanceTo(camera.position);
+          if (reach < best) {
+            best = reach;
+            nearest = mark;
+          }
+        }
+        if (nearest) {
+          portalLight.color.set((nearest.material as THREE.MeshBasicMaterial).color);
+          portalLight.position.set(
+            nearest.position.x + Math.sin(nearest.rotation.y) * 1.2,
+            DUNGEON_EXIT_MARK_HEIGHT,
+            nearest.position.z + Math.cos(nearest.rotation.y) * 1.2,
+          );
+          portalLight.intensity = 7 + breath * 4;
+        } else {
+          portalLight.intensity = 0;
+        }
+
         // Мгла у ниши дышит вместе со знаком: это его мгла, а не сырость.
-        exitHaze.update(elapsed, breath);
+        if (exitHaze.group.visible) exitHaze.update(elapsed, breath);
       }
 
       /**
