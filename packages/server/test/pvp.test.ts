@@ -6,6 +6,7 @@ import {
   PURPLE_SECONDS,
   TOWN_SIZE,
   attributesFor,
+  dungeonInstance,
   fullVitals,
 } from '@grimhold/shared';
 import { flagFor, forgiveForMob, markAggressor, mayAttack, punishKill } from '../src/pvp.js';
@@ -166,6 +167,24 @@ describe('флаги', () => {
     punishKill(attacker, target);
     expect(attacker.karma).toBe(KARMA_PER_KILL);
     expect(flagFor(attacker)).toBe('red');
+  });
+
+  it('внизу флаги не действуют: там все всем враги', () => {
+    /**
+     * Замысел вылазки: в подземелье встреча с человеком опаснее нежити,
+     * и раздумывать «а не покраснею ли я» там некогда. Наверху при этом
+     * ничего не меняется.
+     */
+    const below = dungeonInstance(5);
+    const { attacker, target } = pair();
+    attacker.instanceId = below;
+    target.instanceId = below;
+
+    markAggressor(attacker, target);
+    punishKill(attacker, target);
+
+    expect(flagFor(attacker)).toBe('white');
+    expect(attacker.karma).toBe(0);
   });
 
   it('за фиолетового кармы нет', () => {

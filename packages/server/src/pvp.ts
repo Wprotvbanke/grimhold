@@ -3,6 +3,7 @@ import {
   KARMA_PER_MOB,
   PURPLE_SECONDS,
   flagOf,
+  isDungeon,
   isSafe,
   type PvpFlag,
 } from '@grimhold/shared';
@@ -71,6 +72,7 @@ export function flagFor(combatant: Combatant): PvpFlag {
  */
 export function markAggressor(attacker: Combatant, target: Combatant): void {
   if (attacker.kind !== 'player' || target.kind !== 'player') return;
+  if (belowGround(attacker)) return;
   if (flagFor(target) !== 'white') return;
 
   attacker.purpleFor = PURPLE_SECONDS;
@@ -84,9 +86,26 @@ export function markAggressor(attacker: Combatant, target: Combatant): void {
  */
 export function punishKill(killer: Combatant, victim: Combatant): void {
   if (killer.kind !== 'player' || victim.kind !== 'player') return;
+  if (belowGround(killer)) return;
   if (flagFor(victim) !== 'white') return;
 
   killer.karma += KARMA_PER_KILL;
+}
+
+/**
+ * Внизу флаги не действуют — там все всем враги.
+ *
+ * Это замысел вылазки, а не послабление: подземелье и есть место, где встреча
+ * с человеком опаснее нежити, и раздумывать «а не покраснею ли я» там некогда.
+ * Наверху же всё остаётся как было — карма и фиолетовый живут своей жизнью
+ * и вниз не смотрят.
+ *
+ * Проверяется по инстансу, а не по координатам: это правило **про место
+ * действия**, а не про точку на карте. Цвет ника при этом не скрываем — он
+ * говорит о человеке, а не о зале, в котором тот стоит.
+ */
+function belowGround(combatant: Combatant): boolean {
+  return isDungeon(combatant.instanceId);
 }
 
 /**
