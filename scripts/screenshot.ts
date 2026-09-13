@@ -57,6 +57,19 @@ try {
 
   // Ждём загрузку моделей и пару секунд игры.
   await wait(12000);
+
+  /**
+   * Второй аргумент — что открыть перед снимком.
+   *
+   * Панели живут за клавишей, и снять их иначе нельзя: мышь захвачена,
+   * а интерфейс поверх мира. Пока был только мир, аргумента не требовалось.
+   */
+  const open = process.argv[3];
+  if (open === 'inventory') {
+    await page.keyboard.press('Tab');
+    await wait(1200);
+  }
+
   await page.screenshot({ path: OUTPUT });
   console.log(`снимок сохранён: ${OUTPUT}`);
 } finally {

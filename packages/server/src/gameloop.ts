@@ -16,6 +16,7 @@ import {
   itemDef,
   gainExperience,
   experienceFor,
+  addProgress,
   movementSpeedFactor,
   isItemId,
   KARMA_DECAY_PER_SECOND,
@@ -96,6 +97,13 @@ export interface Outbox {
    * чего уже нет.
    */
   bank: Player[];
+  /**
+   * Игроки, у которых изменилась прокачка.
+   *
+   * Панель навыков живёт своим сообщением, а не снапшотом: числа меняются
+   * пару раз в секунду, а в снапшоте ехали бы двадцать — и семью строками.
+   */
+  progress: Player[];
   /** Игроки, которых надо немедленно записать в базу (смерть — критичное событие). */
   criticalSaves: Player[];
 }
@@ -111,6 +119,7 @@ export function emptyOutbox(): Outbox {
     gathering: [],
     itemErrors: [],
     bank: [],
+    progress: [],
     criticalSaves: [],
   };
 }
@@ -676,8 +685,18 @@ function handleDeath(
   if (!mob) return;
 
   killMob(mob);
-  // Цену победы назначает убитый: крыса учит на пятёрку, огр на сорок три.
-  grantExperience(world, killerId, skillOfKiller(world, killerId), experienceFor(mob.profile), outbox);
+
+  /**
+   * Победа кормит обе дорожки, и по-разному.
+   *
+   * Навык растёт от того, **чем** дрался, — он про умение. Опыт персонажа
+   * идёт в общий котёл, и из него выходят очки, которые игрок вкладывает
+   * сам, — он про выбор, каким быть. Одна и та же цена моба, два разных
+   * смысла.
+   */
+  const reward = experienceFor(mob.profile);
+  grantExperience(world, killerId, skillOfKiller(world, killerId), reward, outbox);
+  grantProgress(world, killerId, reward, outbox);
 
   const killer = world.playerByCombatantId(killerId);
   if (!killer) return;
@@ -875,22 +894,40 @@ function grantExperience(
 
   const result = gainExperience(player.skills[skill], amount);
   player.skills[skill] = result.progress;
-  if (result.levelsGained === 0) return;
-
-  /**
-   * Уровень вырос — тело окрепло.
-   *
-   * Пересчитываем здесь же: посчитай пределы только при входе, и полоса
-   * вырастет лишь после перезахода, а до того будет врать. Само здоровье
-   * не доливаем — прокачка не лечит.
-   */
-  player.maxima = vitalsFor(player.attributes, player.skills);
-
   player.dirty = true;
+  // Числа в панели изменились — панель должна это увидеть.
+  outbox.progress.push(player);
+
+  if (result.levelsGained === 0) return;
   outbox.skillUps.push({
     playerId: player.id,
     message: { t: 'skillUp', skill, level: result.progress.level },
   });
+}
+
+/**
+ * Опыт персонажа за победу — и очки, если набралось.
+ *
+ * Отдельно от навыков намеренно: навык учится действием, а очко зарабатывается
+ * победой. Перепутай источники — и качаться можно будет, колотя воздух.
+ */
+function grantProgress(world: World, combatantId: string, amount: number, outbox: Outbox): void {
+  const player = world.playerByCombatantId(combatantId);
+  if (!player) return;
+
+  const result = addProgress(player.progress, amount);
+  player.progress = result.progress;
+  player.dirty = true;
+  outbox.progress.push(player);
+
+  if (result.gained === 0) return;
+  // Очко, о котором не сказали, — это очко, которое не вложат.
+  outbox.itemErrors.push({
+    playerId: player.id,
+    message: result.gained === 1 ? 'Есть очко роста' : `Очков роста: +${result.gained}`,
+  });
+  // Заработанное очко — ценность: падение сервера не должно его отменить.
+  outbox.criticalSaves.push(player);
 }
 
 /**

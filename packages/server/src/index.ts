@@ -19,7 +19,7 @@ import { endTrade, tradeMessages } from './commands/trade.js';
 import { Persistence } from './persistence.js';
 import { Session } from './session.js';
 import { SqliteStorage } from './storage/sqlite.js';
-import { World, type Trade } from './world.js';
+import { World, progressMessage, type Trade } from './world.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
@@ -159,6 +159,10 @@ wss.on('connection', (socket) => {
       if (event.type === 'itemError') {
         session.send({ t: 'itemError', message: String(event.reason) });
       }
+      // Прокачка изменилась — панель навыков обязана это увидеть.
+      if (event.type === 'progress') {
+        session.send(progressMessage(player));
+      }
       // Стрелки перевели — время суток общее, значит знать об этом должны все,
       // а не только тот, кто их перевёл.
       if (event.type === 'daytime') {
@@ -236,6 +240,9 @@ setInterval(() => {
       grid: containerGrid(world, player) ?? player.bank,
       title: containerTitle(player),
     });
+  }
+  for (const player of new Set(outbox.progress)) {
+    sendTo(player.id, progressMessage(player));
   }
   for (const entry of outbox.itemErrors) {
     sendTo(entry.playerId, { t: 'itemError', message: entry.message });

@@ -42,6 +42,12 @@ import {
   type SelfState,
   type SkillId,
   type SkillProgress,
+  type Progress,
+  type ProgressMessage,
+  emptyProgress,
+  experienceForLevel,
+  pointCost,
+  totalPoints,
   type SpellId,
   type Equipment,
   type Grid,
@@ -222,6 +228,11 @@ export interface Player {
   maxima: { health: number; mana: number; stamina: number };
   combat: Combatant;
   skills: Record<SkillId, SkillProgress>;
+  /**
+   * Рост самого персонажа: накопленный опыт, нераспределённые очки и то,
+   * куда они вложены. Навыки учатся сами, а это — выбор игрока.
+   */
+  progress: Progress;
   /** Секунд до возможности воскреснуть. */
   deadFor: number;
   /**
@@ -382,6 +393,7 @@ export class World {
     equipment?: Equipment;
     knownRecipes?: RecipeId[];
     skills?: Record<SkillId, SkillProgress>;
+    progress?: Progress;
     karma?: number;
     purpleFor?: number;
     hotbar?: Hotbar;
@@ -398,9 +410,10 @@ export class World {
 
     const id = `p${this.nextId++}`;
     const skills = character.skills ?? emptySkillBook();
+    const progress = character.progress ?? emptyProgress();
     // Тело закаляется прокачкой: чем больше уровней в книге навыков, тем
     // выше пределы. Считаем при входе и потом пересчитываем при каждом росте.
-    const maxima = vitalsFor(attributes, skills);
+    const maxima = vitalsFor(attributes, progress);
 
     const player: Player = {
       id,
@@ -424,6 +437,7 @@ export class World {
       attributes,
       maxima,
       skills,
+      progress,
       deadFor: 0,
       torchLeft: 0,
       spellCooldowns: {},
@@ -1133,15 +1147,34 @@ function defaultHotbar(characterClass: CharacterClass): Hotbar {
  */
 export function vitalsFor(
   attributes: Attributes,
-  skills: Record<SkillId, SkillProgress>,
+  progress: Progress,
 ): { health: number; mana: number; stamina: number } {
-  let levels = 0;
-  for (const progress of Object.values(skills)) levels += progress.level;
-
   return {
-    health: maxHealth(attributes, levels),
-    mana: maxMana(attributes, levels),
-    stamina: maxStamina(attributes, levels),
+    health: maxHealth(attributes, progress.spent),
+    mana: maxMana(attributes, progress.spent),
+    stamina: maxStamina(attributes, progress.spent),
+  };
+}
+
+/**
+ * Прокачка целиком: навыки и рост персонажа.
+ *
+ * Считается по месту отправки, а не хранится: числа лежат у игрока, и держать
+ * их вторую копию значит однажды показать устаревшую.
+ */
+export function progressMessage(player: Player): ProgressMessage {
+  return {
+    t: 'progress',
+    skills: (Object.keys(SKILLS) as SkillId[]).map((skill) => ({
+      skill,
+      level: player.skills[skill].level,
+      experience: Math.round(player.skills[skill].experience),
+      next: experienceForLevel(player.skills[skill].level),
+    })),
+    pool: Math.round(player.progress.pool),
+    toPoint: pointCost(totalPoints(player.progress)),
+    points: player.progress.points,
+    spent: { ...player.progress.spent },
   };
 }
 

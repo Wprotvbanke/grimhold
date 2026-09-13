@@ -2,6 +2,9 @@ import {
   DASH_WEIGHT_LIMIT,
   EQUIP_SLOTS,
   HOTBAR_SIZE,
+  SKILLS,
+  type ProgressMessage,
+  type Vital,
   recipesForRace,
   type Race,
   type RecipeId,
@@ -67,6 +70,8 @@ export interface InventoryHandlers {
   onTradeRespond(accept: boolean): void;
   /** Уйти от стола. */
   onTradeCancel(): void;
+  /** Вложить очко роста. Есть ли оно — решает сервер. */
+  onSpendPoint(into: Vital): void;
   /** Закрытие рюкзака возвращает управление игрой. */
   onClose(): void;
 }
@@ -109,6 +114,8 @@ export class InventoryUi {
   private readonly tradeCol = el<HTMLDivElement>('tradeCol');
   private readonly craftCol = el<HTMLDivElement>('craftCol');
   private readonly helpCol = el<HTMLDivElement>('helpCol');
+  private readonly skillCol = el<HTMLDivElement>('skillCol');
+  private readonly skillList = el<HTMLDivElement>('skillList');
 
   private state: InventoryMessage | null = null;
   /** Раса персонажа: от неё зависит, какие рецепты вообще показывать. */
@@ -233,9 +240,10 @@ export class InventoryUi {
     if (message.open) this.bankTitle.textContent = message.title;
     this.bankCol.hidden = !message.open;
     // Казна велика, и впятером колонки не помещаются даже в широкий экран.
-    // У сундука ремесло и справка не нужны — человек пришёл убрать добычу.
+    // У сундука ремесло, справка и рост не нужны — человек пришёл убрать добычу.
     this.craftCol.hidden = message.open;
     this.helpCol.hidden = message.open;
+    this.skillCol.hidden = message.open;
     if (!message.open) {
       this.bankGrid = null;
       this.bankCells.replaceChildren();
@@ -261,6 +269,7 @@ export class InventoryUi {
     this.tradeCol.hidden = closed;
     this.craftCol.hidden = !closed;
     this.helpCol.hidden = !closed;
+    this.skillCol.hidden = !closed;
 
     if (closed) {
       if (message.note) this.showError(message.note);
@@ -304,6 +313,65 @@ export class InventoryUi {
    * по известной длительности — сервер остаётся хозяином конца, но не тратит
    * на шкалу ни одного лишнего пакета.
    */
+  /**
+   * Прокачка: очки роста сверху, навыки под ними.
+   *
+   * Панель перерисовывается целиком на каждое сообщение. Это дёшево — семь
+   * строк и раз в несколько секунд, — зато нет состояния, которое можно
+   * забыть обновить: показанное всегда равно присланному.
+   */
+  setProgress(message: ProgressMessage): void {
+    const toPoint = Math.max(1, message.toPoint);
+    el<HTMLSpanElement>('pointText').textContent = `Опыт ${message.pool} / ${toPoint}`;
+    el<HTMLSpanElement>('pointCount').textContent =
+      message.points > 0 ? `очков: ${message.points}` : '';
+    el<HTMLElement>('pointFill').style.transform = `scaleX(${Math.min(1, message.pool / toPoint)})`;
+
+    // Кнопки гаснут, когда вкладывать нечего: отказ после нажатия объясняет
+    // хуже, чем видимая невозможность до него.
+    for (const [id, into] of [
+      ['spendHealth', 'health'],
+      ['spendStamina', 'stamina'],
+      ['spendMana', 'mana'],
+    ] as [string, Vital][]) {
+      const button = el<HTMLButtonElement>(id);
+      button.disabled = message.points <= 0;
+      button.onclick = () => this.handlers.onSpendPoint(into);
+    }
+
+    const { health, stamina, mana } = message.spent;
+    el<HTMLDivElement>('pointSpent').textContent =
+      health + stamina + mana === 0
+        ? 'Ничего ещё не вложено'
+        : `Вложено: жизнь ${health}, стамина ${stamina}, мана ${mana}`;
+
+    this.skillList.replaceChildren();
+    for (const entry of message.skills) {
+      const row = document.createElement('div');
+      row.className = 'skill-row';
+      // Нетронутый навык приглушён: он просто есть, а не просит внимания.
+      if (entry.level === 0 && entry.experience === 0) row.classList.add('idle');
+
+      const head = document.createElement('div');
+      head.className = 'skill-head';
+
+      const name = document.createElement('b');
+      name.textContent = SKILLS[entry.skill].name;
+      const numbers = document.createElement('span');
+      numbers.textContent = `${entry.level} · ${entry.experience}/${entry.next}`;
+      head.append(name, numbers);
+
+      const bar = document.createElement('div');
+      bar.className = 'skill-bar';
+      const fill = document.createElement('i');
+      fill.style.transform = `scaleX(${Math.min(1, entry.experience / Math.max(1, entry.next))})`;
+      bar.append(fill);
+
+      row.append(head, bar);
+      this.skillList.append(row);
+    }
+  }
+
   setCrafting(message: CraftingMessage): void {
     if (message.note) this.showError(message.note);
 

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_SKILL_LEVEL,
   MOBS,
-  PROGRESS_CAP,
+  addProgress,
   attributesFor,
+  emptyProgress,
+  pointCost,
+  spendPoint,
   experienceFor,
   experienceForLevel,
   gainExperience,
@@ -59,29 +62,78 @@ describe('кривая опыта', () => {
   });
 });
 
-describe('тело крепнет от прокачки', () => {
+describe('тело растёт вложенными очками', () => {
   const attributes = attributesFor('human', 'warrior');
 
-  it('новичок слабее ветерана, но не вдвое', () => {
+  it('вложенное очко прибавляет, невложенное — нет', () => {
     const green = maxHealth(attributes);
-    const veteran = maxHealth(attributes, PROGRESS_CAP);
+    const spent = maxHealth(attributes, { health: 10, stamina: 0, mana: 0 });
 
-    expect(veteran).toBeGreaterThan(green);
-    expect(veteran).toBeLessThan(green * 2);
+    expect(spent).toBeGreaterThan(green);
+    // Очки в другое здоровья не прибавляют: выбор должен быть настоящим.
+    expect(maxHealth(attributes, { health: 0, stamina: 10, mana: 10 })).toBe(green);
+  });
+
+  it('и ветеран крепче новичка, но не вдвое', () => {
+    const green = maxHealth(attributes);
+    const veteran = maxHealth(attributes, { health: 10, stamina: 0, mana: 0 });
+    expect(veteran).toBeLessThan(green * 1.5);
   });
 
   it('растут все три предела', () => {
-    expect(maxStamina(attributes, PROGRESS_CAP)).toBeGreaterThan(maxStamina(attributes));
-    expect(maxMana(attributes, PROGRESS_CAP)).toBeGreaterThan(maxMana(attributes));
+    expect(maxStamina(attributes, { health: 0, stamina: 5, mana: 0 })).toBeGreaterThan(
+      maxStamina(attributes),
+    );
+    expect(maxMana(attributes, { health: 0, stamina: 0, mana: 5 })).toBeGreaterThan(
+      maxMana(attributes),
+    );
+  });
+});
+
+describe('очки персонажа', () => {
+  it('первое даётся за несколько боёв, десятое — за сотни', () => {
+    expect(pointCost(0)).toBeLessThan(experienceFor(MOBS.wight) * 6);
+    expect(pointCost(9)).toBeGreaterThan(pointCost(0) * 5);
   });
 
-  it('выше потолка не растёт', () => {
-    expect(maxHealth(attributes, PROGRESS_CAP * 3)).toBe(maxHealth(attributes, PROGRESS_CAP));
+  it('каждое следующее дороже предыдущего', () => {
+    for (const earned of [0, 1, 5, 20, 49]) {
+      expect(pointCost(earned + 1)).toBeGreaterThan(pointCost(earned));
+    }
   });
 
-  it('пустая книга навыков ничего не прибавляет', () => {
-    // И не отнимает: отрицательная сумма — это испорченные данные, а не штраф.
-    expect(maxHealth(attributes, 0)).toBe(maxHealth(attributes));
-    expect(maxHealth(attributes, -50)).toBe(maxHealth(attributes));
+  it('опыт копится и превращается в очки', () => {
+    const fresh = emptyProgress();
+    const little = addProgress(fresh, pointCost(0) - 1);
+    expect(little.gained).toBe(0);
+    expect(little.progress.points).toBe(0);
+
+    const enough = addProgress(little.progress, 1);
+    expect(enough.gained).toBe(1);
+    expect(enough.progress.pool).toBe(0);
+  });
+
+  it('крупная награда даёт сразу несколько очков', () => {
+    const rich = addProgress(emptyProgress(), pointCost(0) + pointCost(1) + pointCost(2));
+    expect(rich.gained).toBe(3);
+  });
+
+  it('цена растёт и от уже вложенных очков', () => {
+    // Иначе вложил — и следующее снова дёшево: счёт надо вести по всем очкам.
+    const veteran = { pool: 0, points: 0, spent: { health: 5, stamina: 0, mana: 0 } };
+    const cheap = addProgress(emptyProgress(), pointCost(0));
+    const dear = addProgress(veteran, pointCost(0));
+
+    expect(cheap.gained).toBe(1);
+    expect(dear.gained).toBe(0);
+  });
+
+  it('вложить нечего — вложения нет', () => {
+    expect(spendPoint(emptyProgress(), 'health')).toBeNull();
+
+    const ready = addProgress(emptyProgress(), pointCost(0)).progress;
+    const after = spendPoint(ready, 'health')!;
+    expect(after.points).toBe(0);
+    expect(after.spent.health).toBe(1);
   });
 });

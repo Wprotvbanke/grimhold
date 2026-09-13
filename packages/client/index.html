@@ -363,6 +363,53 @@
       .stat-line { font-size: 11px; color: var(--dim); }
       .stat-line b { color: #cfc4a8; font-weight: 500; }
       .inv-hint { font-size: 10px; color: #6f6a60; line-height: 1.6; max-width: 200px; }
+
+      /* ---------- рост персонажа ---------- */
+      #skillCol { width: 210px; }
+      #pointBox {
+        padding: 8px 9px; border: 1px solid var(--line); border-radius: 4px;
+        background: rgba(10, 10, 12, 0.6);
+      }
+      .point-head {
+        display: flex; justify-content: space-between; align-items: baseline;
+        font-size: 11px; color: #c9c0ad; margin-bottom: 5px;
+      }
+      #pointCount { color: var(--gold); }
+      .point-bar {
+        height: 6px; border-radius: 2px; overflow: hidden;
+        background: rgba(6, 6, 8, 0.8); border: 1px solid #2b2721;
+      }
+      .point-bar > i {
+        display: block; height: 100%; width: 100%; transform-origin: left center;
+        background: linear-gradient(90deg, #6b5a2a, #c2ac74); transform: scaleX(0);
+      }
+      .point-buttons { display: flex; gap: 4px; margin-top: 7px; }
+      /* Кнопки узкие и в ряд: их три, и ряд должен читаться одним взглядом. */
+      .point-buttons button {
+        flex: 1; width: auto; margin: 0; padding: 4px 2px; font: inherit; font-size: 10px;
+        font-weight: 400; letter-spacing: normal; cursor: pointer;
+        background: #1d1d24; color: #c9c0ad; border: 1px solid var(--line); border-radius: 3px;
+      }
+      .point-buttons button:hover:not(:disabled) { border-color: var(--gold); color: #e6dcc4; }
+      /* Вкладывать нечего — видно до нажатия, а не по отказу после. */
+      .point-buttons button:disabled { opacity: 0.35; cursor: default; }
+      .point-spent { margin-top: 6px; font-size: 10px; color: var(--dim); }
+
+      #skillList { display: flex; flex-direction: column; gap: 6px; }
+      .skill-row { font-size: 11px; color: #a99e86; }
+      .skill-head { display: flex; justify-content: space-between; align-items: baseline; }
+      .skill-head b { color: #d5c9ab; font-weight: 500; }
+      .skill-head span { font-size: 10px; color: var(--dim); }
+      .skill-bar {
+        height: 4px; margin-top: 2px; border-radius: 2px; overflow: hidden;
+        background: rgba(6, 6, 8, 0.8); border: 1px solid #2b2721;
+      }
+      .skill-bar > i {
+        display: block; height: 100%; width: 100%; transform-origin: left center;
+        background: linear-gradient(90deg, #4a5a6b, #7e97ad); transform: scaleX(0);
+      }
+      /* Нетронутый навык не должен кричать: он просто есть. */
+      .skill-row.idle { opacity: 0.45; }
       #itemError { min-height: 16px; font-size: 11px; color: #d08a72; }
 
       #chat {
@@ -599,6 +646,32 @@
           <p class="inv-hint" id="craftHint">
             Простое делается где угодно и без рецепта. Остальное — по свиткам,
             и только своей расой.
+          </p>
+        </div>
+
+        <div class="inv-col" id="skillCol">
+          <div class="inv-title">Рост</div>
+
+          <!-- Сперва то, что требует решения: очки. Навыки растут сами,
+               смотреть на них можно и вторым делом. -->
+          <div id="pointBox">
+            <div class="point-head">
+              <span id="pointText">Опыт</span>
+              <span id="pointCount"></span>
+            </div>
+            <div class="point-bar"><i id="pointFill"></i></div>
+            <div class="point-buttons">
+              <button id="spendHealth">+ Жизнь</button>
+              <button id="spendStamina">+ Стамина</button>
+              <button id="spendMana">+ Мана</button>
+            </div>
+            <div class="point-spent" id="pointSpent"></div>
+          </div>
+
+          <div id="skillList"></div>
+          <p class="inv-hint">
+            Навыки растут сами от того, чем пользуешься: бьёшь мечом — растёт
+            клинок. Очки роста даются за победы, и куда их вложить — решаешь ты.
           </p>
         </div>
 

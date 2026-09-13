@@ -1,6 +1,7 @@
 import type { ClientMessage } from '@grimhold/shared';
 import { handleAction, handleBlock, handleCast } from './action.js';
 import { handleAdmin } from './admin.js';
+import { handleSpendPoint } from './progress.js';
 import { handleBankMove, handleCloseBank, handleOpenBag, handleOpenBank } from './bank.js';
 import { handleChat } from './chat.js';
 import { handleOpenChest } from './chest.js';
@@ -43,6 +44,8 @@ export function dispatch(ctx: CommandContext, message: ClientMessage): GameEvent
       return handleChat(ctx, message);
     case 'admin':
       return handleAdmin(ctx, message);
+    case 'spendPoint':
+      return handleSpendPoint(ctx, message);
     case 'action':
       return handleAction(ctx, message);
     case 'block':

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SPAWN_POINT } from '@grimhold/shared';
+import { SPAWN_POINT, addProgress, pointCost, spendPoint } from '@grimhold/shared';
 import { SqliteStorage } from '../src/storage/sqlite.js';
 
 /**
@@ -78,5 +78,40 @@ describe('прокачка переживает перезаход', () => {
     expect(loaded.skills.blade).toEqual({ level: 17, experience: 42 });
     // Нетронутые навыки остаются на нуле, а не пропадают из книги.
     expect(loaded.skills.archery).toEqual({ level: 0, experience: 0 });
+  });
+});
+
+describe('очки роста', () => {
+  it('копятся, вкладываются и переживают перезаход', () => {
+    const db = storage();
+    const account = db.createAccount('Копитель', 'hash', 'salt');
+    const character = db.createCharacter(account.id, 'Копитель', 'human', 'warrior', SPAWN_POINT);
+
+    // Свежий персонаж начинает с пустого роста, а не с пустоты в поле.
+    expect(character.progress).toEqual({ pool: 0, points: 0, spent: { health: 0, stamina: 0, mana: 0 } });
+
+    const earned = addProgress(character.progress, pointCost(0)).progress;
+    const spent = spendPoint(earned, 'health')!;
+    db.saveCharacters([{ ...character, progress: spent }]);
+
+    expect(db.getCharacter(character.id)!.progress.spent.health).toBe(1);
+  });
+
+  it('испорченная строка не выдаёт лишнего', () => {
+    const db = storage();
+    const account = db.createAccount('Хитрец', 'hash', 'salt');
+    const character = db.createCharacter(account.id, 'Хитрец', 'human', 'warrior', SPAWN_POINT);
+
+    db.saveCharacters([
+      {
+        ...character,
+        progress: { pool: -5, points: 2.7, spent: { health: -3, stamina: 1, mana: 0 } },
+      },
+    ]);
+
+    const loaded = db.getCharacter(character.id)!.progress;
+    expect(loaded.pool).toBe(0);
+    expect(loaded.points).toBe(2);
+    expect(loaded.spent.health).toBe(0);
   });
 });

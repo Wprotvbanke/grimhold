@@ -12,6 +12,7 @@ import {
   type LifeMessage,
   type InventoryMessage,
   type LootMessage,
+  type ProgressMessage,
   type SkillUpMessage,
   type ClientMessage,
   type ServerMessage,
@@ -36,6 +37,8 @@ export interface ConnectionHandlers {
   onCrafting?(message: CraftingMessage): void;
   onGathering?(message: GatheringMessage): void;
   onWorld?(message: WorldMessage): void;
+  /** Прокачка: навыки и очки роста. Приходит при входе и при изменении. */
+  onProgress?(message: ProgressMessage): void;
   /** Ведущий перевёл стрелки — час суток стал другим у всех сразу. */
   onDaytime?(shift: number): void;
   onItemError?(message: string): void;
@@ -115,6 +118,9 @@ export class Connection {
           break;
         case 'world':
           this.handlers.onWorld?.(message);
+          break;
+        case 'progress':
+          this.handlers.onProgress?.(message);
           break;
         case 'daytime':
           this.handlers.onDaytime?.(message.shift);

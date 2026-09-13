@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 25;
+export const PROTOCOL_VERSION = 26;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -129,6 +129,18 @@ export const RespawnSchema = z.object({
  * это удобство, а не пропуск. Присланная кем угодно команда просто
  * не выполнится.
  */
+/**
+ * Вложить очко роста.
+ *
+ * Клиент говорит только «во что», остальное считает сервер: есть ли очко,
+ * сколько оно даёт, каким стал предел. Панель у игрока — удобство, а не
+ * источник правды.
+ */
+export const SpendPointSchema = z.object({
+  t: z.literal('spendPoint'),
+  into: z.enum(['health', 'stamina', 'mana']),
+});
+
 export const AdminSchema = z.object({
   t: z.literal('admin'),
   do: z.enum(['give', 'time']),
@@ -371,6 +383,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   BlockSchema,
   CastSchema,
   RespawnSchema,
+  SpendPointSchema,
   AdminSchema,
   MoveItemSchema,
   EquipSchema,
@@ -685,6 +698,30 @@ export interface DaytimeMessage {
   shift: number;
 }
 
+/**
+ * Прокачка целиком: навыки и рост персонажа.
+ *
+ * Отдельным сообщением, а не в снапшоте: числа меняются от силы пару раз
+ * в секунду, а в снапшоте они ехали бы двадцать раз — и семью строками сразу.
+ * Приходит при входе и при каждом изменении, так что панель всегда свежая.
+ */
+export interface ProgressMessage {
+  t: 'progress';
+  skills: {
+    skill: SkillId;
+    level: number;
+    /** Опыт на текущем уровне и сколько нужно, чтобы уйти на следующий. */
+    experience: number;
+    next: number;
+  }[];
+  /** Опыт персонажа, накопленный к следующему очку, и его цена. */
+  pool: number;
+  toPoint: number;
+  /** Нераспределённые очки и то, куда уже вложено. */
+  points: number;
+  spent: { health: number; stamina: number; mana: number };
+}
+
 export interface WorldMessage {
   t: 'world';
   instanceId: string;
@@ -823,6 +860,7 @@ export type ServerMessage =
   | CraftingMessage
   | GatheringMessage
   | WorldMessage
+  | ProgressMessage
   | DaytimeMessage
   | ItemErrorMessage
   | ErrorMessage;

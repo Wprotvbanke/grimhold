@@ -13,6 +13,7 @@ import {
   isRecipeId,
   MAX_SKILL_LEVEL,
   SKILLS,
+  emptyProgress,
   itemDef,
   sanitizeGrid,
   sanitizeHotbar,
@@ -23,6 +24,7 @@ import {
   type PlacedItem,
   type Race,
   type RecipeId,
+  type Progress,
   type SkillId,
   type SkillProgress,
 } from '@grimhold/shared';
@@ -67,6 +69,7 @@ const SCHEMA = `
     equipment        TEXT NOT NULL DEFAULT '',
     known_recipes    TEXT NOT NULL DEFAULT '',
     skills           TEXT NOT NULL DEFAULT '',
+    progress         TEXT NOT NULL DEFAULT '',
     karma            REAL NOT NULL DEFAULT 0,
     purple_for       REAL NOT NULL DEFAULT 0,
     hotbar           TEXT NOT NULL DEFAULT ''
@@ -100,6 +103,8 @@ const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   // Прокачка переживает перезаход. Пока столбца не было, каждый вход обнулял
   // всё нажитое — а до сотого уровня одного навыка идут тысячи боёв.
   { table: 'characters', column: 'skills', definition: "TEXT NOT NULL DEFAULT ''" },
+  // Очки роста — заработанная ценность, теряться при обновлении они не вправе.
+  { table: 'characters', column: 'progress', definition: "TEXT NOT NULL DEFAULT ''" },
 ];
 
 /**
@@ -143,6 +148,7 @@ interface CharacterRow {
   equipment: string;
   known_recipes: string;
   skills: string;
+  progress: string;
   karma: number;
   purple_for: number;
   hotbar: string;
@@ -248,6 +254,7 @@ export class SqliteStorage implements Storage {
       equipment: {},
       knownRecipes: [],
       skills: emptySkillBook(),
+      progress: emptyProgress(),
       hotbar: createHotbar(),
       karma: 0,
       purpleFor: 0,
@@ -258,8 +265,8 @@ export class SqliteStorage implements Storage {
         `INSERT INTO characters
            (id, account_id, name, race, class, x, y, z, yaw, instance_id,
             created_at, last_seen_at, playtime_seconds, inventory, equipment, known_recipes,
-            skills, hotbar)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            skills, progress, hotbar)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -279,6 +286,7 @@ export class SqliteStorage implements Storage {
         JSON.stringify(record.equipment),
         JSON.stringify(record.knownRecipes),
         JSON.stringify(record.skills),
+        JSON.stringify(record.progress),
         JSON.stringify(record.hotbar),
       );
 
@@ -296,7 +304,8 @@ export class SqliteStorage implements Storage {
     const statement = this.db.prepare(
       `UPDATE characters
           SET x = ?, y = ?, z = ?, yaw = ?, last_seen_at = ?, playtime_seconds = ?,
-              inventory = ?, equipment = ?, known_recipes = ?, skills = ?, hotbar = ?,
+              inventory = ?, equipment = ?, known_recipes = ?, skills = ?, progress = ?,
+              hotbar = ?,
               karma = ?, purple_for = ?, instance_id = ?
         WHERE id = ?`,
     );
@@ -315,6 +324,7 @@ export class SqliteStorage implements Storage {
           JSON.stringify(save.equipment),
           JSON.stringify(save.knownRecipes),
           JSON.stringify(save.skills),
+          JSON.stringify(save.progress),
           JSON.stringify(save.hotbar),
           save.karma,
           save.purpleFor,
@@ -381,6 +391,7 @@ function toCharacter(row: CharacterRow): CharacterRecord {
     inventory: sanitizeGrid(parseJson(row.inventory), BACKPACK_WIDTH, BACKPACK_HEIGHT),
     equipment: sanitizeEquipment(parseJson(row.equipment)),
     skills: sanitizeSkills(parseJson(row.skills)),
+    progress: sanitizeProgress(parseJson(row.progress)),
     knownRecipes: sanitizeRecipes(parseJson(row.known_recipes)),
     karma: Math.max(0, row.karma ?? 0),
     purpleFor: Math.max(0, row.purple_for ?? 0),
@@ -458,6 +469,32 @@ function sanitizeSkills(raw: unknown): Record<SkillId, SkillProgress> {
     };
   }
   return book;
+}
+
+/**
+ * Рост персонажа из базы.
+ *
+ * Очки — это часы игры, поэтому отрицательные и дробные значения
+ * отбрасываются молча, а не «чинятся» на глазок: испорченная строка не должна
+ * ни отнять заработанное, ни выдать лишнего.
+ */
+function sanitizeProgress(raw: unknown): Progress {
+  const empty = emptyProgress();
+  if (!raw || typeof raw !== 'object') return empty;
+
+  const source = raw as Progress;
+  const whole = (value: unknown): number =>
+    Number.isFinite(value) ? Math.max(0, Math.floor(value as number)) : 0;
+
+  return {
+    pool: Number.isFinite(source.pool) ? Math.max(0, source.pool) : 0,
+    points: whole(source.points),
+    spent: {
+      health: whole(source.spent?.health),
+      stamina: whole(source.spent?.stamina),
+      mana: whole(source.spent?.mana),
+    },
+  };
 }
 
 /** Пустая книга: все навыки на нуле. */

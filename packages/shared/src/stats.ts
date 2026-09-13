@@ -1,4 +1,11 @@
 import type { CharacterClass } from './classes.js';
+import {
+  HEALTH_PER_POINT,
+  MANA_PER_POINT,
+  STAMINA_PER_POINT,
+  noPoints,
+  type SpentPoints,
+} from './progress.js';
 import type { Race } from './races.js';
 
 /**
@@ -49,48 +56,29 @@ export function attributesFor(race: Race, characterClass: CharacterClass): Attri
 // ---------- производные характеристики ----------
 
 /**
- * Насколько прокачка закаляет тело.
+ * Тело растёт **вложенными очками**, а не само.
  *
- * Атрибуты не растут — это замысел: раса и класс задают уклон один раз
- * и навсегда, а сила приходит от навыков и вещей. Но **тело от боёв
- * всё-таки крепнет**, и без этого прокачка не чувствуется ничем, кроме
- * цифр урона.
+ * Атрибуты не меняются никогда — раса и класс задают уклон один раз. Зато
+ * за победы копится опыт персонажа, из него выходят очки, и каждое очко игрок
+ * кладёт туда, куда хочет: в жизнь, стамину или ману. Устройство и цена —
+ * `progress.ts`.
  *
- * Считается от **суммы уровней всех навыков**, а не от лучшего: вклад даёт
- * любое занятие, и лекарь с щитом закаляется не хуже мечника. Потолок —
- * `PROGRESS_CAP`, четыреста уровней: это тысячи боёв, и дойти до него
- * не должно быть делом недели.
- *
- * Прибавки нарочно скромные: у человека-воина здоровье растёт со 112 до 157.
- * Ветеран заметно крепче новичка, но не вдвое, — иначе вылазка с полной
- * потерей вещей перестала бы быть для новичка возможной.
+ * Прибавки скромные (`HEALTH_PER_POINT` и соседние): десять очков — это
+ * плюс тридцать здоровья при базовых ста двенадцати. Ветеран заметно крепче
+ * новичка, но не вдвое, — иначе вылазка с полной потерей вещей перестала бы
+ * быть для новичка возможной. Потолок ставит не число, а цена: каждое
+ * следующее очко дороже прошлого.
  */
-export const PROGRESS_CAP = 400;
-const HEALTH_FROM_PROGRESS = 45;
-const STAMINA_FROM_PROGRESS = 30;
-const MANA_FROM_PROGRESS = 40;
-
-/** Доля пройденного пути, 0..1. Пустая книга навыков даёт ноль. */
-export function progressShare(skillLevels = 0): number {
-  return Math.max(0, Math.min(1, skillLevels / PROGRESS_CAP));
+export function maxHealth(attributes: Attributes, spent: SpentPoints = noPoints()): number {
+  return Math.round(60 + attributes.endurance * 4 + spent.health * HEALTH_PER_POINT);
 }
 
-export function maxHealth(attributes: Attributes, skillLevels = 0): number {
-  return Math.round(
-    60 + attributes.endurance * 4 + HEALTH_FROM_PROGRESS * progressShare(skillLevels),
-  );
+export function maxMana(attributes: Attributes, spent: SpentPoints = noPoints()): number {
+  return Math.round(20 + attributes.intellect * 5 + spent.mana * MANA_PER_POINT);
 }
 
-export function maxMana(attributes: Attributes, skillLevels = 0): number {
-  return Math.round(
-    20 + attributes.intellect * 5 + MANA_FROM_PROGRESS * progressShare(skillLevels),
-  );
-}
-
-export function maxStamina(attributes: Attributes, skillLevels = 0): number {
-  return Math.round(
-    70 + attributes.endurance * 3 + STAMINA_FROM_PROGRESS * progressShare(skillLevels),
-  );
+export function maxStamina(attributes: Attributes, spent: SpentPoints = noPoints()): number {
+  return Math.round(70 + attributes.endurance * 3 + spent.stamina * STAMINA_PER_POINT);
 }
 
 /** Стамина в секунду. Восстанавливается только после паузы (см. STAMINA_IDLE_DELAY). */

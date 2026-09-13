@@ -89,6 +89,7 @@ export class Persistence {
       equipment: player.equipment,
       knownRecipes: player.knownRecipes,
       skills: player.skills,
+      progress: player.progress,
       instanceId: player.instanceId,
       karma: player.combat.karma,
       purpleFor: player.combat.purpleFor,

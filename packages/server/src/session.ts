@@ -15,7 +15,7 @@ import {
 import { hashPassword, verifyPassword } from './auth.js';
 import type { Persistence } from './persistence.js';
 import type { Storage, CharacterRecord } from './storage/types.js';
-import { OVERWORLD, type Player, type World } from './world.js';
+import { OVERWORLD, progressMessage, type Player, type World } from './world.js';
 
 /**
  * Кто ведёт мир.
@@ -212,6 +212,9 @@ export class Session {
     });
     // Рюкзак нужен игроку сразу, а не после первого изменения.
     this.send(this.world.inventoryMessage(player));
+    // Прокачка — тоже: панель обязана быть заполненной с первого открытия,
+    // а не с первого убитого зверя.
+    this.send(progressMessage(player));
     console.log(`[мир] вошёл ${character.name}`);
   }
 

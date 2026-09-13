@@ -5,6 +5,7 @@ import type {
   Hotbar,
   Race,
   RecipeId,
+  Progress,
   SkillId,
   SkillProgress,
 } from '@grimhold/shared';
@@ -54,6 +55,8 @@ export interface CharacterRecord {
    * при том что до сотого уровня одного навыка идут тысячи боёв.
    */
   skills: Record<SkillId, SkillProgress>;
+  /** Рост персонажа: накопленный опыт, очки и то, куда они вложены. */
+  progress: Progress;
   karma: number;
   purpleFor: number;
   hotbar: Hotbar;
@@ -72,6 +75,7 @@ export interface CharacterSave {
   equipment: Equipment;
   knownRecipes: RecipeId[];
   skills: Record<SkillId, SkillProgress>;
+  progress: Progress;
   hotbar: Hotbar;
   karma: number;
   purpleFor: number;

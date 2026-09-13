@@ -179,6 +179,7 @@ const inventoryUi = new InventoryUi({
     connection.send({ t: 'bankMove', dir: 'deposit', x, y, toX: to?.x, toY: to?.y, rotate: to?.rotate }),
   onWithdraw: (x, y, to) =>
     connection.send({ t: 'bankMove', dir: 'withdraw', x, y, toX: to?.x, toY: to?.y, rotate: to?.rotate }),
+  onSpendPoint: (into) => connection.send({ t: 'spendPoint', into }),
   onBankArrange: (x, y, toX, toY, rotate) =>
     connection.send({ t: 'bankMove', dir: 'arrange', x, y, toX, toY, rotate }),
   onTradeOffer: (x, y) => connection.send({ t: 'tradeOffer', x, y }),
@@ -374,6 +375,7 @@ const connection = new Connection(SERVER_URL, {
     if (message.recipeId) game?.hands.beginWork(message.remaining);
     else game?.hands.endWork();
   },
+  onProgress: (message) => inventoryUi.setProgress(message),
   onDaytime: (shift) => {
     daytimeShift = shift;
   },

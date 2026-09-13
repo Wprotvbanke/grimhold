@@ -6,6 +6,7 @@ export * from './items.js';
 export * from './inventory.js';
 export * from './recipes.js';
 export * from './skills.js';
+export * from './progress.js';
 export * from './combat.js';
 export * from './pvp.js';
 export * from './spells.js';
