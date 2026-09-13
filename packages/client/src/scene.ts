@@ -273,7 +273,7 @@ function createExitHaze(): ExitHaze {
         map: texture,
         color: 0x4a2a22,
         transparent: true,
-        opacity: 0.14,
+        opacity: 0.22,
         depthWrite: false,
         // Туман сцены мглу трогает: вдали она обязана растворяться в нём,
         // иначе у входа в нишу видно её край.
@@ -308,7 +308,7 @@ function createExitHaze(): ExitHaze {
         cloud.sprite.scale.setScalar(cloud.size * (1 + sway * 0.06));
         // Чем ближе к стене, тем плотнее — и всё вместе тлеет вместе со знаком.
         const material = cloud.sprite.material as THREE.SpriteMaterial;
-        material.opacity = 0.13 * (0.7 + breath * 0.5);
+        material.opacity = 0.22 * (0.7 + breath * 0.5);
       }
     },
   };
