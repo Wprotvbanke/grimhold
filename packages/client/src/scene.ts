@@ -223,6 +223,125 @@ export interface World3D {
   loadedChunks: number;
 }
 
+/**
+ * Мгла у знака выхода.
+ *
+ * Общий туман сцены одинаков везде — он не умеет быть гуще в одном месте.
+ * Поэтому густота у ниши делается тем же способом, каким её делают все:
+ * несколько мягких пятен, всегда повёрнутых к игроку, с очень низкой
+ * непрозрачностью. Накладываясь друг на друга, они дают ощущение стоячего
+ * воздуха, а по отдельности их не разглядеть — в этом и смысл.
+ *
+ * Пятен намеренно мало. Каждое — большой прозрачный прямоугольник во весь
+ * экран вблизи, а это плата за заполнение: десяток таких стоит дороже, чем
+ * вся геометрия зала.
+ *
+ * Цвет — тёплый тёмный, не серый: мглу подсвечивает красный огонь портала,
+ * и серая на его фоне читается как грязное стекло.
+ */
+interface ExitHaze {
+  readonly group: THREE.Group;
+  /** `breath` — то же дыхание, что у знака: мгла живёт вместе с ним. */
+  update(elapsed: number, breath: number): void;
+}
+
+function createExitHaze(): ExitHaze {
+  const group = new THREE.Group();
+  group.visible = false;
+
+  const texture = hazeTexture();
+  const clouds: { sprite: THREE.Sprite; home: THREE.Vector3; drift: number; size: number }[] = [];
+
+  /**
+   * Раскладка: гуще всего у самой стены, реже — к выходу из ниши.
+   *
+   * Числа смещений от знака, а не мировые: ниша считается от стены, и мгла
+   * обязана переехать вместе с ней.
+   */
+  const spots: { x: number; y: number; z: number; size: number }[] = [
+    { x: 0, y: 1.3, z: 0.8, size: 7 },
+    { x: -1.9, y: 1, z: 1.6, size: 6 },
+    { x: 1.9, y: 1.1, z: 1.5, size: 6 },
+    { x: -0.8, y: 0.7, z: 3, size: 6.5 },
+    { x: 1, y: 0.8, z: 3.4, size: 6.5 },
+    { x: 0, y: 1.6, z: 5, size: 7 },
+  ];
+
+  for (const [index, spot] of spots.entries()) {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: texture,
+        color: 0x4a2a22,
+        transparent: true,
+        opacity: 0.14,
+        depthWrite: false,
+        // Туман сцены мглу трогает: вдали она обязана растворяться в нём,
+        // иначе у входа в нишу видно её край.
+        fog: true,
+      }),
+    );
+    sprite.scale.setScalar(spot.size);
+    const home = new THREE.Vector3(
+      DUNGEON_EXIT.x + spot.x,
+      spot.y,
+      DUNGEON_EXIT_WALL + spot.z,
+    );
+    sprite.position.copy(home);
+    group.add(sprite);
+    clouds.push({ sprite, home, drift: index * 1.7, size: spot.size });
+  }
+
+  return {
+    group,
+    update(elapsed, breath) {
+      for (const cloud of clouds) {
+        // Медленное дыхание воздуха: два несинхронных синуса, как у пламени.
+        // Случайности тут не нужно — рывок мглы читается как подёргивание.
+        const sway = Math.sin(elapsed * 0.13 + cloud.drift);
+        const lift = Math.sin(elapsed * 0.09 + cloud.drift * 1.7);
+
+        cloud.sprite.position.set(
+          cloud.home.x + sway * 0.5,
+          cloud.home.y + lift * 0.25,
+          cloud.home.z + lift * 0.4,
+        );
+        cloud.sprite.scale.setScalar(cloud.size * (1 + sway * 0.06));
+        // Чем ближе к стене, тем плотнее — и всё вместе тлеет вместе со знаком.
+        const material = cloud.sprite.material as THREE.SpriteMaterial;
+        material.opacity = 0.13 * (0.7 + breath * 0.5);
+      }
+    },
+  };
+}
+
+/** Пятно мглы: то же мягкое облако, что у огня, но с ещё более пологим краем. */
+let haze: THREE.Texture | null = null;
+
+function hazeTexture(): THREE.Texture | null {
+  // Вне браузера картинок нет: геометрию гоняют в Node, и рисовать там нечем.
+  if (typeof document === 'undefined') return null;
+  if (haze) return haze;
+
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+
+  const paint = canvas.getContext('2d')!;
+  const gradient = paint.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  // Край обязан сходить на нет задолго до границы картинки: иначе у пятна
+  // видно квадрат, и вся мгла превращается в набор прозрачных карточек.
+  gradient.addColorStop(0, 'rgba(255,255,255,0.75)');
+  gradient.addColorStop(0.45, 'rgba(255,255,255,0.28)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  paint.fillStyle = gradient;
+  paint.fillRect(0, 0, size, size);
+
+  haze = new THREE.CanvasTexture(canvas);
+  haze.colorSpace = THREE.SRGBColorSpace;
+  return haze;
+}
+
 export function createScene(): World3D {
   const scene = new THREE.Scene();
 
@@ -288,6 +407,9 @@ export function createScene(): World3D {
   exitMark.visible = false;
   scene.add(exitMark);
 
+  const exitHaze = createExitHaze();
+  scene.add(exitHaze.group);
+
   let instanceId = 'overworld';
   let underground = false;
   let terrain = new ChunkedWorld();
@@ -323,6 +445,7 @@ export function createScene(): World3D {
       // Портал светится только там, где он есть.
       portalLight.intensity = underground ? 9 : 0;
       exitMark.visible = underground;
+      exitHaze.group.visible = underground;
       terrain = new ChunkedWorld(
         underground ? generateDungeonChunk(dungeonSeed(next)) : undefined,
       );
@@ -383,6 +506,8 @@ export function createScene(): World3D {
         const breath = 0.78 + 0.22 * Math.sin(elapsed * 1.6);
         (exitMark.material as THREE.MeshBasicMaterial).opacity = breath;
         portalLight.intensity = 7 + breath * 4;
+        // Мгла у ниши дышит вместе со знаком: это его мгла, а не сырость.
+        exitHaze.update(elapsed, breath);
       }
 
       /**
