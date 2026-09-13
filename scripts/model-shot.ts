@@ -1,7 +1,7 @@
 /**
  * Снимок одной модели настоящим браузером.
  *
- *   npx tsx scripts/model-shot.ts gnome Walk [файл.png] [поворот°] [секунда]
+ *   npx tsx scripts/model-shot.ts gnome Walk [файл.png] [поворот°] [секунда] [отдаление]
  *
  * Первым идёт **имя** модели из public/models, а не путь: Git Bash переписывает
  * аргумент, начинающийся со слэша, в путь Windows — и загрузчик уходит искать
@@ -24,6 +24,8 @@ const CLIP = process.argv[3] ?? '';
 const OUTPUT = process.argv[4] ?? 'model.png';
 const TURN = process.argv[5] ?? '0';
 const AT = process.argv[6] ?? '3';
+/** Отдаление камеры: поза может увести модель далеко за её габариты в покое. */
+const ZOOM = process.argv[7] ?? '1';
 
 const browser = await puppeteer.launch({
   headless: true,
@@ -50,7 +52,7 @@ try {
 
   const address =
     `http://localhost:5173/model.html?src=${encodeURIComponent(SOURCE)}` +
-    `&clip=${encodeURIComponent(CLIP)}&turn=${TURN}&at=${AT}`;
+    `&clip=${encodeURIComponent(CLIP)}&turn=${TURN}&at=${AT}&zoom=${ZOOM}`;
   await page.goto(address, { waitUntil: 'networkidle2', timeout: 60000 });
 
   // Ждём, пока страница доиграет клип до заданной секунды и замрёт.

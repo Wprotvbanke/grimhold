@@ -350,6 +350,8 @@ const connection = new Connection(SERVER_URL, {
     // Что в руке — нужно подсказке у ресурсных нод: киркой жилу берут,
     // мечом нет, и игрок должен видеть это до того, как замахнётся.
     mainHandItem = message.equipment.mainHand?.defId ?? null;
+    // У лука своё движение выстрела — рукам надо знать, что он в руке.
+    game?.hands.setWeapon(mainHandItem);
     // Что в левой руке — по нему клиент решает, каким светом светить:
     // пламенем факела или ровным светом «Светоча».
     offHandItem = message.equipment.offHand?.defId ?? null;
@@ -720,6 +722,7 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   // Руки заводятся при входе, прокачка приходит раньше или позже — ставим то,
   // что уже известно, иначе первый рывок пойдёт по правилам новичка.
   game.hands.setEvasion(evasionLevel);
+  game.hands.setWeapon(mainHandItem);
 
   renderPos.x = spawn.x;
   renderPos.y = spawn.y;

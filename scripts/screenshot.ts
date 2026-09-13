@@ -70,6 +70,48 @@ try {
     await wait(1200);
   }
 
+  /**
+   * `bow` — выдать себе лук со стрелами и выстрелить.
+   *
+   * Единственный способ снять выстрел: до лука в игре надо дойти ремеслом
+   * и свитком, а снимок нужен сейчас. Идёт через служебное меню, то есть
+   * теми же командами, что и у живого ведущего.
+   */
+  if (open === 'bow') {
+    await page.keyboard.press('F2');
+    await wait(600);
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
+      for (const name of ['Охотничий лук', 'Стрелы']) {
+        buttons.find((button) => button.textContent === name)?.click();
+      }
+    });
+    await wait(900);
+    await page.keyboard.press('F2');
+    await wait(600);
+
+    // Надеваем лук двойным щелчком по нему в рюкзаке.
+    await page.keyboard.press('Tab');
+    await wait(900);
+    await page.evaluate(() => {
+      const bow = [...document.querySelectorAll('.inv-item')].find((node) =>
+        node.textContent?.includes('Охотничий лук'),
+      );
+      bow?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    await wait(900);
+    await page.keyboard.press('Tab');
+    await wait(900);
+
+    // Захват мыши нужен, чтобы дошёл удар: без него клик уходит браузеру.
+    await page.click('canvas');
+    await wait(700);
+    await page.mouse.down({ button: 'left' });
+    await wait(80);
+    await page.mouse.up({ button: 'left' });
+    await wait(Number(process.argv[4] ?? 250));
+  }
+
   await page.screenshot({ path: OUTPUT });
   console.log(`снимок сохранён: ${OUTPUT}`);
 } finally {

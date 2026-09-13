@@ -32,6 +32,15 @@
       const wanted = options.get('clip') ?? '';
       const turn = Number(options.get('turn') ?? 0);
       const seconds = Number(options.get('at') ?? 3);
+      /**
+       * Отдаление камеры.
+       *
+       * Кадр строится по габаритам модели **в покое**, а поза может увести
+       * руки далеко за них: клип натяжения лука разводит их на полкадра,
+       * и по умолчанию видно только локоть. Множитель позволяет отойти,
+       * не трогая всё остальное.
+       */
+      const zoom = Number(options.get('zoom') ?? 1);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(900, 900);
@@ -60,7 +69,7 @@
       const bounds = new THREE.Box3().setFromObject(model);
       const height = bounds.max.y - bounds.min.y;
       const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
-      camera.position.set(0, bounds.min.y + height * 0.6, height * 2.6);
+      camera.position.set(0, bounds.min.y + height * 0.6, height * 2.6 * zoom);
       camera.lookAt(0, bounds.min.y + height * 0.55, 0);
 
       const mixer = new THREE.AnimationMixer(model);

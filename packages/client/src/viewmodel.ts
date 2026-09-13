@@ -51,6 +51,7 @@ export type HandsClip =
   | 'sprint'
   | 'punchRight'
   | 'punchLeft'
+  | 'bowDraw'
   | 'blockStart'
   | 'blockLoop'
   | 'blockStop'
@@ -67,6 +68,7 @@ const CLIP_NAMES: Record<HandsClip, string[]> = {
   sprint: ['Sprint_Type_1', 'Run'],
   punchRight: ['Punch_R', 'Punch'],
   punchLeft: ['Punch_L', 'Punch_2'],
+  bowDraw: ['Bow_Draw'],
   blockStart: ['Block_Start'],
   blockLoop: ['Block_Loop'],
   blockStop: ['Block_Stop'],
@@ -81,6 +83,7 @@ const ONCE: HandsClip[] = [
   'fidget',
   'punchRight',
   'punchLeft',
+  'bowDraw',
   'blockStart',
   'blockStop',
   'takeStart',
@@ -191,6 +194,8 @@ export class ViewModel {
   private dodgeCooldown = 0;
   /** Уровень уклонения — приходит с прокачкой, см. `setEvasion`. */
   private evasion = 0;
+  /** Лук в руке: с ним выстрел отыгрывается своим клипом, а не ударом. */
+  private bow = false;
 
   /** Был ли игрок на земле в прошлом кадре — по смене ловим прыжок. */
   private grounded = true;
@@ -303,6 +308,11 @@ export class ViewModel {
    */
   setEvasion(level: number): void {
     this.evasion = level;
+  }
+
+  /** Что в основной руке. Пока важен только лук: у него своё движение. */
+  setWeapon(defId: string | null): void {
+    this.bow = defId === 'hunting_bow';
   }
 
   /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */
@@ -443,6 +453,17 @@ export class ViewModel {
    */
   private choose(dt: number, state: ViewModelState): HandsClip | null {
     const action = this.localAction?.kind ?? null;
+
+    /**
+     * Выстрел из лука — своё движение, а не удар кулаком.
+     *
+     * Клип перенесён с чужого скелета (см. scripts/prepare-bow.ts), поэтому
+     * он один на весь выстрел: натяжение и спуск в одном куске. Если модели
+     * нет — рука машет, как раньше: отсутствие клипа не должно ломать бой.
+     */
+    if ((action === 'attack' || action === 'heavy') && this.bow && this.actions.has('bowDraw')) {
+      return 'bowDraw';
+    }
 
     // Удар. Правая и левая чередуются, тяжёлый всегда правой — он размашистее.
     if (action === 'attack' || action === 'heavy') {
