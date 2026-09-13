@@ -75,10 +75,10 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 
 | Файл | Когда читать |
 |---|---|
-| [docs/combat.md](docs/combat.md) | удары, стамина, рывок, столкновения, движение |
+| [docs/combat.md](docs/combat.md) | удары, стамина, рывок, столкновения, движение, цена смерти |
 | [docs/hands.md](docs/hands.md) | руки от первого лица: клипы, посадка в кадре, разведение |
 | [docs/npc.md](docs/npc.md) | мобы, погоня, характеристики, жители города; модели с анимацией и ловушки при их сборке |
-| [docs/pvp.md](docs/pvp.md) | кто кого может бить: безопасные зоны, флаги |
+| [docs/pvp.md](docs/pvp.md) | кто кого может бить: зоны, флаги, опознание по Alt |
 | [docs/dungeon.md](docs/dungeon.md) | подземелья: инстансы, спуск, выход, геометрия |
 | [docs/blocks.md](docs/blocks.md) | ставишь декорацию, трогаешь мир коробками |
 | [docs/buildings.md](docs/buildings.md) | строишь здание, текстуры построек, таверна |
@@ -88,12 +88,12 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/bank.md](docs/bank.md) | городская казна: что переживает смерть |
 | [docs/trade.md](docs/trade.md) | прямой обмен между игроками, стол и подтверждения |
 | [docs/nature.md](docs/nature.md) | деревья, кусты, трава, камни диких земель |
-| [docs/sun.md](docs/sun.md) | ход солнца, смена дня и ночи, палитра освещения |
+| [docs/sun.md](docs/sun.md) | ход солнца, смена дня и ночи, перевод стрелок, палитра |
 | [docs/sky.md](docs/sky.md) | небесный купол, облака, цвет неба |
-| [docs/light.md](docs/light.md) | факелы, фонари, костры — рукотворный огонь |
+| [docs/light.md](docs/light.md) | факелы, фонари, костры: как далеко и ярко светит огонь |
 | [docs/weather.md](docs/weather.md) | дождь, снег, времена года — чего ещё нет |
-| [docs/performance.md](docs/performance.md) | тормозит или дёргается; настройки картинки; добавляешь что-то массовое |
-| [docs/architecture.md](docs/architecture.md) | сеть, протокол, слой команд, устройство пакетов |
+| [docs/performance.md](docs/performance.md) | тормозит или дёргается; меню картинки (F1); добавляешь массовое |
+| [docs/architecture.md](docs/architecture.md) | сеть, протокол, слой команд, пакеты, меню ведущего (F2) |
 | [docs/storage.md](docs/storage.md) | база, миграции, что должно переживать перезаход |
 | [docs/assets.md](docs/assets.md) | нужна модель, текстура, анимация или звук |
 | [docs/git.md](docs/git.md) | что попадает в репозиторий, как поднять проект с нуля |
