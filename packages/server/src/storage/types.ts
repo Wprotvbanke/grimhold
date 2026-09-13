@@ -1,4 +1,13 @@
-import type { CharacterClass, Equipment, Grid, Hotbar, Race, RecipeId } from '@grimhold/shared';
+import type {
+  CharacterClass,
+  Equipment,
+  Grid,
+  Hotbar,
+  Race,
+  RecipeId,
+  SkillId,
+  SkillProgress,
+} from '@grimhold/shared';
 
 /**
  * Интерфейс хранилища. Весь доступ к БД идёт только через него —
@@ -37,6 +46,14 @@ export interface CharacterRecord {
   inventory: Grid;
   equipment: Equipment;
   knownRecipes: RecipeId[];
+  /**
+   * Книга навыков.
+   *
+   * Хранится наравне с вещами и по той же причине: это и есть прокачка.
+   * Без неё каждый вход в игру обнулял всё нажитое, и опыт не значил ничего —
+   * при том что до сотого уровня одного навыка идут тысячи боёв.
+   */
+  skills: Record<SkillId, SkillProgress>;
   karma: number;
   purpleFor: number;
   hotbar: Hotbar;
@@ -54,6 +71,7 @@ export interface CharacterSave {
   inventory: Grid;
   equipment: Equipment;
   knownRecipes: RecipeId[];
+  skills: Record<SkillId, SkillProgress>;
   hotbar: Hotbar;
   karma: number;
   purpleFor: number;

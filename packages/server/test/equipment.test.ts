@@ -59,3 +59,24 @@ describe('надетое переживает перезаход', () => {
     expect(db.getCharacter(character.id)!.equipment.head).toBeUndefined();
   });
 });
+
+describe('прокачка переживает перезаход', () => {
+  it('книга навыков возвращается целой', () => {
+    /**
+     * Навыки не сохранялись вовсе: каждый вход обнулял всё нажитое. При том
+     * что до сотого уровня одного навыка идут тысячи боёв — то есть опыт
+     * не значил ничего, и заметить это можно было только выйдя из игры.
+     */
+    const db = storage();
+    const account = db.createAccount('Ветеран', 'hash', 'salt');
+    const character = db.createCharacter(account.id, 'Ветеран', 'human', 'warrior', SPAWN_POINT);
+
+    const skills = { ...character.skills, blade: { level: 17, experience: 42 } };
+    db.saveCharacters([{ ...character, skills }]);
+
+    const loaded = db.getCharacter(character.id)!;
+    expect(loaded.skills.blade).toEqual({ level: 17, experience: 42 });
+    // Нетронутые навыки остаются на нуле, а не пропадают из книги.
+    expect(loaded.skills.archery).toEqual({ level: 0, experience: 0 });
+  });
+});

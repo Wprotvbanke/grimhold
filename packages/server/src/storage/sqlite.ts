@@ -11,6 +11,8 @@ import {
   createHotbar,
   isItemId,
   isRecipeId,
+  MAX_SKILL_LEVEL,
+  SKILLS,
   itemDef,
   sanitizeGrid,
   sanitizeHotbar,
@@ -21,6 +23,8 @@ import {
   type PlacedItem,
   type Race,
   type RecipeId,
+  type SkillId,
+  type SkillProgress,
 } from '@grimhold/shared';
 import type { AccountRecord, CharacterRecord, CharacterSave, Storage } from './types.js';
 
@@ -62,6 +66,7 @@ const SCHEMA = `
     inventory        TEXT NOT NULL DEFAULT '',
     equipment        TEXT NOT NULL DEFAULT '',
     known_recipes    TEXT NOT NULL DEFAULT '',
+    skills           TEXT NOT NULL DEFAULT '',
     karma            REAL NOT NULL DEFAULT 0,
     purple_for       REAL NOT NULL DEFAULT 0,
     hotbar           TEXT NOT NULL DEFAULT ''
@@ -92,6 +97,9 @@ const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: 'characters', column: 'karma', definition: 'REAL NOT NULL DEFAULT 0' },
   { table: 'characters', column: 'purple_for', definition: 'REAL NOT NULL DEFAULT 0' },
   { table: 'characters', column: 'hotbar', definition: "TEXT NOT NULL DEFAULT ''" },
+  // Прокачка переживает перезаход. Пока столбца не было, каждый вход обнулял
+  // всё нажитое — а до сотого уровня одного навыка идут тысячи боёв.
+  { table: 'characters', column: 'skills', definition: "TEXT NOT NULL DEFAULT ''" },
 ];
 
 /**
@@ -134,6 +142,7 @@ interface CharacterRow {
   inventory: string;
   equipment: string;
   known_recipes: string;
+  skills: string;
   karma: number;
   purple_for: number;
   hotbar: string;
@@ -238,6 +247,7 @@ export class SqliteStorage implements Storage {
       inventory,
       equipment: {},
       knownRecipes: [],
+      skills: emptySkillBook(),
       hotbar: createHotbar(),
       karma: 0,
       purpleFor: 0,
@@ -247,8 +257,9 @@ export class SqliteStorage implements Storage {
       .prepare(
         `INSERT INTO characters
            (id, account_id, name, race, class, x, y, z, yaw, instance_id,
-            created_at, last_seen_at, playtime_seconds, inventory, equipment, known_recipes, hotbar)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            created_at, last_seen_at, playtime_seconds, inventory, equipment, known_recipes,
+            skills, hotbar)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -267,6 +278,7 @@ export class SqliteStorage implements Storage {
         JSON.stringify(record.inventory),
         JSON.stringify(record.equipment),
         JSON.stringify(record.knownRecipes),
+        JSON.stringify(record.skills),
         JSON.stringify(record.hotbar),
       );
 
@@ -284,7 +296,7 @@ export class SqliteStorage implements Storage {
     const statement = this.db.prepare(
       `UPDATE characters
           SET x = ?, y = ?, z = ?, yaw = ?, last_seen_at = ?, playtime_seconds = ?,
-              inventory = ?, equipment = ?, known_recipes = ?, hotbar = ?,
+              inventory = ?, equipment = ?, known_recipes = ?, skills = ?, hotbar = ?,
               karma = ?, purple_for = ?, instance_id = ?
         WHERE id = ?`,
     );
@@ -302,6 +314,7 @@ export class SqliteStorage implements Storage {
           JSON.stringify(save.inventory),
           JSON.stringify(save.equipment),
           JSON.stringify(save.knownRecipes),
+          JSON.stringify(save.skills),
           JSON.stringify(save.hotbar),
           save.karma,
           save.purpleFor,
@@ -367,6 +380,7 @@ function toCharacter(row: CharacterRow): CharacterRecord {
     // из игры между версиями, а раскладка — разъехаться.
     inventory: sanitizeGrid(parseJson(row.inventory), BACKPACK_WIDTH, BACKPACK_HEIGHT),
     equipment: sanitizeEquipment(parseJson(row.equipment)),
+    skills: sanitizeSkills(parseJson(row.skills)),
     knownRecipes: sanitizeRecipes(parseJson(row.known_recipes)),
     karma: Math.max(0, row.karma ?? 0),
     purpleFor: Math.max(0, row.purple_for ?? 0),
@@ -419,6 +433,38 @@ function sanitizeEquipment(raw: unknown): Equipment {
     };
   }
   return result;
+}
+
+/**
+ * Книга навыков из базы.
+ *
+ * Недостающие навыки добиваются нулями: список навыков со временем растёт,
+ * и вчерашний персонаж не должен открываться с дырами. Отрицательное
+ * и запредельное отбрасывается — уровень выше сотого не значит ничего.
+ */
+function sanitizeSkills(raw: unknown): Record<SkillId, SkillProgress> {
+  const book = emptySkillBook();
+  if (!raw || typeof raw !== 'object') return book;
+
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!(id in book) || !value || typeof value !== 'object') continue;
+
+    const { level, experience } = value as SkillProgress;
+    if (!Number.isFinite(level) || !Number.isFinite(experience)) continue;
+
+    book[id as SkillId] = {
+      level: Math.max(0, Math.min(MAX_SKILL_LEVEL, Math.floor(level))),
+      experience: Math.max(0, experience),
+    };
+  }
+  return book;
+}
+
+/** Пустая книга: все навыки на нуле. */
+function emptySkillBook(): Record<SkillId, SkillProgress> {
+  const book = {} as Record<SkillId, SkillProgress>;
+  for (const id of Object.keys(SKILLS) as SkillId[]) book[id] = { level: 0, experience: 0 };
+  return book;
 }
 
 function sanitizeRecipes(raw: unknown): RecipeId[] {

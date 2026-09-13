@@ -4,7 +4,6 @@ import {
   RESPAWN_STREAK_MAX,
   MAX_INPUTS_PER_TICK,
   BLOCK_DRAIN,
-  EXPERIENCE_PER_KILL,
   MOBS,
   SPAWN_POINT,
   SPELLS,
@@ -16,6 +15,7 @@ import {
   isDungeon,
   itemDef,
   gainExperience,
+  experienceFor,
   movementSpeedFactor,
   isItemId,
   KARMA_DECAY_PER_SECOND,
@@ -55,7 +55,7 @@ import { speedMultiplier, tickCombatant, type Combatant } from './combatant.js';
 import { alertMob, decideMob, killMob, tickRespawn, type Mob, type MobTarget } from './mob.js';
 import { applyDamage } from './combatant.js';
 import { createProjectile, spawnArrow, stepProjectile } from './projectile.js';
-import { isLit, refreshLoadout, type Player, type World } from './world.js';
+import { isLit, refreshLoadout, vitalsFor, type Player, type World } from './world.js';
 
 /**
  * Один тик мира: движение, бой, ИИ, снаряды, смерть.
@@ -676,7 +676,8 @@ function handleDeath(
   if (!mob) return;
 
   killMob(mob);
-  grantExperience(world, killerId, skillOfKiller(world, killerId), EXPERIENCE_PER_KILL, outbox);
+  // Цену победы назначает убитый: крыса учит на пятёрку, огр на сорок три.
+  grantExperience(world, killerId, skillOfKiller(world, killerId), experienceFor(mob.profile), outbox);
 
   const killer = world.playerByCombatantId(killerId);
   if (!killer) return;
@@ -874,13 +875,22 @@ function grantExperience(
 
   const result = gainExperience(player.skills[skill], amount);
   player.skills[skill] = result.progress;
-  if (result.levelsGained > 0) {
-    player.dirty = true;
-    outbox.skillUps.push({
-      playerId: player.id,
-      message: { t: 'skillUp', skill, level: result.progress.level },
-    });
-  }
+  if (result.levelsGained === 0) return;
+
+  /**
+   * Уровень вырос — тело окрепло.
+   *
+   * Пересчитываем здесь же: посчитай пределы только при входе, и полоса
+   * вырастет лишь после перезахода, а до того будет врать. Само здоровье
+   * не доливаем — прокачка не лечит.
+   */
+  player.maxima = vitalsFor(player.attributes, player.skills);
+
+  player.dirty = true;
+  outbox.skillUps.push({
+    playerId: player.id,
+    message: { t: 'skillUp', skill, level: result.progress.level },
+  });
 }
 
 /**

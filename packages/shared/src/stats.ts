@@ -48,16 +48,49 @@ export function attributesFor(race: Race, characterClass: CharacterClass): Attri
 
 // ---------- производные характеристики ----------
 
-export function maxHealth(attributes: Attributes): number {
-  return Math.round(60 + attributes.endurance * 4);
+/**
+ * Насколько прокачка закаляет тело.
+ *
+ * Атрибуты не растут — это замысел: раса и класс задают уклон один раз
+ * и навсегда, а сила приходит от навыков и вещей. Но **тело от боёв
+ * всё-таки крепнет**, и без этого прокачка не чувствуется ничем, кроме
+ * цифр урона.
+ *
+ * Считается от **суммы уровней всех навыков**, а не от лучшего: вклад даёт
+ * любое занятие, и лекарь с щитом закаляется не хуже мечника. Потолок —
+ * `PROGRESS_CAP`, четыреста уровней: это тысячи боёв, и дойти до него
+ * не должно быть делом недели.
+ *
+ * Прибавки нарочно скромные: у человека-воина здоровье растёт со 112 до 157.
+ * Ветеран заметно крепче новичка, но не вдвое, — иначе вылазка с полной
+ * потерей вещей перестала бы быть для новичка возможной.
+ */
+export const PROGRESS_CAP = 400;
+const HEALTH_FROM_PROGRESS = 45;
+const STAMINA_FROM_PROGRESS = 30;
+const MANA_FROM_PROGRESS = 40;
+
+/** Доля пройденного пути, 0..1. Пустая книга навыков даёт ноль. */
+export function progressShare(skillLevels = 0): number {
+  return Math.max(0, Math.min(1, skillLevels / PROGRESS_CAP));
 }
 
-export function maxMana(attributes: Attributes): number {
-  return Math.round(20 + attributes.intellect * 5);
+export function maxHealth(attributes: Attributes, skillLevels = 0): number {
+  return Math.round(
+    60 + attributes.endurance * 4 + HEALTH_FROM_PROGRESS * progressShare(skillLevels),
+  );
 }
 
-export function maxStamina(attributes: Attributes): number {
-  return Math.round(70 + attributes.endurance * 3);
+export function maxMana(attributes: Attributes, skillLevels = 0): number {
+  return Math.round(
+    20 + attributes.intellect * 5 + MANA_FROM_PROGRESS * progressShare(skillLevels),
+  );
+}
+
+export function maxStamina(attributes: Attributes, skillLevels = 0): number {
+  return Math.round(
+    70 + attributes.endurance * 3 + STAMINA_FROM_PROGRESS * progressShare(skillLevels),
+  );
 }
 
 /** Стамина в секунду. Восстанавливается только после паузы (см. STAMINA_IDLE_DELAY). */

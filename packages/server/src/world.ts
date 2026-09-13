@@ -381,6 +381,7 @@ export class World {
     bank?: Grid;
     equipment?: Equipment;
     knownRecipes?: RecipeId[];
+    skills?: Record<SkillId, SkillProgress>;
     karma?: number;
     purpleFor?: number;
     hotbar?: Hotbar;
@@ -396,11 +397,10 @@ export class World {
     state.yaw = character.yaw;
 
     const id = `p${this.nextId++}`;
-    const maxima = {
-      health: maxHealth(attributes),
-      mana: maxMana(attributes),
-      stamina: maxStamina(attributes),
-    };
+    const skills = character.skills ?? emptySkillBook();
+    // Тело закаляется прокачкой: чем больше уровней в книге навыков, тем
+    // выше пределы. Считаем при входе и потом пересчитываем при каждом росте.
+    const maxima = vitalsFor(attributes, skills);
 
     const player: Player = {
       id,
@@ -423,7 +423,7 @@ export class World {
       dirty: true,
       attributes,
       maxima,
-      skills: emptySkillBook(),
+      skills,
       deadFor: 0,
       torchLeft: 0,
       spellCooldowns: {},
@@ -1125,6 +1125,26 @@ function defaultHotbar(characterClass: CharacterClass): Hotbar {
  * снять доспех и остаться с его бронёй. Единственное место такого вывода,
  * чтобы ни один путь изменения вещей не мог его обойти.
  */
+/**
+ * Пределы здоровья, маны и стамины по атрибутам и прокачке.
+ *
+ * Одно место на вход в игру и на рост уровня: посчитай их по-разному —
+ * и полоса здоровья вырастет только после перезахода, а до того будет врать.
+ */
+export function vitalsFor(
+  attributes: Attributes,
+  skills: Record<SkillId, SkillProgress>,
+): { health: number; mana: number; stamina: number } {
+  let levels = 0;
+  for (const progress of Object.values(skills)) levels += progress.level;
+
+  return {
+    health: maxHealth(attributes, levels),
+    mana: maxMana(attributes, levels),
+    stamina: maxStamina(attributes, levels),
+  };
+}
+
 export function refreshLoadout(player: Player): void {
   player.combat.armor = equipmentArmor(player.equipment);
   player.carriedWeight = totalWeight(player.inventory) + equipmentWeight(player.equipment);
