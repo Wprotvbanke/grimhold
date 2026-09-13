@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 23;
+export const PROTOCOL_VERSION = 24;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -743,7 +743,8 @@ export interface SelfState {
 /** Летящий снаряд заклинания. От него можно отойти, поэтому он в снапшоте. */
 export interface ProjectileSnapshot {
   id: string;
-  spellId: SpellId;
+  /** Чем выпущен. Пусто — значит стрела: у неё нет заклинания. */
+  spellId?: SpellId;
   x: number;
   y: number;
   z: number;

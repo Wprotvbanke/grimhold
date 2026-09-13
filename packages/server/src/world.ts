@@ -864,7 +864,8 @@ export class World {
       if (!withinAoi(origin, projectile.pos)) continue;
       result.push({
         id: projectile.id,
-        spellId: projectile.spellId,
+        // Пусто у стрелы: клиент рисует её иначе, чем сгусток заклинания.
+        ...(projectile.spellId ? { spellId: projectile.spellId } : {}),
         x: round(projectile.pos.x),
         y: round(projectile.pos.y),
         z: round(projectile.pos.z),

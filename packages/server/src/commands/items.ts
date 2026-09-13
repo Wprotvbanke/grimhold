@@ -188,7 +188,11 @@ export const handleDropItem: CommandHandler<DropItemMessage> = (ctx, payload) =>
   return changed();
 };
 
-function consumeOne(player: Player, item: PlacedItem): void {
+/**
+ * Снимает одну штуку из стопки в рюкзаке. Открыто наружу ради стрел:
+ * выстрел тратит стрелу так же, как глоток тратит зелье.
+ */
+export function consumeOne(player: Player, item: PlacedItem): void {
   const items = player.inventory.items
     .map((entry) => (entry === item ? { ...entry, count: entry.count - 1 } : entry))
     .filter((entry) => entry.count > 0);

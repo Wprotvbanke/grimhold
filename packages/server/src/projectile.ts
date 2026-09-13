@@ -1,6 +1,10 @@
 import {
+  ARROW_SPEED,
+  BOW_RANGE,
   SPELLS,
   aabbOverlap,
+  arrowFalloff,
+  meleeDamage,
   spellDamage,
   type Aabb,
   type Attributes,
@@ -24,7 +28,15 @@ export interface Projectile {
   ownerId: string;
   ownerName: string;
   instanceId: string;
-  spellId: SpellId;
+  /**
+   * Чем выпущен. Заклинание берёт урон из своего профиля, стрела — из лука
+   * в руке, и урон этот падает с расстоянием.
+   */
+  spellId: SpellId | null;
+  /** Урон стрелы на выходе из лука, до спада по дистанции. */
+  arrowDamage?: number;
+  /** Откуда вылетел — по нему считается пройденное расстояние. */
+  origin: Vec3;
   pos: Vec3;
   velocity: Vec3;
   /** Секунд до самоуничтожения. */
@@ -74,6 +86,11 @@ export function createProjectile(
     ownerName: owner.name,
     instanceId: owner.instanceId,
     spellId,
+    origin: {
+      x: owner.pos.x + dir.x * 0.6,
+      y: owner.pos.y + owner.height * 0.75,
+      z: owner.pos.z + dir.z * 0.6,
+    },
     // Вылетает от груди, а не от ног — иначе задевает собственные ступени.
     pos: {
       x: owner.pos.x + dir.x * 0.6,
@@ -82,6 +99,49 @@ export function createProjectile(
     },
     velocity: { x: dir.x * speed, y: dir.y * speed, z: dir.z * speed },
     lifetime: spell.range / speed,
+    skillLevel,
+    casterAttributes: owner.attributes,
+  };
+}
+
+/**
+ * Выстрел из лука.
+ *
+ * Устроен как снаряд заклинания и намеренно: полёт, попадание по телу,
+ * столкновение с камнем — всё это уже написано и работает. Разница ровно
+ * в двух вещах: урон берётся из лука, а не из заклинания, и падает
+ * с расстоянием.
+ */
+export function spawnArrow(
+  id: string,
+  owner: Combatant,
+  pitch: number,
+  weaponDamage: number,
+  skillLevel: number,
+): Projectile {
+  const cosPitch = Math.cos(pitch);
+  const dir = {
+    x: -Math.sin(owner.yaw) * cosPitch,
+    y: Math.sin(pitch),
+    z: -Math.cos(owner.yaw) * cosPitch,
+  };
+  const from = {
+    x: owner.pos.x + dir.x * 0.6,
+    y: owner.pos.y + owner.height * 0.75,
+    z: owner.pos.z + dir.z * 0.6,
+  };
+
+  return {
+    id,
+    ownerId: owner.id,
+    ownerName: owner.name,
+    instanceId: owner.instanceId,
+    spellId: null,
+    arrowDamage: weaponDamage,
+    origin: { ...from },
+    pos: { ...from },
+    velocity: { x: dir.x * ARROW_SPEED, y: dir.y * ARROW_SPEED, z: dir.z * ARROW_SPEED },
+    lifetime: BOW_RANGE / ARROW_SPEED,
     skillLevel,
     casterAttributes: owner.attributes,
   };
@@ -150,8 +210,7 @@ function checkImpact(
 
     if (owner) markAggressor(owner, target);
 
-    const spell = SPELLS[projectile.spellId];
-    const raw = spellDamage(projectile.casterAttributes, spell.power, projectile.skillLevel);
+    const raw = damageOf(projectile);
     const result = applyDamage(target, raw, { blockReduction: 0.4, staminaOnBlock: 10 });
     if (result.killed && owner) punishKill(owner, target);
 
@@ -175,6 +234,34 @@ function checkImpact(
   }
 
   return null;
+}
+
+/**
+ * Сила попадания.
+ *
+ * Заклинание бьёт ровно на всей своей дальности — за это платят маной
+ * и долгим кастом. Стрела дёшева и быстра, поэтому платит **расстоянием**:
+ * до `ARROW_FULL_RANGE` полный урон, дальше спад. Без него лук был бы
+ * снайперской винтовкой — отошёл на предел и расстреливай безнаказанно.
+ */
+function damageOf(projectile: Projectile): number {
+  if (projectile.spellId) {
+    const spell = SPELLS[projectile.spellId];
+    return spellDamage(projectile.casterAttributes, spell.power, projectile.skillLevel);
+  }
+
+  const flown = Math.hypot(
+    projectile.pos.x - projectile.origin.x,
+    projectile.pos.y - projectile.origin.y,
+    projectile.pos.z - projectile.origin.z,
+  );
+  const base = meleeDamage(
+    projectile.casterAttributes,
+    projectile.arrowDamage ?? 0,
+    projectile.skillLevel,
+    1,
+  );
+  return base * arrowFalloff(flown);
 }
 
 function bodyOf(pos: Vec3): Aabb {

@@ -275,6 +275,36 @@ export function meleeDamage(
   return weaponDamage * strength * skill * scale;
 }
 
+/**
+ * Стрельба из лука.
+ *
+ * Потолок дальности задаёт **не красота, а сеть**: сервер присылает чужих
+ * в радиусе интереса (`AOI_RADIUS`, 45 м), и стрелять дальше значит стрелять
+ * в то, чего на экране нет. Поэтому 35 — с запасом, чтобы цель была видна
+ * раньше, чем войдёт в дальность выстрела.
+ *
+ * Урон падает с расстоянием, и это главное отличие стрел от магии: магия бьёт
+ * ровно на всей своей дальности, но стоит маны и долгого каста, а стрела
+ * дёшева и быстра — значит платить она должна дистанцией. Без спада лук стал бы
+ * снайперской винтовкой: отошёл на предел и расстреливай безнаказанно.
+ */
+export const BOW_RANGE = 35;
+/** Скорость стрелы: почти плоская траектория, упреждение минимальное. */
+export const ARROW_SPEED = 55;
+/** До какой дистанции стрела бьёт в полную силу. */
+export const ARROW_FULL_RANGE = 12;
+/** Во что превращается урон на предельной дальности. */
+export const ARROW_FAR_SCALE = 0.4;
+
+/** Множитель урона стрелы по пройденному расстоянию. */
+export function arrowFalloff(distance: number): number {
+  if (distance <= ARROW_FULL_RANGE) return 1;
+
+  const far = Math.min(distance, BOW_RANGE);
+  const k = (far - ARROW_FULL_RANGE) / (BOW_RANGE - ARROW_FULL_RANGE);
+  return 1 - k * (1 - ARROW_FAR_SCALE);
+}
+
 export function spellDamage(attributes: Attributes, base: number, skillLevel: number): number {
   const intellect = 1 + attributes.intellect * 0.04;
   const skill = 1 + skillLevel * 0.01;

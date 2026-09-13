@@ -710,8 +710,27 @@ const SPELL_COLORS: Record<SpellId, number> = {
  * В бою заклинаниями это давало рывок на каждый выстрел и на каждое попадание.
  * Светят снарядам лампы из пула — см. `createProjectileLights`.
  */
-export function createProjectileMesh(spellId: SpellId): THREE.Object3D {
+export function createProjectileMesh(spellId?: SpellId): THREE.Object3D {
   const group = new THREE.Group();
+
+  /**
+   * Стрела — не сгусток.
+   *
+   * Без заклинания это выстрел из лука: тонкое древко вместо шара, и оно
+   * не светится само. Иначе стрела читалась бы как магия, а разница между
+   * ними — половина смысла дальнего боя.
+   */
+  if (!spellId) {
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.02, 0.7, 5),
+      new THREE.MeshStandardMaterial({ color: 0x6b5335, roughness: 1 }),
+    );
+    // Лежит вдоль полёта: цилиндр рождается стоймя, кладём его набок.
+    shaft.rotation.x = Math.PI / 2;
+    group.add(shaft);
+    return group;
+  }
+
   const core = new THREE.Mesh(
     new THREE.SphereGeometry(0.16, 10, 8),
     // Шар светится сам: ему свет и не нужен, он сам себе источник картинки.
@@ -815,7 +834,7 @@ const PROJECTILE_LIGHTS = 3;
 
 export interface ProjectileLights {
   /** Зовётся каждый кадр со списком живых снарядов. */
-  update(list: readonly { x: number; y: number; z: number; spellId: SpellId }[]): void;
+  update(list: readonly { x: number; y: number; z: number; spellId?: SpellId }[]): void;
 }
 
 /**
@@ -840,6 +859,11 @@ export function createProjectileLights(scene: THREE.Scene): ProjectileLights {
         if (!projectile) {
           // Гасим силой, а не видимостью: исчезнувший источник — это опять
           // перекомпиляция всей сцены.
+          light.intensity = 0;
+          continue;
+        }
+        // Стрела не светит: это деревяшка, а не сгусток огня.
+        if (!projectile.spellId) {
           light.intensity = 0;
           continue;
         }

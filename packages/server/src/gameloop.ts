@@ -24,6 +24,7 @@ import {
   step,
   weaponDamageOf,
   weightSpeedFactor,
+  findByDefId,
   type CombatEvent,
   type CraftingMessage,
   type EquipSlot,
@@ -37,6 +38,7 @@ import {
 } from '@grimhold/shared';
 import { craftingMessage, finishCraft } from './commands/craft.js';
 import { forgetMissing } from './commands/hotbar.js';
+import { consumeOne } from './commands/items.js';
 import { flagFor, forgiveForMob } from './pvp.js';
 import { OVERWORLD } from './world.js';
 import { finishHarvest, workMessage, outOfReach } from './commands/harvest.js';
@@ -52,7 +54,7 @@ import {
 import { speedMultiplier, tickCombatant, type Combatant } from './combatant.js';
 import { decideMob, killMob, tickRespawn, type Mob, type MobTarget } from './mob.js';
 import { applyDamage } from './combatant.js';
-import { createProjectile, stepProjectile } from './projectile.js';
+import { createProjectile, spawnArrow, stepProjectile } from './projectile.js';
 import { isLit, refreshLoadout, type Player, type World } from './world.js';
 
 /**
@@ -318,7 +320,10 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
       combat.action.resolved = true;
       const kind = combat.action.kind;
 
-      if (kind === 'attack' || kind === 'heavy') {
+      if ((kind === 'attack' || kind === 'heavy') && shoots(player)) {
+        // Лук в руке превращает удар в выстрел: махать луком незачем.
+        shootArrow(world, player, outbox);
+      } else if (kind === 'attack' || kind === 'heavy') {
         const skill = skillForWeapon(player);
         // Оружие в руке заменяет кулак; пустая рука бьёт как раньше.
         const weapon = weaponDamageOf(player.equipment);
@@ -346,6 +351,42 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
 
     void before;
   }
+}
+
+/** Держит ли игрок лук: по нему удар становится выстрелом. */
+function shoots(player: Player): boolean {
+  return player.equipment.mainHand?.defId === 'hunting_bow';
+}
+
+/**
+ * Выстрел из лука.
+ *
+ * Стрела тратится **в момент выстрела**, а не при попадании: потраченного
+ * не вернуть, даже если промазал, — иначе промах ничего не стоит. Кончились
+ * стрелы — говорим об этом вслух: молчащий лук читается как поломка.
+ */
+function shootArrow(world: World, player: Player, outbox: Outbox): void {
+  const arrows = findByDefId(player.inventory, 'arrow');
+  if (!arrows) {
+    outbox.itemErrors.push({ playerId: player.id, message: 'Нет стрел' });
+    return;
+  }
+
+  consumeOne(player, arrows);
+  forgetMissing(player, 'arrow');
+  refreshLoadout(player);
+  outbox.inventory.push(player);
+
+  const level = player.skills.archery.level;
+  world.projectiles.push(
+    spawnArrow(
+      world.nextEntityId('arrow'),
+      player.combat,
+      player.pitch,
+      weaponDamageOf(player.equipment),
+      level,
+    ),
+  );
 }
 
 /**
@@ -540,8 +581,9 @@ function tickProjectiles(world: World, dt: number, outbox: Outbox): void {
       });
 
       if (hit.victim) {
-        const spell = SPELLS[projectile.spellId];
-        grantExperience(world, projectile.ownerId, spell.skill, 3, outbox);
+        // Заклинание учит разрушению, стрела — стрельбе.
+        const skill = projectile.spellId ? SPELLS[projectile.spellId].skill : 'archery';
+        grantExperience(world, projectile.ownerId, skill, 3, outbox);
 
         if (hit.killed) {
           handleDeath(world, hit.victim, projectile.ownerId, projectile.ownerName, outbox);

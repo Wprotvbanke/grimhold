@@ -1212,6 +1212,21 @@ function syncProjectiles(list: ProjectileSnapshot[]): void {
       scene.add(mesh);
       projectiles.set(projectile.id, mesh);
     }
+    /**
+     * Стрела смотрит туда, куда летит.
+     *
+     * Направление берётся из её же движения между снапшотами: у сгустка оно
+     * не нужно (шар со всех сторон одинаков), а у древка летящая боком стрела
+     * читается как ошибка. Первый кадр пропускаем — сравнивать ещё не с чем.
+     */
+    if (!projectile.spellId) {
+      const moved =
+        Math.abs(mesh.position.x - projectile.x) +
+        Math.abs(mesh.position.y - projectile.y) +
+        Math.abs(mesh.position.z - projectile.z);
+      if (moved > 0.01) mesh.lookAt(projectile.x, projectile.y, projectile.z);
+    }
+
     mesh.position.set(projectile.x, projectile.y, projectile.z);
   }
 
