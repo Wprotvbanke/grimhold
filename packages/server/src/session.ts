@@ -18,6 +18,21 @@ import type { Storage, CharacterRecord } from './storage/types.js';
 import { OVERWORLD, type Player, type World } from './world.js';
 
 /**
+ * Кто ведёт мир.
+ *
+ * Список задаётся при запуске сервера (`GRIMHOLD_ADMINS=имя,имя`), а не
+ * хранится в базе: право выдаёт тот, кто поднял сервер, и его нельзя выписать
+ * себе обычной регистрацией. По умолчанию — учебный аккаунт из `npm run seed`,
+ * потому что на нём и идёт разработка.
+ */
+const ADMINS = new Set(
+  (process.env.GRIMHOLD_ADMINS ?? 'test')
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+/**
  * Жизненный цикл соединения: регистрация, вход, выбор персонажа, игра.
  *
  * Всё, что до входа в мир, живёт здесь, а не в слое команд: команды работают
@@ -172,6 +187,7 @@ export class Session {
       ...home,
       bank: this.storage.getBank(this.accountId),
     });
+    player.admin = ADMINS.has((this.username ?? '').toLowerCase());
     this.player = player;
     this.onEnterWorld(this, player);
 
@@ -182,6 +198,10 @@ export class Session {
       protocol: PROTOCOL_VERSION,
       character: toSummary(character),
       spawn: { x: character.x, y: character.y, z: character.z },
+      admin: player.admin,
+      // Стрелки могли перевести до его входа — иначе у вошедшего был бы
+      // свой собственный час суток.
+      daytimeShift: this.world.daytimeShift,
     });
     // Где он оказался. Персонаж мог выйти из игры внизу, и земля под ногами
     // должна собраться сразу правильная, а не «город, а потом разберёмся».

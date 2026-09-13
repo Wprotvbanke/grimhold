@@ -100,10 +100,26 @@ const TAVERN_LIGHTS: { x: number; y: number; z: number; color: number; intensity
 /**
  * Сколько ламп держим в сцене одновременно.
  *
- * Шесть — это столько, сколько глаз замечает: дальше огни всё равно
- * перекрывают друг друга. Число постоянное и не меняется никогда.
+ * В городе пятнадцать уличных огней, а ламп было шесть — и это и была
+ * разгадка жалобы «свет виден, только когда подойдёшь». Свет **появлялся**
+ * при подходе: лампа доставалась огню, когда он входил в шестёрку ближайших,
+ * и в этот миг вспыхивала на полную. Отсюда и «мерцание» на ходу — это
+ * лампы перебегали от огня к огню.
+ *
+ * Восемь — столько, сколько в прямом рендере не жалко: каждый источник
+ * считается для каждого пикселя, и число это вшито в шейдеры, поэтому
+ * меняется только здесь и только вместе с замером кадра.
  */
-const LIGHT_POOL = 6;
+const LIGHT_POOL = 8;
+
+/**
+ * За сколько секунд лампа разгорается и гаснет при переходе к другому огню.
+ *
+ * Переход обязан быть плавным: мгновенная передача — это и есть та вспышка,
+ * которую видно как «свет включился». Полсекунды глаз читает как разгорающийся
+ * огонь, а не как щелчок выключателя.
+ */
+const HANDOVER = 0.5;
 
 /**
  * Затухание света с расстоянием.
@@ -206,6 +222,16 @@ export function createLights(scene: THREE.Scene): WorldLights {
   let holding = new Set<Flame>();
   let nextHolding = new Set<Flame>();
 
+  /**
+   * Что держит каждая лампа и насколько она разгорелась.
+   *
+   * Лампа не перепрыгивает с огня на огонь мгновенно: сперва гаснет на своём
+   * старом месте, потом разгорается на новом. Без этого переход виден как
+   * вспышка — и именно он читался как «свет включился, когда я подошёл».
+   */
+  const slots = pool.map(() => ({ flame: null as Flame | null, level: 0 }));
+  let previous = 0;
+
   return {
     group,
     update(elapsed, daylight, camera) {
@@ -272,18 +298,62 @@ export function createLights(scene: THREE.Scene): WorldLights {
       holding = nextHolding;
       nextHolding = swap;
 
+      // Шаг времени берём из самих кадров: отдельного dt сюда не передают,
+      // а привязывать разгорание к частоте кадров нельзя — на ста восьмидесяти
+      // герцах переход вышел бы втрое быстрее, чем на шестидесяти.
+      const dt = Math.min(0.1, Math.max(0, elapsed - previous));
+      previous = elapsed;
+      const step = HANDOVER > 0 ? dt / HANDOVER : 1;
+
+      /**
+       * Раздача ламп.
+       *
+       * Сперва оставляем при своих тех, кто и так горит нужным огнём: лампа
+       * не должна менять хозяина только потому, что порядок в списке сместился.
+       * Потом гаснущие освобождают место, и свободные лампы разбирают
+       * оставшихся.
+       */
+      const wanted = chosenLights.slice(0, pool.length);
+      const taken = new Set<Flame>();
+      for (const slot of slots) {
+        if (slot.flame && wanted.some((entry) => entry.flame === slot.flame)) {
+          taken.add(slot.flame);
+        } else {
+          // Чужой огонь — сперва погаснуть, и только потом взять новый.
+          slot.level = Math.max(0, slot.level - step);
+          if (slot.level === 0) slot.flame = null;
+        }
+      }
+
+      for (const entry of wanted) {
+        if (taken.has(entry.flame)) continue;
+        const free = slots.find((slot) => slot.flame === null);
+        if (!free) break;
+        free.flame = entry.flame;
+        taken.add(entry.flame);
+      }
+
       for (const [index, light] of pool.entries()) {
-        const chosen = chosenLights[index];
-        if (!chosen) {
+        const slot = slots[index]!;
+        const chosen = slot.flame
+          ? (chosenLights.find((entry) => entry.flame === slot.flame) ?? null)
+          : null;
+
+        if (chosen) slot.level = Math.min(1, slot.level + step);
+
+        if (!slot.flame || slot.level <= 0) {
           // Лишние лампы не выключаем, а обнуляем: пропавший источник меняет
           // число света в шейдере, и это стоит перекомпиляции всей сцены.
           light.intensity = 0;
           continue;
         }
-        light.position.set(chosen.flame.x, chosen.flame.y, chosen.flame.z);
-        light.color.setHex(chosen.flame.color);
-        light.distance = chosen.flame.range;
-        light.intensity = chosen.power;
+
+        light.position.set(slot.flame.x, slot.flame.y, slot.flame.z);
+        light.color.setHex(slot.flame.color);
+        light.distance = slot.flame.range;
+        // Гаснущий огонь светит своей ровной яркостью — мерцание остаётся
+        // тому, кто разгорелся: дрожь на угасании читалась бы как сбой.
+        light.intensity = (chosen ? chosen.power : slot.flame.base) * slot.level;
       }
     },
   };
@@ -408,6 +478,42 @@ function place(source: THREE.Object3D, height: number): THREE.Object3D {
 }
 
 /**
+ * Где у фонаря плафон — середина его верхушки в мировых координатах.
+ *
+ * Считается по вершинам верхнего слоя, как основание — по нижнему: габариты
+ * тут врут ровно так же. Кронштейн уводит плафон в сторону, и середина
+ * коробки приходится на пустоту между ним и столбом.
+ */
+function lampHead(holder: THREE.Object3D): THREE.Vector3 {
+  holder.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(holder);
+  const height = bounds.max.y - bounds.min.y;
+  const floor = bounds.max.y - Math.max(height * 0.18, 0.001);
+
+  let count = 0;
+  const sum = new THREE.Vector3();
+  const point = new THREE.Vector3();
+
+  holder.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const position = mesh.geometry.getAttribute('position');
+    if (!position) return;
+
+    for (let i = 0; i < position.count; i++) {
+      point.fromBufferAttribute(position as THREE.BufferAttribute, i).applyMatrix4(mesh.matrixWorld);
+      if (point.y < floor) continue;
+      sum.add(point);
+      count++;
+    }
+  });
+
+  if (count === 0) return bounds.getCenter(new THREE.Vector3());
+  // Чуть ниже самой верхушки: огонь горит под колпаком, а не на нём.
+  return sum.divideScalar(count).setY(bounds.max.y - height * 0.12);
+}
+
+/**
  * Где модель **стоит** — середина её основания, а не середина габаритов.
  *
  * У фонаря плафон вынесен на кронштейн в сторону, и по габаритам столб
@@ -492,16 +598,24 @@ async function loadModels(group: THREE.Group, flames: Flame[]): Promise<void> {
         model.position.z = spot.z;
         group.add(model);
 
-        // Свет висит в плафоне, а не в центре модели. Там же ореол —
-        // по нему фонарь виден с другого конца площади.
-        const lampGlow = makeHalo(0xffc27a, 1.6);
-        lampGlow.position.set(spot.x, LAMP_HEIGHT - 0.35, spot.z);
+        /**
+         * Огонь — в плафоне, а не над столбом.
+         *
+         * Модель ставится **основанием**: в точке фонаря стоит столб, а плафон
+         * вынесен кронштейном в сторону и назад. Ореол по координатам фонаря
+         * оказывался поэтому на самом столбе — светящаяся палка посреди улицы.
+         * Ищем плафон в модели, а не гадаем по числам: кронштейн у неё свой.
+         */
+        const head = lampHead(model);
+
+        const lampGlow = makeHalo(0xffc27a, 1.2);
+        lampGlow.position.copy(head);
         group.add(lampGlow);
 
         flames.push({
-          x: spot.x,
-          y: LAMP_HEIGHT - 0.35,
-          z: spot.z,
+          x: head.x,
+          y: head.y,
+          z: head.z,
           color: 0xffc27a,
           range: 30,
           glow: lampGlow,

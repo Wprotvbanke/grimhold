@@ -22,9 +22,14 @@ export const DAY_SECONDS = 1200;
  */
 export const DAY_START = 0.28;
 
-export function timeOfDay(tick: number, tickRate: number): number {
+/**
+ * `shift` — сдвиг, поставленный ведущим через служебное меню. Складывается
+ * со временем, а не заменяет его: часы после перевода стрелок продолжают идти,
+ * а не застывают на выбранном часе.
+ */
+export function timeOfDay(tick: number, tickRate: number, shift = 0): number {
   const seconds = tick / Math.max(tickRate, 1);
-  return (DAY_START + seconds / DAY_SECONDS) % 1;
+  return (((DAY_START + shift + seconds / DAY_SECONDS) % 1) + 1) % 1;
 }
 
 /**

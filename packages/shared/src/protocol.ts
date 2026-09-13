@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 20;
+export const PROTOCOL_VERSION = 21;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -111,6 +111,22 @@ export const CastSchema = z.object({
 
 export const RespawnSchema = z.object({
   t: z.literal('respawn'),
+});
+
+/**
+ * Служебная команда ведущего: выдать себе вещь или перевести стрелки часов.
+ *
+ * Право проверяет сервер по аккаунту, а не по наличию окна у клиента: меню —
+ * это удобство, а не пропуск. Присланная кем угодно команда просто
+ * не выполнится.
+ */
+export const AdminSchema = z.object({
+  t: z.literal('admin'),
+  do: z.enum(['give', 'time']),
+  itemId: z.string().max(64).optional(),
+  count: z.number().int().min(1).max(999).optional(),
+  /** Время суток: 0 — полночь, 0.25 — рассвет, 0.5 — полдень, 0.75 — закат. */
+  time: z.number().min(0).max(1).optional(),
 });
 
 const SlotSchema = z.enum(['head', 'chest', 'legs', 'hands', 'mainHand', 'offHand']);
@@ -346,6 +362,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   BlockSchema,
   CastSchema,
   RespawnSchema,
+  AdminSchema,
   MoveItemSchema,
   EquipSchema,
   UnequipSchema,
@@ -472,6 +489,10 @@ export interface WelcomeMessage {
   protocol: number;
   character: CharacterSummary;
   spawn: { x: number; y: number; z: number };
+  /** Открыто ли служебное меню. Решает сервер — клиент только рисует. */
+  admin: boolean;
+  /** Сдвиг часов мира, поставленный ведущим. Ноль — часы идут как заведены. */
+  daytimeShift: number;
 }
 
 /** Событие боя — для звука, всплывающих чисел и вспышек на экране. */
@@ -502,6 +523,11 @@ export interface LifeMessage {
   event: 'died' | 'respawned';
   killerName?: string;
   spawn?: { x: number; y: number; z: number };
+  /**
+   * Сколько секунд лежать. Растёт с каждой быстрой смертью, и игрок обязан
+   * видеть это число: молчаливо неработающая кнопка читается как поломка.
+   */
+  respawnIn?: number;
 }
 
 /** Что выпало с убитого. Инвентаря пока нет — показываем в чате. */
@@ -631,6 +657,18 @@ export interface GatheringMessage {
  * подземелья выводится из зерна в имени инстанса, как дикие земли выводятся
  * из координат чанка. Поэтому по сети едет имя, а не геометрия.
  */
+/**
+ * Стрелки часов переведены.
+ *
+ * Время суток обе стороны выводят из номера тика — пересылать его каждый кадр
+ * незачем. А вот сдвиг, поставленный ведущим, вывести неоткуда: о нём надо
+ * сказать, и сказать всем сразу, иначе ночь наступит у одного.
+ */
+export interface DaytimeMessage {
+  t: 'daytime';
+  shift: number;
+}
+
 export interface WorldMessage {
   t: 'world';
   instanceId: string;
@@ -755,6 +793,7 @@ export type ServerMessage =
   | CraftingMessage
   | GatheringMessage
   | WorldMessage
+  | DaytimeMessage
   | ItemErrorMessage
   | ErrorMessage;
 

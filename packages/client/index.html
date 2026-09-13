@@ -429,6 +429,42 @@
       #setResume:hover { border-color: var(--gold); }
       #resumeHint b { color: var(--gold); font-weight: 500; }
 
+      /* Служебное меню ведущего (F2). Нарочно неказистое: это инструмент
+         разработки, а не часть игры, и путать его с ней не надо. */
+      #admin {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        z-index: 13; width: 560px; max-height: 78vh; display: flex; flex-direction: column;
+        padding: 16px 18px; border-radius: 6px;
+        background: rgba(8, 8, 10, 0.95); border: 1px solid #4a3a5e;
+      }
+      #admin[hidden] { display: none; }
+      #admin h2 {
+        margin: 0 0 10px; font-size: 14px; font-weight: 500; color: #b39ddb;
+        letter-spacing: 0.04em;
+      }
+      #admin h3 {
+        margin: 10px 0 4px; font-size: 11px; font-weight: 500; color: var(--dim);
+        letter-spacing: 0.06em; text-transform: uppercase;
+      }
+      #admin .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+      #admin input {
+        flex: 1; width: auto; margin: 0; padding: 5px 8px; background: #14141a; color: #d6cdb8;
+        border: 1px solid var(--line); border-radius: 3px; font: inherit; font-size: 12px;
+      }
+      #adminCount { flex: 0 0 70px; }
+      /* Ширину и отступы задаём явно: общие правила формы входа делают
+         любую кнопку во всю строку, а здесь их десятки в ряд. */
+      #admin button {
+        width: auto; margin: 0; padding: 4px 9px; font: inherit; font-size: 12px;
+        font-weight: 400; letter-spacing: normal; cursor: pointer;
+        background: #1d1d24; color: #c9c0ad; border: 1px solid var(--line); border-radius: 3px;
+      }
+      #admin button:hover { border-color: #b39ddb; color: #e6dcc4; }
+      #adminHours { display: flex; gap: 8px; margin-bottom: 10px; }
+      #adminItems { overflow-y: auto; }
+      #adminItems .group { display: flex; flex-wrap: wrap; gap: 5px; }
+      #adminItems .group h3 { flex: 0 0 100%; }
+
       /* Короткое уведомление о захвате клавиатуры: игрок должен знать,
          кому сейчас принадлежат Ctrl+W и прочие клавиши браузера. */
       #captureHint {
@@ -656,6 +692,17 @@
 
       <p id="setStats">замер идёт…</p>
       <button id="setResume">Продолжить</button>
+    </div>
+
+    <div id="admin" hidden>
+      <h2>Служебное меню</h2>
+      <div id="adminHours"></div>
+      <div class="row">
+        <input id="adminSearch" type="text" placeholder="Поиск предмета" />
+        <input id="adminCount" type="number" min="1" max="999" value="1" />
+        <button id="adminClose">Закрыть</button>
+      </div>
+      <div id="adminItems"></div>
     </div>
 
     <div id="captureHint" hidden></div>

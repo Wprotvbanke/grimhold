@@ -11,7 +11,7 @@
  *   5. заклинание порождает летящий снаряд;
  *   6. смерть и воскрешение работают.
  */
-import { INPUT_DT, TICK_RATE, type EntitySnapshot } from '@grimhold/shared';
+import { INPUT_DT, RESPAWN_DELAY, TICK_RATE, type EntitySnapshot } from '@grimhold/shared';
 import { TestClient, sleep } from './testClient.js';
 
 const failures: string[] = [];
@@ -281,7 +281,9 @@ async function main(): Promise<void> {
       'сразу после смерти подъём ещё не происходит',
     );
 
-    await sleep(3500);
+    // Ждём срок лежания, а не зашитое число: он вырос до десяти секунд
+    // и растёт дальше с каждой быстрой смертью.
+    await sleep(RESPAWN_DELAY * 1000 + 800);
     const self = client.latestSnapshot?.self;
     check(self?.alive === true, 'ранняя просьба о воскрешении не потерялась');
     check(

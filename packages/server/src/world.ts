@@ -27,6 +27,9 @@ import {
   WORLD_CHUNK_RADIUS,
   dungeonSeed,
   generateDungeonChunk,
+  timeOfDay,
+  TICK_RATE,
+  RESPAWN_FORGIVE,
   isDungeon,
   type Attributes,
   type CharacterClass,
@@ -160,6 +163,14 @@ export interface Player {
   race: Race;
   characterClass: CharacterClass;
   playtimeSeconds: number;
+  /**
+   * Ведущий мира: ему открыто служебное меню (F2).
+   *
+   * Признак ставится при входе по имени аккаунта и живёт только в памяти:
+   * права выдаёт запуск сервера, а не запись в базе, которую можно завести
+   * себе самому через обычную регистрацию.
+   */
+  admin: boolean;
   /** Момент, до которого время в игре уже зачтено. */
   lastAccountedAt: number;
   instanceId: InstanceId;
@@ -263,9 +274,62 @@ export class World {
   tick = 0;
   /** Игровое время в секундах. */
   elapsed = 0;
+  /**
+   * Сдвиг часов мира, поставленный ведущим.
+   *
+   * Время суток обе стороны считают из номера тика — поле в снапшоте для него
+   * не нужно. Сдвиг же вывести неоткуда, поэтому он лежит здесь и уходит
+   * отдельным сообщением: и всем играющим сразу, и каждому входящему.
+   */
+  daytimeShift = 0;
 
   private readonly terrain = new Map<InstanceId, ChunkedWorld>();
   private nextId = 1;
+
+  /**
+   * Частые смерти и когда они были — по **аккаунту**, а не по персонажу.
+   *
+   * По аккаунту потому, что иначе наказание обходится: вышел, вошёл другим
+   * персонажем — и счётчик чист. И живёт оно в мире, а не в игроке: игрок
+   * исчезает вместе с соединением, а перезаход не должен стирать долг.
+   */
+  private readonly deaths = new Map<string, { streak: number; at: number }>();
+
+  /** Сколько быстрых смертей подряд числится за аккаунтом. */
+  deathStreak(accountId: string): number {
+    return this.deaths.get(accountId)?.streak ?? 0;
+  }
+
+  /**
+   * Записывает смерть и возвращает новую длину череды.
+   *
+   * Прожитое без смертей время прощает всё: наказывается упорство, а не
+   * невезение.
+   */
+  recordDeath(accountId: string): number {
+    // Заодно выметаем отлежавшихся: без этого карта растёт на каждый аккаунт,
+    // который когда-либо умирал на этом сервере.
+    for (const [id, seen] of this.deaths) {
+      if (this.elapsed - seen.at >= RESPAWN_FORGIVE) this.deaths.delete(id);
+    }
+
+    const seen = this.deaths.get(accountId);
+    const streak = seen ? seen.streak + 1 : 0;
+    this.deaths.set(accountId, { streak, at: this.elapsed });
+    return streak;
+  }
+
+  /**
+   * Переводит стрелки на заданное время суток.
+   *
+   * Хранится не само время, а сдвиг: часы после перевода продолжают идти,
+   * а не застывают на выбранном часе. Иначе ведущий, поставив полночь,
+   * остановил бы мир для всех.
+   */
+  setDaytime(time: number): void {
+    const now = timeOfDay(this.tick, TICK_RATE);
+    this.daytimeShift = (((this.daytimeShift + time - now) % 1) + 1) % 1;
+  }
 
   /**
    * Кого перенесли в другой инстанс с прошлой рассылки.
@@ -337,6 +401,7 @@ export class World {
       race: character.race,
       characterClass: character.characterClass,
       playtimeSeconds: character.playtimeSeconds,
+      admin: false,
       lastAccountedAt: Date.now(),
       instanceId: character.instanceId,
       state,

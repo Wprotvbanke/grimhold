@@ -88,7 +88,7 @@ wss.on('connection', (socket) => {
 
     // Воскрешение — не боевое действие, обрабатывается отдельно.
     if (result.data.t === 'respawn') {
-      if (canRespawn(player)) {
+      if (canRespawn(world, player)) {
         const message = respawnPlayer(world, player);
         persistence.flushPlayer(player, 'воскрешение');
         session.send(message);
@@ -158,6 +158,13 @@ wss.on('connection', (socket) => {
       }
       if (event.type === 'itemError') {
         session.send({ t: 'itemError', message: String(event.reason) });
+      }
+      // Стрелки перевели — время суток общее, значит знать об этом должны все,
+      // а не только тот, кто их перевёл.
+      if (event.type === 'daytime') {
+        for (const other of world.players.values()) {
+          sendTo(other.id, { t: 'daytime', shift: world.daytimeShift });
+        }
       }
       // Добыча с ноды приходит тем же сообщением, что и лут с трупа: игроку
       // всё равно, откуда вещь, ему важно увидеть, что она у него.

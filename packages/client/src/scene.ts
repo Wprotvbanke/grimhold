@@ -7,6 +7,8 @@ import {
   ChunkedWorld,
   DUNGEON_EXIT,
   DUNGEON_EXIT_MARK,
+  DUNGEON_EXIT_MARK_HEIGHT,
+  DUNGEON_EXIT_WALL,
   dungeonSeed,
   generateDungeonChunk,
   isDungeon,
@@ -242,19 +244,24 @@ export function createScene(): World3D {
    * материалы сцены разом. На этом уже спотыкались, см. performance.md.
    */
   const portalLight = new THREE.PointLight(0xff4426, 0, 20, 1.6);
-  portalLight.position.set(DUNGEON_EXIT.x, 2.2, DUNGEON_EXIT.z);
+  // Свет стоит перед знаком, а не в точке выхода: он подсвечивает краску
+  // и стену вокруг неё, иначе в нише светится пустой камень.
+  portalLight.position.set(DUNGEON_EXIT.x, DUNGEON_EXIT_MARK_HEIGHT, DUNGEON_EXIT_WALL + 1.2);
   scene.add(portalLight);
 
   /**
-   * Знак выхода — краской по полу.
+   * Знак выхода — краской по стене ниши.
    *
-   * Не коробка и не модель: прозрачный прямоугольник, лежащий на камне. Его
-   * ищут глазами из дальнего конца зала, поэтому он большой (`DUNGEON_EXIT_MARK`)
-   * и светится сам — цвета складываются с полом, как у огня, и в полумраке
-   * знак виден насквозь темноты.
+   * Не коробка и не модель: прозрачный прямоугольник на камне. Он светится
+   * сам — цвета складываются со стеной, как у огня, и в полумраке знак виден
+   * насквозь темноты.
    *
-   * Геометрии он не касается: сервер о краске ничего не знает, а под ногами
-   * тут обычный пол.
+   * На полу он был вдвое больше и всё равно терялся: идущий смотрит вперёд,
+   * а не под ноги. На стене он оказывается на линии взгляда и читается через
+   * весь зал — то же самое пятно краски, но там, куда смотрят.
+   *
+   * Геометрии он не касается: сервер о краске ничего не знает, стена под ней
+   * обычная.
    */
   const exitMark = new THREE.Mesh(
     new THREE.PlaneGeometry(DUNGEON_EXIT_MARK * 2, DUNGEON_EXIT_MARK * 2),
@@ -269,8 +276,9 @@ export function createScene(): World3D {
       fog: false,
     }),
   );
-  exitMark.rotation.x = -Math.PI / 2;
-  exitMark.position.set(DUNGEON_EXIT.x, 0.02, DUNGEON_EXIT.z);
+  // Плоскость смотрит в зал: поворачивать не нужно, у неё и так лицо на +Z.
+  // Сдвиг на сантиметр от камня — чтобы краска не спорила со стеной за пиксель.
+  exitMark.position.set(DUNGEON_EXIT.x, DUNGEON_EXIT_MARK_HEIGHT, DUNGEON_EXIT_WALL + 0.01);
   exitMark.visible = false;
   scene.add(exitMark);
 
@@ -364,7 +372,7 @@ export function createScene(): World3D {
       daynight.update(worldTime, camera);
 
       if (exitMark.visible) {
-        // Знак дышит: неподвижное пятно на полу глаз принимает за текстуру,
+        // Знак дышит: неподвижное пятно на стене глаз принимает за текстуру,
         // а медленно разгорающееся — за живое место.
         const breath = 0.78 + 0.22 * Math.sin(elapsed * 1.6);
         (exitMark.material as THREE.MeshBasicMaterial).opacity = breath;

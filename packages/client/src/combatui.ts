@@ -30,6 +30,9 @@ export class CombatUi {
 
   private hurtTimer = 0;
   private targetTimer = 0;
+  /** Когда кнопка воскрешения станет доступна, по часам браузера. */
+  private respawnAt = 0;
+  private countdown: number | null = null;
 
   constructor(onRespawn: () => void) {
     // Захват мыши браузер отдаёт только по жесту пользователя, поэтому
@@ -136,19 +139,51 @@ export class CombatUi {
     return !this.targetInfo.hidden;
   }
 
-  showDeath(killerName: string | undefined): void {
+  /**
+   * Экран смерти с отсчётом.
+   *
+   * Срок лежания растёт с каждой быстрой смертью, и молчать о нём нельзя:
+   * кнопка, которая просто не работает, читается как поломка игры. Отсчёт
+   * идёт по часам браузера, но решает всё равно сервер — ранний щелчок он
+   * запомнит и поднимет, когда время выйдет.
+   */
+  showDeath(killerName: string | undefined, respawnIn: number): void {
     el<HTMLParagraphElement>('deathCause').textContent = killerName
       ? `Тебя убил: ${killerName}`
       : 'Ты не пережил этот день';
 
+    this.respawnAt = performance.now() + respawnIn * 1000;
+    this.deathScreen.hidden = false;
+    this.tickCountdown();
+
+    if (this.countdown === null) {
+      this.countdown = window.setInterval(() => this.tickCountdown(), 250);
+    }
+  }
+
+  private tickCountdown(): void {
     const button = el<HTMLButtonElement>('respawnBtn');
+    const left = Math.ceil((this.respawnAt - performance.now()) / 1000);
+
+    if (left > 0) {
+      button.disabled = true;
+      button.textContent = `Подняться можно через ${left} с`;
+      return;
+    }
+
     button.disabled = false;
     button.textContent = 'Вернуться в город';
+    this.stopCountdown();
+  }
 
-    this.deathScreen.hidden = false;
+  private stopCountdown(): void {
+    if (this.countdown === null) return;
+    clearInterval(this.countdown);
+    this.countdown = null;
   }
 
   hideDeath(): void {
+    this.stopCountdown();
     this.deathScreen.hidden = true;
     this.hurt.style.opacity = '0';
   }

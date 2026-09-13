@@ -55,6 +55,7 @@ import {
   mobTagHeight,
   tagHeight,
 } from './scene.js';
+import { createAdmin } from './admin.js';
 import { InventoryUi } from './inventoryui.js';
 import { guardBrowserKeys, toggleFullCapture, wireFullCapture } from './keyboard.js';
 import { createQuality } from './quality.js';
@@ -214,15 +215,17 @@ const controls = new Controls(renderer.domElement, {
     if (locked) controls.suspended = false;
 
     /**
-     * Меню настроек — оно же экран паузы.
+     * Меню настроек **само не открывается**.
      *
-     * Escape при захваченной мыши браузер забирает себе: он отпускает мышь
-     * и до игры нажатие не доходит. Поэтому меню открывается **на отпускание
-     * мыши** — для игрока это и есть «нажал Escape». Но не тогда, когда мышь
-     * отпущена ради рюкзака, чата или экрана смерти: там у игрока другое дело.
+     * Раньше оно всплывало на отпускание мыши — это должно было изображать
+     * «нажал Escape». Но мышь отпускается и сама: при переключении на другое
+     * окно, при сворачивании браузера, при любом уходе фокуса, — и человек,
+     * вернувшись в игру, каждый раз заставал меню посреди экрана.
+     *
+     * Открывает его теперь F1 и только он: это нажатие принадлежит игре
+     * и не значит ничего другого.
      */
     if (locked) settings.hide();
-    else if (!ui.chatFocused && !combatUi.dead && !inventoryUi.open) settings.show();
   },
   onAction: (kind) => {
     if (!game || combatUi.dead) return;
@@ -292,6 +295,9 @@ const connection = new Connection(SERVER_URL, {
   onWelcome: (message) => {
     // Частота тика нужна часам мира: время суток выводится из номера тика.
     serverTickRate = message.tickRate;
+    // Стрелки могли перевести до входа — иначе у вошедшего был бы свой час.
+    daytimeShift = message.daytimeShift;
+    adminUi.allow(message.admin);
     startGame(message.character, message.spawn);
   },
   onChat: (message) => ui.appendChat(message),
@@ -300,7 +306,7 @@ const connection = new Connection(SERVER_URL, {
     ui.system(`Навык вырос: ${SKILLS[message.skill].name} → ${message.level}`),
   onLife: (message) => {
     if (message.event === 'died') {
-      combatUi.showDeath(message.killerName);
+      combatUi.showDeath(message.killerName, message.respawnIn ?? 0);
       ui.setResumeHint(false);
       document.exitPointerLock();
     } else {
@@ -354,6 +360,9 @@ const connection = new Connection(SERVER_URL, {
     inventoryUi.setCrafting(message);
     if (message.recipeId) game?.hands.beginWork(message.remaining);
     else game?.hands.endWork();
+  },
+  onDaytime: (shift) => {
+    daytimeShift = shift;
   },
   onWorld: (message) => {
     /**
@@ -484,6 +493,47 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
+  /**
+   * Настройки картинки — F1.
+   *
+   * Не Escape: его при захваченной мыши браузер забирает себе, и до игры оно
+   * доходит только в полном экране. F1 приходит всегда и означает одно.
+   */
+  if (event.code === 'F1') {
+    event.preventDefault();
+    if (!game) return;
+    if (settings.open) {
+      settings.hide();
+      controls.requestLock();
+    } else {
+      adminUi.hide();
+      settings.show();
+      if (controls.locked) document.exitPointerLock();
+    }
+    return;
+  }
+
+  /**
+   * Служебное меню ведущего — F2. У обычного аккаунта не открывается:
+   * `allow` приходит с приветствием, а команды всё равно проверяет сервер.
+   */
+  if (event.code === 'F2') {
+    event.preventDefault();
+    if (!game) return;
+    if (adminUi.open) {
+      adminUi.hide();
+      controls.requestLock();
+    } else {
+      settings.hide();
+      adminUi.show();
+      // В меню печатают в поле поиска: на время ввода клавиатура принадлежит
+      // ему, а не миру. Иначе «доспех» уводил бы персонажа гулять.
+      controls.suspended = true;
+      if (controls.locked) document.exitPointerLock();
+    }
+    return;
+  }
+
   if (event.code === 'Escape') {
     // Escape закрывает рюкзак, но захват не возвращает: курсор остаётся
     // свободным — вещи ещё могут понадобиться.
@@ -491,22 +541,16 @@ window.addEventListener('keydown', (event) => {
       inventoryUi.hide();
       return;
     }
-    if (!game) return;
-
-    /**
-     * Меню настроек.
-     *
-     * Обычно до игры это нажатие не доходит: браузер забирает Escape себе,
-     * чтобы отпустить мышь, — и меню откроется само, по отпусканию. Но в полном
-     * экране с захватом клавиатуры Escape достаётся нам, и тогда мышь надо
-     * отпустить самим, иначе в меню нечем щёлкать.
-     */
+    // Открытые меню он тоже закрывает — так привычно, и это единственное,
+    // что Escape здесь делает: открывают меню F1 и F2.
     if (settings.open) {
       settings.hide();
       controls.requestLock();
-    } else {
-      settings.show();
-      if (controls.locked) document.exitPointerLock();
+      return;
+    }
+    if (adminUi.open) {
+      adminUi.hide();
+      controls.requestLock();
     }
   }
 });
@@ -602,6 +646,19 @@ const settings = createSettings(
   (chosen) => quality.configure({ resolution: chosen.resolution, shadows: chosen.shadows }),
   () => controls.requestLock(),
 );
+/**
+ * Служебное меню ведущего. Заводится всегда, показывается только тому,
+ * кому разрешил сервер: решение о правах приходит с приветствием.
+ */
+const adminUi = createAdmin(
+  (message) => connection.send(message),
+  // Закрыли меню — мышь и клавиатура возвращаются миру.
+  () => controls.requestLock(),
+);
+
+/** Сдвиг часов мира, поставленный ведущим. Приходит с приветствием и с ним же. */
+let daytimeShift = 0;
+
 let lastSnapshotTick = -1;
 let actionSeq = 0;
 /** Штраф скорости за перегруз. Обновляется вместе с состоянием вещей. */
@@ -757,7 +814,7 @@ renderer.setAnimationLoop((frameTime: number) => {
   }
 
   const worldTime = connection.latestSnapshot
-    ? timeOfDay(connection.latestSnapshot.tick, serverTickRate)
+    ? timeOfDay(connection.latestSnapshot.tick, serverTickRate, daytimeShift)
     : DAY_START;
   world.update(now / 1000, worldTime, camera);
 

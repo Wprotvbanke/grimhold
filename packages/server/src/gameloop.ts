@@ -1,4 +1,6 @@
 import {
+  RESPAWN_DELAY,
+  RESPAWN_STREAK_MAX,
   MAX_INPUTS_PER_TICK,
   BLOCK_DRAIN,
   EXPERIENCE_PER_KILL,
@@ -109,8 +111,17 @@ export function emptyOutbox(): Outbox {
   };
 }
 
-/** Сколько секунд лежать до возможности воскреснуть. */
-const DEATH_DELAY = 3;
+/**
+ * Срок лежания. Правило и числа — в общем коде (`shared/combat.ts`): его
+ * видит игрок на экране смерти и по нему же ждут сквозные проверки.
+ *
+ * Счётчик быстрых смертей живёт только в памяти. Это верно по существу:
+ * перезаход не должен стирать наказание, но и сервер, переживший перезапуск,
+ * начинает с чистого листа вместе со всем миром.
+ */
+export function deathDelay(world: World, player: Player): number {
+  return RESPAWN_DELAY * 2 ** Math.min(world.deathStreak(player.accountId), RESPAWN_STREAK_MAX);
+}
 
 export function tickWorld(world: World, dt: number, outbox: Outbox): void {
   world.tick++;
@@ -241,7 +252,7 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
        * оставался ходить мёртвым: невидимый для других, без возможности бить
        * и с нулём здоровья. Отказ без ответа — худший вид отказа.
        */
-      if (player.wantsRespawn && canRespawn(player)) {
+      if (player.wantsRespawn && canRespawn(world, player)) {
         player.wantsRespawn = false;
         outbox.life.push({ playerId: player.id, message: respawnPlayer(world, player) });
         // Воскрешение меняет положение и здоровье — пишем немедленно.
@@ -684,6 +695,11 @@ export function handlePlayerDeath(
   player.deadFor = 0;
   player.dirty = true;
 
+  // Часто умирающий лежит дольше. Счётчик ведётся здесь, в одном месте на все
+  // способы погибнуть: сорвись это в обработчик урона — и смерть от падения
+  // или от голода однажды осталась бы бесплатной.
+  world.recordDeath(player.accountId);
+
   // Порядок важен: внизу снаряжение уже пропало, и красному нечего ронять
   // сверх этого. Потеря опыта при этом остаётся — она про убийства, а не
   // про место смерти.
@@ -692,15 +708,15 @@ export function handlePlayerDeath(
 
   outbox.life.push({
     playerId: player.id,
-    message: { t: 'life', event: 'died', killerName },
+    message: { t: 'life', event: 'died', killerName, respawnIn: deathDelay(world, player) },
   });
   // Смерть — критичное событие: пишем немедленно, а не пакетом.
   outbox.criticalSaves.push(player);
 }
 
 /** Можно ли уже воскреснуть. */
-export function canRespawn(player: Player): boolean {
-  return !player.combat.alive && player.deadFor >= DEATH_DELAY;
+export function canRespawn(world: World, player: Player): boolean {
+  return !player.combat.alive && player.deadFor >= deathDelay(world, player);
 }
 
 export function respawnPlayer(world: World, player: Player): LifeMessage {

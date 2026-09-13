@@ -10,6 +10,7 @@ import {
   INPUT_DT,
   NODES,
   RECIPES,
+  RESPAWN_DELAY,
   TICK_RATE,
   generateNodes,
   type ItemId,
@@ -100,7 +101,8 @@ export async function reviveIfDead(client: TestClient): Promise<boolean> {
 
   client.send({ t: 'respawn' });
   // Ранняя просьба не пропадает: сервер поднимет, как только выйдет срок.
-  await sleep(4500);
+  // Срок берём из общего правила — он растёт с каждой быстрой смертью.
+  await sleep(RESPAWN_DELAY * 1000 + 1500);
   return true;
 }
 

@@ -36,6 +36,8 @@ export interface ConnectionHandlers {
   onCrafting?(message: CraftingMessage): void;
   onGathering?(message: GatheringMessage): void;
   onWorld?(message: WorldMessage): void;
+  /** Ведущий перевёл стрелки — час суток стал другим у всех сразу. */
+  onDaytime?(shift: number): void;
   onItemError?(message: string): void;
   onDisconnected?(): void;
 }
@@ -113,6 +115,9 @@ export class Connection {
           break;
         case 'world':
           this.handlers.onWorld?.(message);
+          break;
+        case 'daytime':
+          this.handlers.onDaytime?.(message.shift);
           break;
         case 'itemError':
           this.handlers.onItemError?.(message.message);
