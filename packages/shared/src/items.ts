@@ -301,7 +301,7 @@ const ITEM_LIST: ItemDef[] = [
     stack: 5,
     tier: 0,
     slot: 'offHand',
-    description: 'Светит. В подземелье выдаёт тебя издалека.',
+    description: 'Светит, пока в левой руке. Щит туда уже не возьмёшь, а тебя видно издалека.',
   },
   { id: 'arrow', name: 'Стрелы', kind: 'consumable', width: 1, height: 1, weight: 0.05, stack: 60, tier: 0 },
 
@@ -431,6 +431,18 @@ function spellItem(
 export const ITEMS: Record<ItemId, ItemDef> = Object.fromEntries(
   ITEM_LIST.map((item) => [item.id, item]),
 ) as Record<ItemId, ItemDef>;
+
+/**
+ * Сколько горит один факел.
+ *
+ * Пять минут — столько, чтобы забег был возможен, но не бесплатен: с двумя
+ * факелами в рюкзаке вниз не полезешь надолго, а значит темнота остаётся
+ * вопросом, а не решённым делом. Прогоревший исчезает из руки.
+ *
+ * Число в общем коде, а не у сервера: игрок видит остаток в полосе факела,
+ * и считать его обе стороны обязаны одинаково.
+ */
+export const TORCH_SECONDS = 300;
 
 export function itemDef(id: ItemId): ItemDef {
   return ITEMS[id];

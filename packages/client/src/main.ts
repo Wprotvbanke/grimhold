@@ -56,6 +56,7 @@ import {
   tagHeight,
 } from './scene.js';
 import { createAdmin } from './admin.js';
+import { createCarriedLights, makeHalo } from './lights.js';
 import { InventoryUi } from './inventoryui.js';
 import { guardBrowserKeys, toggleFullCapture, wireFullCapture } from './keyboard.js';
 import { createQuality } from './quality.js';
@@ -106,6 +107,15 @@ const scene = world.scene;
 
 /** Лампы снарядов: пул постоянного размера, см. scene.ts. */
 const projectileLights = createProjectileLights(scene);
+
+/**
+ * Лампы для чужих факелов и список тех, кому они достанутся.
+ *
+ * Список переиспользуется, а не собирается заново каждый кадр: это кадр
+ * за кадром, и мусор отсюда потом аукается рывками сборки.
+ */
+const carriedLights = createCarriedLights(scene);
+const carried: { x: number; y: number; z: number }[] = [];
 
 /** Частота тика сервера: из неё выводится время суток. Придёт с приветствием. */
 let serverTickRate = 1000 / TICK_MS;
@@ -606,6 +616,8 @@ interface Avatar {
   deathTime: number;
   /** Сколько ещё отыгрывать вздрагивание от удара. */
   hurtTime: number;
+  /** Огонёк в руке: есть, пока сущность несёт факел. */
+  flame: THREE.Sprite | null;
 }
 
 const avatars = new Map<string, Avatar>();
@@ -1208,6 +1220,7 @@ function ensureAvatar(entity: KnownEntity): Avatar {
     pose: { x: entity.x, y: entity.y, z: entity.z, yaw: entity.yaw, speed: 0 },
     deathTime: 0,
     hurtTime: 0,
+    flame: null,
   };
   avatars.set(entity.id, avatar);
 
@@ -1252,12 +1265,32 @@ function updateAvatars(now: number, dt: number): void {
     }
   }
 
+  carried.length = 0;
+
   for (const avatar of avatars.values()) {
     avatar.interpolator.sample(now, avatar.pose);
     avatar.interpolator.prune(now);
 
     avatar.group.position.set(avatar.pose.x, avatar.pose.y, avatar.pose.z);
     avatar.group.rotation.y = avatar.pose.yaw;
+
+    /**
+     * Огонь в чужой руке.
+     *
+     * Ореол висит на самой сущности — по нему её видно сквозь мглу, как
+     * уличный факел. Свет же берётся из отдельного пула: лампа, заведённая
+     * на каждого встречного, стоила бы перекомпиляции всех материалов сцены.
+     */
+    const lit = avatar.entity.lit === true && avatar.entity.alive;
+    if (lit && !avatar.flame) {
+      avatar.flame = makeHalo(0xffb257, 1.3);
+      avatar.flame.position.set(0.35, 1.2, 0);
+      avatar.group.add(avatar.flame);
+    } else if (!lit && avatar.flame) {
+      avatar.group.remove(avatar.flame);
+      avatar.flame = null;
+    }
+    if (lit) carried.push(avatar.pose);
 
     if (!avatar.entity.alive) {
       animateCorpse(avatar, dt);
@@ -1291,6 +1324,15 @@ function updateAvatars(now: number, dt: number): void {
       avatar.model.update(dt);
     }
   }
+
+  // Ламп меньше, чем факелоносцев в теории: ближние важнее.
+  carried.sort(
+    (a, b) =>
+      (a.x - renderPos.x) ** 2 +
+      (a.z - renderPos.z) ** 2 -
+      ((b.x - renderPos.x) ** 2 + (b.z - renderPos.z) ** 2),
+  );
+  carriedLights.update(carried);
 }
 
 /**

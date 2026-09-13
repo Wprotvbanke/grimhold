@@ -14,6 +14,7 @@ import {
   maxStamina,
   mobsForChunk,
   mobsForDungeon,
+  TORCH_SECONDS,
   BAG_SECONDS,
   DUNGEON_CAPACITY,
   DUNGEON_JOIN_SECONDS,
@@ -223,6 +224,14 @@ export interface Player {
   skills: Record<SkillId, SkillProgress>;
   /** Секунд до возможности воскреснуть. */
   deadFor: number;
+  /**
+   * Сколько ещё горит факел в левой руке.
+   *
+   * Живёт у игрока, а не у бойца: это не боевое состояние, а вещь, которая
+   * тратится. Заводится при надевании, тратится каждый тик, кончился —
+   * факел исчезает из руки.
+   */
+  torchLeft: number;
   /** Когда каждое заклинание снова готово, в секундах игрового времени. */
   spellCooldowns: Partial<Record<SpellId, number>>;
   /** Рюкзак: раскладку хранит и проверяет сервер, клиент только рисует. */
@@ -416,6 +425,7 @@ export class World {
       maxima,
       skills: emptySkillBook(),
       deadFor: 0,
+      torchLeft: 0,
       spellCooldowns: {},
       inventory: character.inventory ?? createBackpack(),
       bank: character.bank ?? createBank(),
@@ -741,7 +751,10 @@ export class World {
       action: combat.action?.kind,
       phase: combat.action?.phase,
       invulnerable: round(combat.invulnerable),
-      light: round(combat.lightRemaining),
+      // Светит либо заклинание, либо факел — клиенту важно только «сколько
+      // ещё». Берём больший остаток: гасить свет, пока горит второй источник,
+      // было бы враньём.
+      light: round(Math.max(combat.lightRemaining, player.torchLeft)),
       flag: flagFor(combat),
       karma: Math.round(combat.karma),
     };
@@ -779,6 +792,8 @@ export class World {
         action: player.combat.action?.kind,
         phase: player.combat.action?.phase,
         flag: flagFor(player.combat),
+        // Огонь в чужой руке виден всем — в этом вся цена факела.
+        ...(isLit(player) ? { lit: true } : {}),
       });
     }
 
@@ -1110,7 +1125,28 @@ function defaultHotbar(characterClass: CharacterClass): Hotbar {
 export function refreshLoadout(player: Player): void {
   player.combat.armor = equipmentArmor(player.equipment);
   player.carriedWeight = totalWeight(player.inventory) + equipmentWeight(player.equipment);
+
+  /**
+   * Факел зажигается и гаснет вместе с надеванием.
+   *
+   * Здесь, а не в команде надевания: рука пустеет и сама по себе — факел
+   * прогорает, его отнимает смерть красного, он пропадает вместе со всем
+   * снаряжением внизу. Пока это стояло в `handleEquip`, свет оставался гореть
+   * у пустой руки.
+   *
+   * Остаток не сбрасывается, если факел тот же: снял посмотреть рюкзак
+   * и надел обратно — он не должен становиться новым.
+   */
+  const torch = player.equipment.offHand?.defId === 'torch';
+  if (torch && player.torchLeft <= 0) player.torchLeft = TORCH_SECONDS;
+  if (!torch) player.torchLeft = 0;
+
   player.dirty = true;
+}
+
+/** Несёт ли игрок огонь. Одно место на всех: и снапшот, и зверьё смотрят сюда. */
+export function isLit(player: Player): boolean {
+  return player.torchLeft > 0 || player.combat.lightRemaining > 0;
 }
 
 // ---------- вспомогательное ----------

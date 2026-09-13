@@ -1,5 +1,6 @@
 import {
   CORPSE_SECONDS,
+  LIT_AGGRO,
   MOBS,
   attributesFor,
   createMoveState,
@@ -145,6 +146,8 @@ export interface MobTarget {
   id: string;
   pos: Vec3;
   alive: boolean;
+  /** Несёт огонь: такого замечают дальше — см. `LIT_AGGRO`. */
+  lit?: boolean;
 }
 
 export interface MobDecision {
@@ -260,15 +263,23 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
     return { input: idle, strike: false };
   }
 
-  // Цели нет — ищем ближайшую в радиусе обнаружения.
+  /**
+   * Цели нет — ищем ближайшую в радиусе обнаружения.
+   *
+   * Радиус свой у каждой цели, а не общий: несущего огонь видно дальше.
+   * Поэтому сравнивается не расстояние с расстоянием, а **запас** до своего
+   * предела: иначе факелоносец в пятнадцати метрах проигрывал бы тёмному
+   * в четырнадцати, хотя заметен куда сильнее.
+   */
   let nearest: MobTarget | null = null;
-  let nearestDistance = mob.profile.aggroRange;
+  let bestSlack = 0;
   for (const candidate of candidates) {
     if (!candidate.alive) continue;
-    const distance = horizontalDistance(mob.pos, candidate.pos);
-    if (distance < nearestDistance) {
+    const range = mob.profile.aggroRange * (candidate.lit ? LIT_AGGRO : 1);
+    const slack = range - horizontalDistance(mob.pos, candidate.pos);
+    if (slack > bestSlack) {
       nearest = candidate;
-      nearestDistance = distance;
+      bestSlack = slack;
     }
   }
 

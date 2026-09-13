@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 21;
+export const PROTOCOL_VERSION = 22;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -446,6 +446,13 @@ export interface EntitySnapshot {
   yaw: number;
   /** Доля здоровья 0..1. Абсолютных чисел о чужих не шлём. */
   hp: number;
+  /**
+   * Несёт огонь.
+   *
+   * Один бит, но без него факел — чистая выгода: видишь дальше и ничем
+   * за это не платишь. «Меня видно» начинается здесь.
+   */
+  lit?: boolean;
   alive: boolean;
   /** Что сущность делает — по этому клиент выбирает анимацию. */
   action?: ActionKind;
@@ -713,7 +720,12 @@ export interface SelfState {
   phase?: ActionPhase;
   /** Оставшаяся неуязвимость рывка, секунды. */
   invulnerable: number;
-  /** Сколько ещё горит «Светоч», секунды. */
+  /**
+   * Сколько ещё светит то, что светит, — секунды.
+   *
+   * Источник тут не важен: «Светоч» или факел в руке. Клиенту нужно одно —
+   * зажигать ли свет и не пора ли ему гаснуть.
+   */
   light: number;
   /** Свой флаг и карма: игрок должен видеть, во что он себя вогнал. */
   flag: PvpFlag;

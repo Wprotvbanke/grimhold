@@ -1,4 +1,5 @@
 import {
+  TORCH_SECONDS,
   RESPAWN_DELAY,
   RESPAWN_STREAK_MAX,
   MAX_INPUTS_PER_TICK,
@@ -51,7 +52,7 @@ import { speedMultiplier, tickCombatant, type Combatant } from './combatant.js';
 import { decideMob, killMob, tickRespawn, type Mob, type MobTarget } from './mob.js';
 import { applyDamage } from './combatant.js';
 import { createProjectile, stepProjectile } from './projectile.js';
-import { refreshLoadout, type Player, type World } from './world.js';
+import { isLit, refreshLoadout, type Player, type World } from './world.js';
 
 /**
  * Один тик мира: движение, бой, ИИ, снаряды, смерть.
@@ -155,6 +156,38 @@ function expireBags(world: World, outbox: Outbox, dt: number): void {
   }
 }
 
+/**
+ * Факел прогорает.
+ *
+ * Кончился — берётся следующий из связки в той же руке, а связка кончилась —
+ * рука пустеет. Это и делает темноту вопросом: факел не снаряжение, а запас,
+ * и вниз его надо нести.
+ */
+function burnTorch(player: Player, dt: number, outbox: Outbox): void {
+  player.torchLeft -= dt;
+  if (player.torchLeft > 0) return;
+
+  const held = player.equipment.offHand;
+  const left = (held?.count ?? 1) - 1;
+  const equipment = { ...player.equipment };
+
+  if (held && left > 0) {
+    equipment.offHand = { ...held, count: left };
+    player.torchLeft = TORCH_SECONDS;
+  } else {
+    delete equipment.offHand;
+    player.torchLeft = 0;
+  }
+
+  player.equipment = equipment;
+  refreshLoadout(player);
+  outbox.inventory.push(player);
+  outbox.itemErrors.push({
+    playerId: player.id,
+    message: left > 0 ? 'Факел прогорел, зажжён следующий' : 'Факел прогорел',
+  });
+}
+
 // ---------- игроки ----------
 
 function tickPlayers(world: World, dt: number, outbox: Outbox): void {
@@ -165,6 +198,9 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     // и у мёртвого: отлежаться от флага нельзя, но и висеть он вечно не должен.
     combat.karma = Math.max(0, combat.karma - KARMA_DECAY_PER_SECOND * dt);
     combat.purpleFor = Math.max(0, combat.purpleFor - dt);
+
+    // Факел прогорает, пока он в руке, — и живой, и мёртвый: огонь не ждёт.
+    if (player.torchLeft > 0) burnTorch(player, dt, outbox);
 
     // Работа идёт, пока игрок стоит у цели: отошёл — брошена. Это и есть
     // способ передумать, отдельной кнопки отмены не нужно. Одинаково для
@@ -422,6 +458,8 @@ function tickMobs(world: World, dt: number, outbox: Outbox): void {
         id: player.id,
         pos: player.state.pos,
         alive: player.combat.alive,
+        // Огонь в руке выдаёт: такого замечают дальше.
+        lit: isLit(player),
       }));
 
       const decision = decideMob(mob, targets, dt);

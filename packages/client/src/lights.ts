@@ -373,6 +373,48 @@ export function createLights(scene: THREE.Scene): WorldLights {
   };
 }
 
+/** Сколько чужих огней освещают мир одновременно. */
+const CARRIED_LIGHTS = 3;
+
+export interface CarriedLights {
+  /** Зовётся каждый кадр со списком тех, кто несёт огонь. */
+  update(list: readonly { x: number; y: number; z: number }[]): void;
+}
+
+/**
+ * Лампы для факелов в чужих руках.
+ *
+ * Отдельный пул, а не общий с городским: тот отбирает **ближайшие
+ * неподвижные** огни, а эти ходят. Число постоянное, как везде: источник,
+ * появившийся в сцене по ходу игры, стоит перекомпиляции всех материалов.
+ *
+ * Трёх хватает: чужих с факелами в кадре бывает один-два, а дальше их свет
+ * всё равно сливается.
+ */
+export function createCarriedLights(scene: THREE.Scene): CarriedLights {
+  const pool: THREE.PointLight[] = [];
+  for (let i = 0; i < CARRIED_LIGHTS; i++) {
+    const light = new THREE.PointLight(0xffa851, 0, 18, LIGHT_DECAY);
+    scene.add(light);
+    pool.push(light);
+  }
+
+  return {
+    update(list) {
+      for (const [index, light] of pool.entries()) {
+        const carrier = list[index];
+        if (!carrier) {
+          light.intensity = 0;
+          continue;
+        }
+        // Огонь в руке, а не над головой: свет ложится под ноги несущему.
+        light.position.set(carrier.x, carrier.y + 1.1, carrier.z);
+        light.intensity = 9;
+      }
+    },
+  };
+}
+
 /**
  * Ореол вокруг огня.
  *
@@ -385,7 +427,7 @@ export function createLights(scene: THREE.Scene): WorldLights {
  * и сложением цветов. Она не освещает ничего, она только показывает, что здесь
  * горит, — и видна с другого конца площади.
  */
-function makeHalo(color: number, size: number): THREE.Sprite {
+export function makeHalo(color: number, size: number): THREE.Sprite {
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({
       map: haloTexture(),
