@@ -49,6 +49,20 @@ export class Predictor {
   private readonly sentAt = new Map<number, number>();
   /** Видимое смещение, гасящее рывок после поправки. */
   private readonly error = { x: 0, y: 0, z: 0 };
+  /**
+   * Позиция до последнего шага симуляции.
+   *
+   * Нужна кадру: шаги идут ровно 60 раз в секунду, а кадры — как выйдет. При
+   * 60 Гц экрана и малейшем расхождении часов один кадр не получает ни одного
+   * шага, следующий получает два. Камера при этом стоит и прыгает через раз,
+   * и в движении весь мир мелко трясётся — заметнее всего на том, за чем
+   * следишь глазами: фигура размывается и её не поймать взглядом.
+   *
+   * Поэтому в кадре показывается не последний шаг, а точка между предпоследним
+   * и последним — по остатку накопителя. Цена — задержка до одного шага,
+   * шестнадцать миллисекунд, которых не видно.
+   */
+  private readonly previous = { x: 0, y: 0, z: 0 };
   private accumulator = 0;
   private seq = 0;
   private lastAck = -1;
@@ -84,6 +98,9 @@ export class Predictor {
   teleport(to: { x: number; y: number; z: number }): void {
     this.state.pos = { ...to };
     this.state.vel = { x: 0, y: 0, z: 0 };
+    this.previous.x = to.x;
+    this.previous.y = to.y;
+    this.previous.z = to.z;
     this.pending.length = 0;
     this.sentAt.clear();
     this.error.x = 0;
@@ -102,6 +119,7 @@ export class Predictor {
   ) {
     this.state = createMoveState(spawn, options);
     this.baseSpeedScale = this.state.speedScale;
+    this.previous = { ...this.state.pos };
   }
 
   /**
@@ -135,6 +153,10 @@ export class Predictor {
         sprint: intent.sprint,
         dt: INPUT_DT,
       };
+
+      this.previous.x = this.state.pos.x;
+      this.previous.y = this.state.pos.y;
+      this.previous.z = this.state.pos.z;
 
       this.state = this.simulate(this.state, input);
       this.pending.push(input);
@@ -181,6 +203,12 @@ export class Predictor {
       this.state = this.simulate(this.state, input);
     }
 
+    // Поправка — не шаг симуляции, и тянуть кадр от доисправленной точки
+    // к исправленной нельзя: рывок гасит `error`, а не эта интерполяция.
+    this.previous.x = this.state.pos.x;
+    this.previous.y = this.state.pos.y;
+    this.previous.z = this.state.pos.z;
+
     const dx = before.x - this.state.pos.x;
     const dy = before.y - this.state.pos.y;
     const dz = before.z - this.state.pos.z;
@@ -217,15 +245,25 @@ export class Predictor {
     return next;
   }
 
-  /** Позиция для камеры: предсказание плюс затухающая поправка. */
+  /**
+   * Позиция для камеры: точка между двумя последними шагами плюс затухающая
+   * поправка.
+   *
+   * Именно здесь снимается дрожание при движении. Шаги фиксированные, кадры —
+   * нет, и показывать последний целый шаг значит двигать камеру рывками на
+   * частоте, не совпадающей с частотой экрана.
+   */
   renderPosition(dt: number, out: { x: number; y: number; z: number }): void {
     const decay = Math.exp(-ERROR_DECAY * dt);
     this.error.x *= decay;
     this.error.y *= decay;
     this.error.z *= decay;
 
-    out.x = this.state.pos.x + this.error.x;
-    out.y = this.state.pos.y + this.error.y;
-    out.z = this.state.pos.z + this.error.z;
+    const alpha = Math.min(1, Math.max(0, this.accumulator / INPUT_DT));
+    const pos = this.state.pos;
+
+    out.x = this.previous.x + (pos.x - this.previous.x) * alpha + this.error.x;
+    out.y = this.previous.y + (pos.y - this.previous.y) * alpha + this.error.y;
+    out.z = this.previous.z + (pos.z - this.previous.z) * alpha + this.error.z;
   }
 }
