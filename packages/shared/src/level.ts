@@ -266,8 +266,9 @@ export const DUNGEON_GATE = {
  * Встали вместо двух голых стен, что делили площадь: стены были «есть за чем
  * прятаться», здания дают то же укрытие, но выглядят городом, а не полигоном.
  *
- * Стоят **вдоль восточной стороны северной улицы**, друг за другом через
- * проход в полтора метра, фасадом с дверью к улице, на запад. Первым их
+ * Дом стоит **вдоль восточной стороны северной улицы**, ратуша («церковь»)
+ * перенесена владельцем к юго-востоку от точки появления; обе фасадом с дверью
+ * на запад — к улице и к площади. Первым их
  * поставили к северу от точки появления фасадом на площадь — и ратуша
  * перегородила ось северных ворот: из города было не выйти, упал тест
  * движения. Ось ворот держим пустой, как и для фонарей.
@@ -290,10 +291,14 @@ export const TOWN_HOUSES: readonly {
   footprint: { minX: number; maxX: number; minZ: number; maxZ: number };
 }[] = [
   {
+    // Ратуша со шпилем — владелец зовёт её церковью. Место и разворот выбрал
+    // он сам: к юго-востоку от точки появления, **лицом к центру площади**.
+    // Угол считается от места к центру, а не вписан числом: передвинут —
+    // и фасад сам повернётся за площадью.
     model: 'town_hall',
-    x: 7.1,
-    z: -7.8,
-    turn: -Math.PI / 2,
+    x: 10,
+    z: 15,
+    turn: facing(10, 15, 0, 0),
     height: 10,
     footprint: { minX: -3.6, maxX: 3.6, minZ: -4.2, maxZ: 4.3 },
   },
@@ -308,35 +313,62 @@ export const TOWN_HOUSES: readonly {
 ];
 
 /**
- * Коробка здания в мире: пятно поворачивается вместе с моделью.
+ * Разворот, при котором фасад модели (+Z) смотрит из точки на цель.
+ * Тот же угол, что у `rotation.y` в three.
+ */
+function facing(fromX: number, fromZ: number, toX: number, toZ: number): number {
+  return Math.atan2(toX - fromX, toZ - fromZ);
+}
+
+/**
+ * На сколько полос режется пятно здания под коробки столкновений.
+ *
+ * Коробки у нас выровнены по осям, а здание может стоять под любым углом.
+ * Одна коробка вокруг повёрнутого пятна раздувается: ратуша под 34° к осям
+ * давала коробку 11×11 м вместо 7×8.5, и у углов стояли невидимые стены
+ * в полтора метра. Полосы обводят пятно ступенькой, и ступенька тем мельче,
+ * чем полос больше. При развороте на четверть оборота полосы складываются
+ * ровно в прямоугольник.
+ */
+const HOUSE_STRIPS = 8;
+
+/**
+ * Коробки здания в мире: пятно поворачивается вместе с моделью.
  *
  * Поворот тот же, что у `rotation.y` в three: x' = x·cos + z·sin,
  * z' = −x·sin + z·cos. Разверни одно без другого — и игрок упирается
  * в воздух сбоку от здания, а сквозь фасад проходит.
  */
 function houseBoxes(): LevelBox[] {
-  return TOWN_HOUSES.map(({ x, z, turn, height, footprint }): LevelBox => {
+  const boxes: LevelBox[] = [];
+  for (const { x, z, turn, height, footprint } of TOWN_HOUSES) {
     const cos = Math.cos(turn);
     const sin = Math.sin(turn);
-    const corners = [
-      [footprint.minX, footprint.minZ],
-      [footprint.minX, footprint.maxZ],
-      [footprint.maxX, footprint.minZ],
-      [footprint.maxX, footprint.maxZ],
-    ].map(([cx, cz]) => ({ x: x + cx! * cos + cz! * sin, z: z - cx! * sin + cz! * cos }));
-    return {
-      kind: 'wall',
-      hidden: true,
-      box: {
-        minX: Math.min(...corners.map((corner) => corner.x)),
-        maxX: Math.max(...corners.map((corner) => corner.x)),
-        minY: 0,
-        maxY: height,
-        minZ: Math.min(...corners.map((corner) => corner.z)),
-        maxZ: Math.max(...corners.map((corner) => corner.z)),
-      },
-    };
-  });
+    const step = (footprint.maxZ - footprint.minZ) / HOUSE_STRIPS;
+
+    for (let strip = 0; strip < HOUSE_STRIPS; strip++) {
+      const fromZ = footprint.minZ + step * strip;
+      const corners = [
+        [footprint.minX, fromZ],
+        [footprint.minX, fromZ + step],
+        [footprint.maxX, fromZ],
+        [footprint.maxX, fromZ + step],
+      ].map(([cx, cz]) => ({ x: x + cx! * cos + cz! * sin, z: z - cx! * sin + cz! * cos }));
+      boxes.push({
+        kind: 'wall',
+        hidden: true,
+        box: {
+          minX: Math.min(...corners.map((corner) => corner.x)),
+          maxX: Math.max(...corners.map((corner) => corner.x)),
+          minY: 0,
+          maxY: height,
+          minZ: Math.min(...corners.map((corner) => corner.z)),
+          maxZ: Math.max(...corners.map((corner) => corner.z)),
+        },
+      });
+    }
+  }
+  return boxes;
 }
 
 export const TOWN_BOXES: readonly LevelBox[] = [
