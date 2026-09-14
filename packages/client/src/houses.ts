@@ -34,7 +34,19 @@ const HATCH = { minX: -1.1, maxX: 1.1, minZ: -1.2, maxZ: 1.2 };
  * подъём ставит нижний слой в проём, а верхний — невысоко над рамой
  * (верх рамы — 0.19 м).
  */
-const HATCH_FOG = { scale: 0.4, lift: 0.42, opacity: 0.35 };
+const HATCH_FOG = {
+  // На 30% больше первого (0.4) и выше над рамой — по просьбе владельца.
+  scale: 0.52,
+  lift: 0.6,
+  opacity: 0.6,
+  /**
+   * Зеленоватый: из люка тянет гнилью канализации, а не паром. Одним цветом
+   * материала туман темнел и ночью пропадал совсем — поэтому он ещё и слабо
+   * светится своей же текстурой, как болотный огонь.
+   */
+  color: 0x9cff80,
+  glow: 0.45,
+};
 
 export function createHouses(scene: THREE.Scene): Houses {
   const group = new THREE.Group();
@@ -195,6 +207,11 @@ export function createHouses(scene: THREE.Scene): Houses {
         // Слои в модели плотные: пять подряд сливались в белый диск и прятали
         // черноту проёма. Туман должен дымиться над глубиной, а не закрывать её.
         material.opacity *= HATCH_FOG.opacity;
+        // Текстура белая — цвет материала окрашивает её целиком.
+        material.color.setHex(HATCH_FOG.color);
+        material.emissive.setHex(HATCH_FOG.color);
+        material.emissiveMap = material.map;
+        material.emissiveIntensity = HATCH_FOG.glow;
         mesh.renderOrder = 1;
         // Геометрия после сборки в мировых координатах модели и по центру —
         // кружить можно сам меш вокруг его оси.

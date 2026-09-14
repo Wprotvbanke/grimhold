@@ -78,7 +78,6 @@ const MODELS: ModelSpec[] = [
   { source: `${HOUSES}/house5_towern.glb`, output: 'tavern.glb', normalize: { scale: 0.5 } },
   // Часовня пришла в сотнях единиц и на десять метров под землёй: 73 м высоты.
   { source: `${HOUSES}/house3.glb`, output: 'chapel.glb', normalize: { height: 12 } },
-  { source: `${HOUSES}/House2.glb`, output: 'house_timber.glb', normalize: {}, tint: [0.72, 0.64, 0.52] },
   { source: `${HOUSES}/house4.glb`, output: 'house_narrow.glb', normalize: {} },
   { source: `${HOUSES}/house_Triangle.glb`, output: 'house_gable.glb', normalize: {} },
   { source: `${HOUSES}/house_tiny.glb`, output: 'house_tiny.glb', normalize: {} },

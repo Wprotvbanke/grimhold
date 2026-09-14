@@ -337,7 +337,6 @@ export const DUNGEON_GATE = {
 /** Пятна домов у земли в их координатах — по моделям, чуть внутрь. */
 const HOUSE = {
   chapel: { minX: -3.0, maxX: 2.8, minZ: -5.2, maxZ: 4.9 },
-  timber: { minX: -2.0, maxX: 2.0, minZ: -4.8, maxZ: 4.8 },
   narrow: { minX: -2.5, maxX: 2.5, minZ: -4.2, maxZ: 4.2 },
   gable: { minX: -3.0, maxX: 3.0, minZ: -2.6, maxZ: 2.6 },
   tiny: { minX: -3.3, maxX: 3.3, minZ: -2.4, maxZ: 2.4 },
@@ -345,7 +344,7 @@ const HOUSE = {
 } as const;
 
 export const TOWN_HOUSES: readonly {
-  model: 'town_hall' | 'townhouse' | 'chapel' | 'house_timber' | 'house_narrow' | 'house_gable' | 'house_tiny' | 'wagon';
+  model: 'town_hall' | 'townhouse' | 'chapel' | 'house_narrow' | 'house_gable' | 'house_tiny' | 'wagon';
   x: number;
   z: number;
   turn: number;
@@ -395,10 +394,8 @@ export const TOWN_HOUSES: readonly {
   { model: 'house_narrow', x: 9.4, z: -37, turn: -Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
   // Северо-восток: вдоль восточной улицы, фасадом на юг.
   { model: 'house_tiny', x: 20, z: -8.5, turn: 0, height: 6.9, footprint: HOUSE.tiny },
-  { model: 'house_timber', x: 32, z: -10, turn: 0, height: 7.8, footprint: HOUSE.timber },
 
   // Юго-восток: вдоль восточной улицы, фасадом на север.
-  { model: 'house_timber', x: 26, z: 10, turn: Math.PI, height: 7.8, footprint: HOUSE.timber },
   { model: 'house_gable', x: 36, z: 9, turn: Math.PI, height: 9, footprint: HOUSE.gable },
   // Юго-восток: вдоль южной улицы за ратушей, фасадом на запад.
   { model: 'house_tiny', x: 7.55, z: 30, turn: -Math.PI / 2, height: 6.9, footprint: HOUSE.tiny },
@@ -409,14 +406,12 @@ export const TOWN_HOUSES: readonly {
   { model: 'house_tiny', x: -28, z: 9, turn: Math.PI, height: 6.9, footprint: HOUSE.tiny },
   // Юго-запад: вдоль южной улицы, фасадом на восток.
   { model: 'house_gable', x: -7.6, z: 26, turn: Math.PI / 2, height: 9, footprint: HOUSE.gable },
-  { model: 'house_timber', x: -9.6, z: 38, turn: Math.PI / 2, height: 7.8, footprint: HOUSE.timber },
 
   // Северо-запад, за таверной: вдоль северной улицы, фасадом на восток.
   { model: 'house_narrow', x: -9.4, z: -30, turn: Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
   { model: 'house_gable', x: -7.6, z: -42, turn: Math.PI / 2, height: 9, footprint: HOUSE.gable },
   // Северо-запад: лавка на колёсах и дом вдоль западной улицы, фасадом на юг.
   { model: 'wagon', x: -30, z: -8, turn: Math.PI / 2, height: 3.6, footprint: HOUSE.wagon },
-  { model: 'house_timber', x: -40, z: -10, turn: 0, height: 7.8, footprint: HOUSE.timber },
 ];
 
 /**

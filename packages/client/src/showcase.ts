@@ -57,12 +57,60 @@ function yawTowards(from: { x: number; z: number }, to: { x: number; z: number }
   return Math.atan2(to.x - from.x, to.z - from.z);
 }
 
+/**
+ * Что дворф выкрикивает над головой — по кругу, по фразе на `LINE_SECONDS`.
+ * Одно облачко, текст в нём сменяется: это один разговор, а не два.
+ */
+const LINES = [
+  'Эта ведьма сливала что-то в канализацию, я видел!!',
+  'Я вииидел это существо! Это мало похоже на крысу...',
+];
+const LINE_SECONDS = 7;
+/** Дальше — облачко не показываем: над крошечной фигуркой оно заслоняет площадь. */
+const BUBBLE_RANGE = 25;
+/** Над макушкой, в метрах от земли. */
+const BUBBLE_HEIGHT = RACES.dwarf.height + 0.35;
+
 export interface Showcase {
   /** Каждый кадр. `visible: false` — под землёй витрины нет. */
-  update(dt: number, visible: boolean): void;
+  update(dt: number, visible: boolean, camera: THREE.Camera): void;
 }
 
 export function createShowcase(scene: THREE.Scene): Showcase {
+  /**
+   * Облачко реплики — DOM поверх кадра, как ники: текст в three пришлось бы
+   * рисовать в текстуру, а здесь он чёткий на любом расстоянии.
+   */
+  const bubble = typeof document === 'undefined' ? null : document.createElement('div');
+  if (bubble) {
+    bubble.className = 'speech';
+    bubble.style.display = 'none';
+    (document.getElementById('labels') ?? document.body).append(bubble);
+  }
+  let spoken = 0;
+  let line = -1;
+  const projected = new THREE.Vector3();
+
+  function speak(dt: number, visible: boolean, camera: THREE.Camera): void {
+    if (!bubble) return;
+    spoken += dt;
+    const now = Math.floor(spoken / LINE_SECONDS) % LINES.length;
+    if (now !== line) {
+      line = now;
+      bubble.textContent = LINES[now]!;
+    }
+
+    const far = Math.hypot(root.position.x - camera.position.x, root.position.z - camera.position.z) > BUBBLE_RANGE;
+    projected.set(root.position.x, root.position.y + BUBBLE_HEIGHT, root.position.z).project(camera);
+    if (!visible || far || projected.z > 1) {
+      bubble.style.display = 'none';
+      return;
+    }
+    bubble.style.display = 'block';
+    bubble.style.left = `${((projected.x + 1) / 2) * innerWidth}px`;
+    bubble.style.top = `${((1 - projected.y) / 2) * innerHeight}px`;
+  }
+
   const root = new THREE.Group();
   root.position.set(ENDS[0].x, ENDS[0].y, ENDS[0].z);
   root.rotation.y = yawTowards(ENDS[0], ENDS[1]);
@@ -145,8 +193,9 @@ export function createShowcase(scene: THREE.Scene): Showcase {
   );
 
   return {
-    update(dt, visible) {
+    update(dt, visible, camera) {
       root.visible = visible;
+      speak(dt, visible, camera);
       if (!mixer || !visible) return;
       mixer.update(dt);
       const program = PROGRAM[step];

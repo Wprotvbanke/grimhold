@@ -32,7 +32,7 @@
 | `public/models/tavern_props.glb` | от владельца проекта — мебель старой таверны; возвращена из истории git (скрипт сборки `prepare-tavern.ts` остался там же) | уточнить |
 | `public/models/tavern.glb` | от владельца проекта, выгрузка Sketchfab «house5 towern»; ×0.5 — пришла с этажом в 7 м; собран `scripts/prepare-town.ts` | CC, со слов владельца (вид не указан) |
 | `public/models/chapel.glb` | от владельца проекта, выгрузка Sketchfab «house3» — часовня со шпилем; приведена к высоте 12 м (пришла в 73 м и на 10 м под землёй) | CC, со слов владельца (вид не указан) |
-| `public/models/house_{timber,narrow,gable,tiny}.glb` | от владельца проекта, выгрузки Sketchfab House2, house4, house_Triangle, house_tiny; у `house_timber` нет цветовой текстуры — цвет задан при сборке | CC, со слов владельца (вид не указан) |
+| `public/models/house_{narrow,gable,tiny}.glb` | от владельца проекта, выгрузки Sketchfab house4, house_Triangle, house_tiny; `House2` (фахверк) пришёл без цветовой текстуры и убран владельцем из города | CC, со слов владельца (вид не указан) |
 | `public/models/wagon.glb` | от владельца проекта, выгрузка Sketchfab «shop on wheels» — лавка на колёсах; поставлена на землю (висела в 4 м над ней) | CC, со слов владельца (вид не указан) |
 | `public/models/walls.glb` | от владельца проекта, выгрузка Sketchfab — вышка, пролёт, арка, створки; собран `scripts/prepare-town.ts` без слияния частей | CC, со слов владельца (вид не указан) |
 | `public/models/bank.glb` | от владельца проекта, выгрузка Sketchfab — каменный ларец казны; собран `scripts/prepare-town.ts` (поднят на землю, ×1.1) | CC, со слов владельца (вид не указан) |

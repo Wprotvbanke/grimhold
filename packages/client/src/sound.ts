@@ -68,7 +68,8 @@ export const SOUNDS = {
     far: 18,
     detune: 0.1,
   },
-  hit: { files: five('impactPunch_medium'), volume: 0.8, positional: true, near: 2, far: 25, detune: 0.08 },
+  /** Попадание — удар кулака. Вдвое тише первоначального 0.8: глушил бой. */
+  hit: { files: five('impactPunch_medium'), volume: 0.4, positional: true, near: 2, far: 25, detune: 0.08 },
 
   /**
    * Хозяин глубины — король крыс. Рёв слышен далеко: на дне этажа он и есть

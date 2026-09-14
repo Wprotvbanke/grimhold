@@ -924,7 +924,7 @@ renderer.setAnimationLoop((frameTime: number) => {
 
     // 4. Чужие рисуются в прошлом, плавно между снапшотами.
     updateAvatars(now, dt);
-    showcase.update(dt, !undergroundNow);
+    showcase.update(dt, !undergroundNow, camera);
     updateNametags();
     combatUi.updateCooldowns(now);
 
