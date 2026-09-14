@@ -69,6 +69,7 @@ import { createSound } from './sound.js';
 import { createCues } from './cues.js';
 import { createSteps, surfaceAt, type Walker } from './steps.js';
 import { createAtmosphere } from './atmosphere.js';
+import { createLabour, labourForWork, type Worker } from './labour.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -165,6 +166,12 @@ const STEP_RANGE = 20;
 
 /** Звуки вылазки: фон по месту, свой огонь, гонг хозяина глубины, порталы, отдышка. */
 const atmosphere = createAtmosphere(sound);
+
+/** Звук работы: удары топора, кирки и замка — свои и соседей. */
+const labour = createLabour(sound);
+
+/** Кто рядом работает — для чужих ударов. Переиспользуется, как `walkers`. */
+const workers: Worker[] = [];
 
 /** Всё, что появляется только после входа в мир конкретным персонажем. */
 interface GameSession {
@@ -378,8 +385,11 @@ const connection = new Connection(SERVER_URL, {
   },
   onChat: (message) => ui.appendChat(message),
   onCombat: (event) => handleCombatEvent(event),
-  onSkillUp: (message) =>
-    ui.system(`Навык вырос: ${SKILLS[message.skill].name} → ${message.level}`),
+  onSkillUp: (message) => {
+    ui.system(`Навык вырос: ${SKILLS[message.skill].name} → ${message.level}`);
+    // Рост слышен: строку в чате посреди боя легко пропустить, звук — нет.
+    sound.play('skillUp');
+  },
   onLife: (message) => {
     if (message.event === 'died') {
       combatUi.showDeath(message.killerName, message.respawnIn ?? 0);
@@ -404,6 +414,8 @@ const connection = new Connection(SERVER_URL, {
       ui.system(`С «${message.from}»: ${list}`);
       // Руки тянутся и забирают добычу — видно, что она попала именно к тебе.
       game?.hands.playTake();
+      // И слышно: монеты звенят, остальное шуршит.
+      sound.play(message.items.some((item) => item.itemId === 'coin') ? 'coins' : 'pickup');
     }
     // Не влезшее в рюкзак теряется — об этом надо сказать прямо.
     if (message.lost > 0) {
@@ -441,8 +453,15 @@ const connection = new Connection(SERVER_URL, {
   },
   onCrafting: (message) => {
     inventoryUi.setCrafting(message);
-    if (message.recipeId) game?.hands.beginWork(message.remaining);
-    else game?.hands.endWork();
+    // Ремесло звучит ударами, пока идёт полоса. Звука «готово» нет намеренно:
+    // сообщение не отличает готовое изделие от прерванной работы, и он соврал бы.
+    if (message.recipeId) {
+      game?.hands.beginWork(message.remaining);
+      labour.begin('craft');
+    } else {
+      game?.hands.endWork();
+      labour.end();
+    }
   },
   onProgress: (message) => {
     inventoryUi.setProgress(message);
@@ -483,9 +502,15 @@ const connection = new Connection(SERVER_URL, {
   },
   onGathering: (message) => {
     ui.setGathering(message);
-    // Полоса идёт — руки должны работать, а не висеть неподвижно.
-    if (message.nodeId) game?.hands.beginWork(message.remaining);
-    else game?.hands.endWork();
+    // Полоса идёт — руки должны работать, а не висеть неподвижно. И звучать:
+    // топор рубит, кирка бьёт, замок сундука щёлкает.
+    if (message.nodeId) {
+      game?.hands.beginWork(message.remaining);
+      labour.begin(labourForWork(message.nodeId));
+    } else {
+      game?.hands.endWork();
+      labour.end();
+    }
   },
   onItemError: (message) => inventoryUi.showError(message),
   onDisconnected: () => {
@@ -1527,6 +1552,9 @@ function updateAvatars(now: number, dt: number): void {
    */
   steps.others(dt, walkers, surfaceAt(camera.position.x, camera.position.z, undergroundNow));
   walkers.length = 0;
+  // Удары работы — своей и соседей — по тому же правилу: список прошлого кадра.
+  labour.tick(dt, workers);
+  workers.length = 0;
   carried.length = 0;
 
   for (const avatar of avatars.values()) {
@@ -1535,6 +1563,18 @@ function updateAvatars(now: number, dt: number): void {
 
     avatar.group.position.set(avatar.pose.x, avatar.pose.y, avatar.pose.z);
     avatar.group.rotation.y = avatar.pose.yaw;
+
+    // Работает — его удары должны быть слышны. Дальность решает сам звук:
+    // замок сундука слышно дальше шагов, и отрезать его здесь по шагам нельзя.
+    if (avatar.entity.alive && avatar.entity.work) {
+      workers.push({
+        id: avatar.entity.id,
+        x: avatar.pose.x,
+        y: avatar.pose.y,
+        z: avatar.pose.z,
+        work: avatar.entity.work,
+      });
+    }
 
     // Идёт рядом — его шаги должны быть слышны. Дальних и мёртвых не берём:
     // голоса на них не хватит, а слышно их всё равно не было бы.

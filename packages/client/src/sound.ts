@@ -112,6 +112,38 @@ export const SOUNDS = {
   ambDungeon: { files: ['dungeon_ambient.ogg'], volume: 0.7, positional: false },
   /** Фон диких земель: ветер. Тише подземелья — открытое место. */
   ambWild: { files: ['wind_loop.ogg'], volume: 0.35, positional: false },
+
+  /** Работа у ноды — удары, пока идёт полоса. Своя плоская, чужая из точки. */
+  chop: { files: ['chop.ogg'], volume: 0.7, positional: true, near: 2, far: 22, detune: 0.1 },
+  mine: { files: five('impactMining'), volume: 0.7, positional: true, near: 2, far: 22, detune: 0.06 },
+  gather: {
+    files: ['handleSmallLeather.ogg', 'handleSmallLeather2.ogg'],
+    volume: 0.55,
+    positional: true,
+    near: 2,
+    far: 16,
+    detune: 0.1,
+  },
+  /**
+   * Вскрытие сундука — щелчки замка.
+   *
+   * Слышно дальше прочей работы: замысел обещал «уязвим и слышен», и сосед
+   * обязан узнать сундук по звуку раньше, чем увидит того, кто его вскрывает.
+   */
+  lockpick: {
+    files: ['metalClick.ogg', 'metalLatch.ogg'],
+    volume: 0.7,
+    positional: true,
+    near: 2,
+    far: 26,
+    detune: 0.08,
+  },
+  /** Ремесло — только своё, чужого не видно и не слышно. */
+  craft: { files: five('impactWood_light'), volume: 0.55, positional: false, detune: 0.1 },
+  /** Добыча попала к тебе: монеты звенят, остальное шуршит. */
+  coins: { files: ['handleCoins.ogg', 'handleCoins2.ogg'], volume: 0.6, positional: false },
+  pickup: { files: ['handleSmallLeather.ogg', 'handleSmallLeather2.ogg'], volume: 0.5, positional: false },
+  skillUp: { files: ['maximize_004.ogg'], volume: 0.45, positional: false },
 } satisfies Record<string, SoundDef>;
 
 export type SoundId = keyof typeof SOUNDS;

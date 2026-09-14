@@ -171,3 +171,31 @@ describe('отряд', () => {
     expect(host.partyId).toBeNull();
   });
 });
+
+describe('чужая работа слышна', () => {
+  it('сосед видит, что рядом вскрывают сундук', () => {
+    // Замысел: вскрывающий сундук «уязвим и слышен». Звук клиент выводит сам,
+    // но о чужой полосе ему больше не сообщает ничто — только это поле.
+    const { world, instanceId } = delve();
+    const arrival = floorArrival(0);
+    const digger = spawn(world, instanceId, arrival);
+    const neighbour = spawn(world, instanceId, { ...arrival, x: arrival.x + 2 });
+
+    digger.work = {
+      kind: 'chest',
+      id: 'chest.0.0',
+      name: 'Сундук',
+      at: { x: arrival.x, z: arrival.z },
+      range: 3,
+      duration: 5,
+      remaining: 5,
+    };
+
+    const seen = world.snapshotFor(neighbour).find((entity) => entity.id === digger.id);
+    expect(seen?.work).toBe('chest');
+
+    digger.work = null;
+    const after = world.snapshotFor(neighbour).find((entity) => entity.id === digger.id);
+    expect(after?.work).toBeUndefined();
+  });
+});
