@@ -146,7 +146,8 @@ export const SOUNDS = {
    */
   chestOpen: {
     files: ['doorOpen_1.ogg', 'doorOpen_2.ogg'],
-    volume: 0.7,
+    // На 60% тише первоначального 0.7: крышка над ухом звучала громче удара.
+    volume: 0.28,
     positional: true,
     near: 2,
     far: 26,

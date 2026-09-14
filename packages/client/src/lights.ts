@@ -642,11 +642,28 @@ function lampHead(holder: THREE.Object3D): THREE.Vector3 {
   holder.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(holder);
   const height = bounds.max.y - bounds.min.y;
-  const floor = bounds.max.y - Math.max(height * 0.18, 0.001);
+  /**
+   * Пояс, в котором висит плафон: от крюка под балкой до низа стекла.
+   *
+   * Сначала брался верхний слой вершин — а верхний слой у фонаря это балка
+   * **от столба до плафона**. Середина балки лежит между ними, и ореол
+   * вылезал из-за стекла в сторону столба: владелец заметил на площади.
+   */
+  const top = bounds.max.y - height * 0.08;
+  const bottom = bounds.max.y - height * 0.38;
+  /** Ось столба: фонарь поставлен основанием в точку своей группы. */
+  const axisX = holder.position.x;
+  const axisZ = holder.position.z;
+  /**
+   * Плафон — самое дальнее от столба в этом поясе. Ближе к оси там же
+   * проходят столб и подпорка, их отсекаем: берём вершины не дальше ширины
+   * плафона от самой дальней.
+   */
+  const LAMP_WIDTH = 0.35;
 
-  let count = 0;
-  const sum = new THREE.Vector3();
   const point = new THREE.Vector3();
+  const band: THREE.Vector3[] = [];
+  let farthest = 0;
 
   holder.traverse((node) => {
     const mesh = node as THREE.Mesh;
@@ -656,11 +673,19 @@ function lampHead(holder: THREE.Object3D): THREE.Vector3 {
 
     for (let i = 0; i < position.count; i++) {
       point.fromBufferAttribute(position as THREE.BufferAttribute, i).applyMatrix4(mesh.matrixWorld);
-      if (point.y < floor) continue;
-      sum.add(point);
-      count++;
+      if (point.y > top || point.y < bottom) continue;
+      band.push(point.clone());
+      farthest = Math.max(farthest, Math.hypot(point.x - axisX, point.z - axisZ));
     }
   });
+
+  let count = 0;
+  const sum = new THREE.Vector3();
+  for (const vertex of band) {
+    if (Math.hypot(vertex.x - axisX, vertex.z - axisZ) < farthest - LAMP_WIDTH) continue;
+    sum.add(vertex);
+    count++;
+  }
 
   if (count === 0) return bounds.getCenter(new THREE.Vector3());
   // Под колпаком, а не на нём: огонь у фонаря горит в нижней половине
@@ -878,7 +903,10 @@ async function loadModels(group: THREE.Group, flames: Flame[]): Promise<void> {
          */
         const head = lampHead(model);
 
-        const lampGlow = makeHalo(0xffc27a, 1.2);
+        // Ореол чуть шире плафона, а не вдвое: при метре с лишним он торчал
+        // из-за стекла пучком. Издалека огонь теперь держит ещё и свечение
+        // постобработки, так что широкий ореол больше не нужен.
+        const lampGlow = makeHalo(0xffc27a, 0.8);
         lampGlow.position.copy(head);
         group.add(lampGlow);
 

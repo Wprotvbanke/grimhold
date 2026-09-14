@@ -460,7 +460,10 @@ const connection = new Connection(SERVER_URL, {
     // павшего — как свой рюкзак. Только на открытии: переложенная вещь
     // присылает хранилище заново.
     if (message.open && !bankOpen) {
-      sound.play(opening === 'bag' ? 'backpack' : 'transition');
+      // Казна — тем же люком, но на 60% тише: спуск в подземелье событие,
+      // а казну открывают десятки раз, и полный люк над ухом оглушал.
+      if (opening === 'bag') sound.play('backpack');
+      else sound.play('transition', undefined, VAULT_GAIN);
       opening = null;
     }
     bankOpen = message.open;
@@ -1062,6 +1065,8 @@ let bankOpen = false;
  * только по тому, что просили.
  */
 let opening: 'vault' | 'bag' | null = null;
+/** Громкость люка у казны против люка спуска: на 60% тише. */
+const VAULT_GAIN = 0.4;
 /** Внизу ли игрок. От этого зависит, что предлагает клавиша взаимодействия. */
 let undergroundNow = false;
 /** На что нацелен игрок из рукотворного: казна, спуск, портал, лестница. */
