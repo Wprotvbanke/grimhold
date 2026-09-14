@@ -12,7 +12,8 @@
 | Что | Откуда | Лицензия |
 |---|---|---|
 | `public/models/dwarf.glb` | [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 |
-| `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com) | CC0 |
+| `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com), какой ассет — в `public/textures/LICENSE.txt` | CC0 |
+| `public/textures/*_{normal,arm}.webp` | Poly Haven, те же ассеты: нормали (`nor_gl`) и ARM в 1K, собраны `scripts/prepare-surfaces.ts` | CC0 |
 | `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
 | `public/sounds/*.ogg` | Kenney: [Interface Sounds](https://kenney.nl/assets/interface-sounds), [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio); лицензии рядом, `LICENSE-kenney-*.txt` | CC0 |
 | `public/sounds/dungeon_ambient.ogg` | [Loopable Dungeon Ambience](https://opengameart.org/content/loopable-dungeon-ambience), OpenGameArt | CC0 |
@@ -89,6 +90,7 @@ npx tsx scripts/prepare-dwarf-test.ts # пробный дворф, три кли
 npx tsx scripts/prepare-bag.ts        # мешочек с добычей: 0.64 МБ → 0.04 МБ
 npx tsx scripts/prepare-symbol.ts     # знак выхода: 98 КБ → 50 КБ
 npx tsx scripts/prepare-sky.ts        # панорама неба: 12 КБ
+npx tsx scripts/prepare-surfaces.ts   # рельеф и шероховатость камня, мостовой, земли, скалы, досок: 6.5 МБ jpg → 3 МБ webp
 ```
 
 Файлы гнома берутся **по содержимому, а не по именам**: в папке лежит выгрузка

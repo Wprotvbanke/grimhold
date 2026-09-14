@@ -9,6 +9,10 @@ ground.jpg    — forrest_ground_01
 pavement.jpg  — cobblestone_floor_04
 stone.jpg     — medieval_blocks_02
 rock.jpg      — rock_face_03
+planks.jpg    — dark_planks
 
-Взяты только цветовые карты в разрешении 1K: карты нормалей, шероховатости
-и смещения в проект не тянем, пока освещение не потребует.
+Цветовые карты — 1K jpg как есть. К каждой рядом лежат карты того же ассета
+в 1K, пережатые в webp (scripts/prepare-surfaces.ts):
+
+<имя>_normal.webp — нормали, соглашение OpenGL (nor_gl)
+<имя>_arm.webp    — затенение (R), шероховатость (G), металличность (B)

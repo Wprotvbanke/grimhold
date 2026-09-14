@@ -99,27 +99,72 @@ export function setAnisotropy(limit: number): void {
  * материал остаётся цветным. Геометрия и развёртка от этого не зависят,
  * а значит проверять их можно без графики.
  */
-function surface(file: string, tint = 0xffffff, pixelated = false): THREE.MeshStandardMaterial {
+interface SurfaceOptions {
+  /** Панели Kenney: без сглаживания пикселей. */
+  pixelated?: boolean;
+  /**
+   * Сила рельефа. Задана — рядом с цветовой картой лежат `<имя>_normal.webp`
+   * и `<имя>_arm.webp` (scripts/prepare-surfaces.ts), и поверхность получает
+   * рельеф, затенение в щелях и шероховатость. Не задана — плоская, как раньше.
+   */
+  relief?: number;
+}
+
+function repeating(path: string): THREE.Texture {
+  const texture = textures.load(path);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  // Анизотропия нужна полу: без неё земля вдали превращается в кашу,
+  // а в движении рябит. Рельефу — тем более: рябящие нормали видны бликами.
+  texture.anisotropy = anisotropy;
+  loaded.push(texture);
+  return texture;
+}
+
+function surface(file: string, tint = 0xffffff, options: SurfaceOptions = {}): THREE.MeshStandardMaterial {
   if (typeof document === 'undefined') {
     return new THREE.MeshStandardMaterial({ color: tint, roughness: 0.95 });
   }
 
-  const map = textures.load(`/textures/${file}`);
-  if (pixelated) {
+  const map = repeating(`/textures/${file}`);
+  if (options.pixelated) {
     // Панели Kenney рисованы в 64 пикселя. Сглаживание превращает их
     // в мыло: доски и камни задуманы чёткими, это часть вида.
     map.magFilter = THREE.NearestFilter;
     map.generateMipmaps = true;
   }
-  map.wrapS = THREE.RepeatWrapping;
-  map.wrapT = THREE.RepeatWrapping;
   map.colorSpace = THREE.SRGBColorSpace;
-  // Анизотропия нужна полу: без неё земля вдали превращается в кашу,
-  // а в движении рябит.
-  map.anisotropy = anisotropy;
-  loaded.push(map);
 
-  return new THREE.MeshStandardMaterial({ map, color: tint, roughness: 0.95 });
+  if (options.relief === undefined) {
+    return new THREE.MeshStandardMaterial({ map, color: tint, roughness: 0.95 });
+  }
+
+  /**
+   * Рельеф, щели и шероховатость.
+   *
+   * Карты те же по развёртке, что и цветовая, — одна общая текстура на все
+   * коробки этого вида, повтор задан самой развёрткой. Касательных у слитых
+   * чанков нет, и они не нужны: без них three строит нормали по производным
+   * экрана — на камне разницы не видно, а геометрия остаётся прежней.
+   *
+   * ARM — три карты в одной: затенение (R), шероховатость (G), металл (B).
+   * Металл не берём: камень и дерево не блестят металлом.
+   */
+  const base = file.replace(/\.[a-z]+$/, '');
+  const arm = repeating(`/textures/${base}_arm.webp`);
+  const relief = options.relief;
+  return new THREE.MeshStandardMaterial({
+    map,
+    color: tint,
+    normalMap: repeating(`/textures/${base}_normal.webp`),
+    normalScale: new THREE.Vector2(relief, relief),
+    roughnessMap: arm,
+    // Множитель поверх карты: сама карта знает, где камень истёрт до гладкости.
+    roughness: 1,
+    aoMap: arm,
+    // Щели темнеют, но не в черноту: свет у нас и так скупой.
+    aoMapIntensity: 0.8,
+  });
 }
 
 /**
@@ -127,22 +172,24 @@ function surface(file: string, tint = 0xffffff, pixelated = false): THREE.MeshSt
  * Оттенки приглушены: снимки сделаны при дневном свете, а у нас сумерки.
  */
 const MATERIALS: Record<LevelBox['kind'], THREE.Material> = {
-  floor: surface('pavement.jpg', 0xb9b4aa),
-  ground: surface('ground.jpg', 0xa9a89c),
-  wall: surface('stone.jpg', 0xb2ac9e),
-  pillar: surface('stone.jpg', 0xc0b9a8),
-  platform: surface('pavement.jpg', 0xa8a096),
-  rock: surface('rock.jpg', 0x9a958b),
-  ruin: surface('stone.jpg', 0x9d968a),
-  timber: surface('planks.jpg', 0xa8998a),
+  // Сила рельефа подобрана на глаз: мостовая и кладка — во всю силу,
+  // земля мягче (она не камень), скала резче (у неё рельеф и есть вид).
+  floor: surface('pavement.jpg', 0xb9b4aa, { relief: 1 }),
+  ground: surface('ground.jpg', 0xa9a89c, { relief: 0.7 }),
+  wall: surface('stone.jpg', 0xb2ac9e, { relief: 1 }),
+  pillar: surface('stone.jpg', 0xc0b9a8, { relief: 1 }),
+  platform: surface('pavement.jpg', 0xa8a096, { relief: 1 }),
+  rock: surface('rock.jpg', 0x9a958b, { relief: 1.3 }),
+  ruin: surface('stone.jpg', 0x9d968a, { relief: 1 }),
+  timber: surface('planks.jpg', 0xa8998a, { relief: 0.8 }),
   // Постройки города — пак Kenney, см. docs/buildings.md.
-  frame: surface('buildings/wall_timber_structure.png', 0xb0a893, true),
-  brick: surface('buildings/wall_brick_stone_center.png', 0x9fa0a2, true),
-  plank: surface('buildings/floor_wood_planks.png', 0xa08a70, true),
-  shingle: surface('buildings/roof_clay_grey_center.png', 0x8d99a6, true),
+  frame: surface('buildings/wall_timber_structure.png', 0xb0a893, { pixelated: true }),
+  brick: surface('buildings/wall_brick_stone_center.png', 0x9fa0a2, { pixelated: true }),
+  plank: surface('buildings/floor_wood_planks.png', 0xa08a70, { pixelated: true }),
+  shingle: surface('buildings/roof_clay_grey_center.png', 0x8d99a6, { pixelated: true }),
   // Сундук окован и темнее половиц: в полумраке зала его надо узнавать
   // с десяти шагов, иначе искать добычу приходится наощупь.
-  chest: surface('planks.jpg', 0x6b4f33),
+  chest: surface('planks.jpg', 0x6b4f33, { relief: 0.8 }),
 };
 
 /**
