@@ -32,6 +32,7 @@ import {
 import './fog.js';
 import { createDayNight } from './daynight.js';
 import { createHouses } from './houses.js';
+import { populateTavern } from './props.js';
 import { createLights } from './lights.js';
 import { createParticles } from './particles.js';
 import { createNature, disposeNature } from './nature.js';
@@ -422,6 +423,8 @@ export function createScene(): World3D {
   const particles = createParticles(scene);
   // Ратуша и дом на площади — модели целиком, см. houses.ts.
   const houses = createHouses(scene);
+  // Мебель зала таверны: слитые по материалам модели, см. props.ts.
+  const furniture = populateTavern(scene);
   const nature = createNature();
   const nodes = createNodes();
 
@@ -698,6 +701,7 @@ export function createScene(): World3D {
       // издалека — прячем модели, только когда отошли на его сторону.
       const nearTown = Math.hypot(camera.position.x, camera.position.z) < TOWN_SIZE;
       houses.group.visible = nearTown;
+      furniture.visible = nearTown;
       /**
        * Огонь нужен и в городе, и под землёй — значит группу не прячем там,
        * где он есть. Городские факелы при этом не мешают: пул выбирает

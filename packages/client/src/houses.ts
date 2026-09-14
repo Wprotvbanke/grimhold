@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BANK, TOWN_HOUSES, TOWN_WALLS, townWallLayout } from '@grimhold/shared';
+import { BANK, TAVERN, TOWN_HOUSES, TOWN_WALLS, townWallLayout } from '@grimhold/shared';
 
 /**
  * Здания площади: ратуша и городской дом — готовые модели целиком.
@@ -77,6 +77,28 @@ export function createHouses(scene: THREE.Scene): Houses {
       () => console.warn(`[здания] не загрузилась ${url}`),
     );
   }
+
+  /**
+   * Таверна — модель с залом внутри; стены и мебель телесны в level.ts,
+   * мебель рисует props.ts. Опущена на `TAVERN.sink`: пол зала в модели
+   * поднят, а шага через порог в движении нет.
+   */
+  loader.load(
+    '/models/tavern.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      model.position.set(TAVERN.x, -TAVERN.sink, TAVERN.z);
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      });
+      group.add(model);
+    },
+    undefined,
+    () => console.warn('[здания] не загрузилась /models/tavern.glb'),
+  );
 
   loader.load(
     '/models/walls.glb',

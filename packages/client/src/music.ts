@@ -1,11 +1,10 @@
-import { isDaylight, isSafe } from '@grimhold/shared';
+import { insideTavern, isDaylight, isSafe } from '@grimhold/shared';
 
 /**
  * Музыка: разная по сценарию.
  *
- * Музыка звучит **только в городе** — днём и ночью по-своему. Была и музыка
- * таверны, но таверну снесли под другое здание: плейлист `tavern` ждёт его,
- * а место внутри вернётся в `musicSceneAt` вместе с новыми стенами.
+ * Музыка звучит **только в городе** — днём, ночью и в таверне по-своему.
+ * Таверна узнаётся по залу новой модели (`insideTavern`), а не по улице рядом.
  * В диких землях и в подземелье её нет намеренно: там слух работает на
  * выживание — шаги за стеной, чужой замах, — и мелодия глушила бы ровно то,
  * ради чего заведён звук. Город — единственное место, где можно выдохнуть.
@@ -57,6 +56,7 @@ export function musicSceneAt(
   time: number,
 ): MusicScene | null {
   if (underground) return null;
+  if (insideTavern(x, z)) return 'tavern';
   if (!isSafe(x, z)) return null;
   return isDaylight(time) ? 'day' : 'night';
 }

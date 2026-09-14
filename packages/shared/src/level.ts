@@ -225,17 +225,19 @@ export const TOWN_LAMPS: readonly { x: number; z: number }[] = [
   { x: -6.8, z: 55.5 },
   { x: 6.8, z: -55.5 },
   { x: -6.8, z: -55.5 },
-  // Вдоль улиц.
+  // Вдоль улиц — у их края, а не на полосе главных улиц (|x| и |z| ≤ 4.5):
+  // когда город вырос и встали дома, четыре фонаря оказались посреди улицы
+  // и были отодвинуты к краю.
   { x: -6, z: 6 },
   { x: 9, z: 6 },
-  { x: -6, z: -4 },
-  { x: 10, z: -2 },
-  { x: -18, z: 2 },
+  { x: -6, z: -5.8 },
+  { x: 10, z: -5.8 },
+  { x: -18, z: 5.8 },
   { x: 18, z: 10 },
   { x: -24, z: -6 },
   { x: 20, z: -20 },
-  // На площади.
-  { x: -1.8, z: 7.2 },
+  // На площади — у края южной улицы, в стороне от маршрута Громи.
+  { x: -5.8, z: 12 },
   // Стоял у двери таверны. Таверну снесли под другое здание, а угол улицы
   // без огня остался бы тёмным — фонарь на прежнем месте.
   { x: -11.4, z: -7.5 },
@@ -324,8 +326,18 @@ export const DUNGEON_GATE = {
  * Соседи: фонарь в (10, −2) южнее, платформы с x = 12 восточнее, дорога
  * сквозных проверок к люку идёт по z = −2 — всё снаружи.
  */
+/** Пятна домов у земли в их координатах — по моделям, чуть внутрь. */
+const HOUSE = {
+  chapel: { minX: -3.0, maxX: 2.8, minZ: -5.2, maxZ: 4.9 },
+  timber: { minX: -2.0, maxX: 2.0, minZ: -4.8, maxZ: 4.8 },
+  narrow: { minX: -2.5, maxX: 2.5, minZ: -4.2, maxZ: 4.2 },
+  gable: { minX: -3.0, maxX: 3.0, minZ: -2.6, maxZ: 2.6 },
+  tiny: { minX: -3.3, maxX: 3.3, minZ: -2.4, maxZ: 2.4 },
+  wagon: { minX: -1.2, maxX: 1.2, minZ: -2.6, maxZ: 2.3 },
+} as const;
+
 export const TOWN_HOUSES: readonly {
-  model: 'town_hall' | 'townhouse';
+  model: 'town_hall' | 'townhouse' | 'chapel' | 'house_timber' | 'house_narrow' | 'house_gable' | 'house_tiny' | 'wagon';
   x: number;
   z: number;
   turn: number;
@@ -346,13 +358,133 @@ export const TOWN_HOUSES: readonly {
   },
   {
     model: 'townhouse',
-    x: 6.9,
+    // Краем пятна заходил на северную улицу на полтора метра — видно на плане
+    // сверху. Отодвинут к востоку.
+    x: 8.7,
     z: -15.8,
     turn: -Math.PI / 2,
     height: 12,
     footprint: { minX: -2.9, maxX: 2.9, minZ: -3.0, maxZ: 4.1 },
   },
+
+  /*
+   * Кварталы. Главные улицы к воротам — полосы |x| ≤ 4.5 и |z| ≤ 4.5 — пустые,
+   * площадь вокруг казны и точки появления тоже. Дома встают рядами вдоль улиц
+   * фасадом к ним и уходят вглубь к стенам, через три-четыре метра друг от друга.
+   * Разворот: 0 — фасад на юг (+Z), π — на север, π/2 — на восток, −π/2 — на запад.
+   * Пятна — по модели у земли, чуть внутрь.
+   */
+
+  // Северо-восток: вдоль северной улицы, фасадом на запад, к ней.
+  { model: 'house_gable', x: 7.8, z: -26, turn: -Math.PI / 2, height: 9, footprint: HOUSE.gable },
+  { model: 'house_narrow', x: 9.4, z: -37, turn: -Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
+  // Северо-восток: вдоль восточной улицы, фасадом на юг.
+  { model: 'house_tiny', x: 20, z: -8.5, turn: 0, height: 6.9, footprint: HOUSE.tiny },
+  { model: 'house_timber', x: 32, z: -10, turn: 0, height: 7.8, footprint: HOUSE.timber },
+
+  // Юго-восток: вдоль восточной улицы, фасадом на север.
+  { model: 'house_timber', x: 26, z: 10, turn: Math.PI, height: 7.8, footprint: HOUSE.timber },
+  { model: 'house_gable', x: 36, z: 9, turn: Math.PI, height: 9, footprint: HOUSE.gable },
+  // Юго-восток: вдоль южной улицы за ратушей, фасадом на запад.
+  { model: 'house_tiny', x: 7.55, z: 30, turn: -Math.PI / 2, height: 6.9, footprint: HOUSE.tiny },
+  { model: 'house_narrow', x: 9.4, z: 42, turn: -Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
+
+  // Юго-запад: часовня и дом вдоль западной улицы, фасадом на север.
+  { model: 'chapel', x: -16, z: 12, turn: Math.PI, height: 12, footprint: HOUSE.chapel },
+  { model: 'house_tiny', x: -28, z: 9, turn: Math.PI, height: 6.9, footprint: HOUSE.tiny },
+  // Юго-запад: вдоль южной улицы, фасадом на восток.
+  { model: 'house_gable', x: -7.6, z: 26, turn: Math.PI / 2, height: 9, footprint: HOUSE.gable },
+  { model: 'house_timber', x: -9.6, z: 38, turn: Math.PI / 2, height: 7.8, footprint: HOUSE.timber },
+
+  // Северо-запад, за таверной: вдоль северной улицы, фасадом на восток.
+  { model: 'house_narrow', x: -9.4, z: -30, turn: Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
+  { model: 'house_gable', x: -7.6, z: -42, turn: Math.PI / 2, height: 9, footprint: HOUSE.gable },
+  // Северо-запад: лавка на колёсах и дом вдоль западной улицы, фасадом на юг.
+  { model: 'wagon', x: -30, z: -8, turn: Math.PI / 2, height: 3.6, footprint: HOUSE.wagon },
+  { model: 'house_timber', x: -40, z: -10, turn: 0, height: 7.8, footprint: HOUSE.timber },
 ];
+
+/**
+ * Таверна — модель `tavern.glb` с настоящим залом внутри.
+ *
+ * Здание Г-образное: корпус и крыло на северо-востоке, в углу между ними
+ * крыльцо, и с крыльца — дверь в восточной стене корпуса. Стоит в
+ * северо-западном квартале, дверью к площади (разворот 0: восток модели —
+ * восток мира), рядом с фонарём, что светил и старой таверне.
+ *
+ * Внутрь входят, поэтому одной коробкой, как дом, её не сделать: стены —
+ * отдельными коробками по плоскостям модели, проход оставлен **только
+ * в двери**. Плоскости сняты с треугольников первого этажа — толщина стен
+ * 20–25 см, проём шириной в метр.
+ */
+export const TAVERN = {
+  x: -16,
+  z: -14,
+  /**
+   * Пол зала в модели поднят на 15 см, а шага через порог в движении нет:
+   * игрок упёрся бы в пол у двери. Модель опущена — цоколь уходит в мостовую.
+   */
+  sink: 0.15,
+  wallHeight: 3.7,
+} as const;
+
+type Rect = readonly [minX: number, maxX: number, minZ: number, maxZ: number];
+
+/** Стены таверны в её координатах. Проём двери — z 3.11…4.11 в восточной стене. */
+const TAVERN_WALLS: readonly Rect[] = [
+  [-4.25, -4.0, -5.57, 5.37], // западная
+  [-4.25, 4.25, -5.57, -5.35], // северная
+  [4.05, 4.25, -5.57, -0.1], // восточная стена крыла
+  [2.05, 4.25, -0.3, -0.1], // южная стена крыла, смотрит на крыльцо
+  [2.05, 2.25, -0.3, 3.11], // восточная стена корпуса до двери
+  [2.05, 2.25, 4.11, 5.37], // и после двери
+  [-4.25, 2.25, 5.15, 5.37], // южная
+];
+
+/** Зал: корпус и выступ в крыло. По нему музыка знает, что игрок внутри. */
+export const TAVERN_HALL: readonly Rect[] = [
+  [-4.0, 2.05, -5.35, 5.15],
+  [2.05, 4.05, -5.35, -0.3],
+];
+
+/**
+ * Телесность мебели: вид даёт `client/src/props.ts`, координаты общие.
+ * Разъедься они — стол нарисован в одном месте, а упираешься в другое.
+ */
+const TAVERN_FURNITURE: readonly (readonly [minX: number, maxX: number, minZ: number, maxZ: number, height: number])[] = [
+  [-4.0, 1.1, -5.35, -3.95, 1.1], // стойка и шкафы за ней
+  [-3.0, -1.8, -0.4, 2.0, 0.78], // стол у западной стены
+  [-0.3, 0.9, 1.8, 4.2, 0.78], // стол у двери
+  [2.2, 4.05, -5.35, -3.6, 1.0], // бочки и ящики в крыле
+  [2.9, 3.9, -1.5, -0.5, 1.2], // большая бочка
+  [-4.0, -2.9, 3.1, 5.15, 1.0], // припасы в юго-западном углу
+];
+
+/** Внутри ли зала таверны — для музыки. */
+export function insideTavern(x: number, z: number): boolean {
+  const localX = x - TAVERN.x;
+  const localZ = z - TAVERN.z;
+  return TAVERN_HALL.some(([minX, maxX, minZ, maxZ]) => localX >= minX && localX <= maxX && localZ >= minZ && localZ <= maxZ);
+}
+
+function tavernBoxes(): LevelBox[] {
+  const at = (rect: Rect, height: number, kind: LevelBox['kind']): LevelBox => ({
+    kind,
+    hidden: true,
+    box: {
+      minX: TAVERN.x + rect[0],
+      maxX: TAVERN.x + rect[1],
+      minY: 0,
+      maxY: height,
+      minZ: TAVERN.z + rect[2],
+      maxZ: TAVERN.z + rect[3],
+    },
+  });
+  return [
+    ...TAVERN_WALLS.map((rect) => at(rect, TAVERN.wallHeight, 'wall')),
+    ...TAVERN_FURNITURE.map(([minX, maxX, minZ, maxZ, height]) => at([minX, maxX, minZ, maxZ], height, 'timber')),
+  ];
+}
 
 /**
  * Разворот, при котором фасад модели (+Z) смотрит из точки на цель.
@@ -422,6 +554,8 @@ export const TOWN_BOXES: readonly LevelBox[] = [
 
   // Здания площади: вид им дают модели, здесь только телесность.
   ...houseBoxes(),
+  // Таверна: стены с проходом в двери и мебель зала.
+  ...tavernBoxes(),
 
 
 

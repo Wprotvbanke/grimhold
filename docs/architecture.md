@@ -242,7 +242,8 @@ F2 открывает окно, где можно выдать себе любо
 - `sky.ts`, `daynight.ts` — небо и смена суток — [sky.md](sky.md), [sun.md](sun.md).
 - `lights.ts` — весь рукотворный огонь — [light.md](light.md).
 - `nature.ts` — растительность пачками — [nature.md](nature.md).
-- `houses.ts` — здания площади моделями целиком — [buildings.md](buildings.md).
+- `houses.ts` — здания, таверна и стены города моделями — [buildings.md](buildings.md).
+- `props.ts` — мебель зала таверны — [buildings.md](buildings.md).
 - `quality.ts` — разрешение подстраивается под машину — [performance.md](performance.md).
 - `inventoryui.ts` — рюкзак — [loot.md](loot.md).
 - `combatui.ts` — полоски, всплывающий урон, экран смерти — [combat.md](combat.md).

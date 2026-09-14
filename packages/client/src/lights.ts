@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   LAMP_HEIGHT,
+  TAVERN,
   TOWN_LAMPS,
 } from '@grimhold/shared';
 
@@ -48,6 +49,8 @@ const TORCH_GLOW = 2.5;
 interface WallTorch {
   mixer: THREE.AnimationMixer;
   bones: { bone: THREE.Object3D; rest: THREE.Vector3 }[];
+  /** Под крышей: пламя и свечение не гаснут днём. */
+  indoor: boolean;
 }
 
 /**
@@ -92,9 +95,29 @@ interface Flame {
  * без модели, точка висела в воздухе перед гранью; модели нужен сам камень:
  * кронштейн упирается в него, пламя выносится на площадь.
  */
-const TORCHES: { x: number; z: number; face: { x: number; z: number } }[] = [
-  // Пусто: факелы висели на колоннаде и на двух стенах площади, а их убрали
-  // по просьбе владельца. Новые повесятся на новые здания.
+const TORCHES: {
+  x: number;
+  z: number;
+  face: { x: number; z: number };
+  /** Под крышей огонь днём не гаснет: в зале полумрак круглые сутки. */
+  indoor?: boolean;
+  /** Высота верха пламени, если не общая: в зале потолок ниже уличной стены. */
+  top?: number;
+}[] = [
+  // Таверна снаружи: у двери на крыльце и на стене крыла, что смотрит на крыльцо.
+  { x: TAVERN.x + 2.25, z: TAVERN.z + 2.5, face: { x: 1, z: 0 } },
+  { x: TAVERN.x + 3.2, z: TAVERN.z - 0.1, face: { x: 0, z: 1 } },
+  // Таверна внутри: две на западной стене зала и одна в крыле.
+  { x: TAVERN.x - 4.0, z: TAVERN.z - 1.5, face: { x: 1, z: 0 }, indoor: true, top: 2.6 },
+  { x: TAVERN.x - 4.0, z: TAVERN.z + 3.0, face: { x: 1, z: 0 }, indoor: true, top: 2.6 },
+  { x: TAVERN.x + 3.1, z: TAVERN.z - 5.35, face: { x: 0, z: 1 }, indoor: true, top: 2.6 },
+];
+
+/** Свечи зала таверны — над столами и на стойке. Без ореола: это свет, а не маяк. */
+const TAVERN_CANDLES: { x: number; y: number; z: number; color: number; intensity: number }[] = [
+  { x: -2.4, y: 1.9, z: 0.8, color: 0xffc98a, intensity: 5 },
+  { x: 0.3, y: 1.9, z: 3.0, color: 0xffc98a, intensity: 5 },
+  { x: -1.8, y: 1.5, z: -4.3, color: 0xffb066, intensity: 6 },
 ];
 
 /**
@@ -199,8 +222,20 @@ export function createLights(scene: THREE.Scene): WorldLights {
   const torchMaterials = new Set<THREE.MeshStandardMaterial>();
   let torchClock = 0;
 
-  // Огни под крышей (зал и очаг таверны) ушли вместе с таверной: её снесли
-  // под другое здание. Появится новая — её огонь заводится здесь же.
+  // Свечи зала таверны: огонь под крышей, днём не гаснет.
+  for (const [index, candle] of TAVERN_CANDLES.entries()) {
+    flames.push({
+      x: TAVERN.x + candle.x,
+      y: candle.y,
+      z: TAVERN.z + candle.z,
+      color: candle.color,
+      range: 24,
+      glow: null,
+      base: candle.intensity * 0.42,
+      phase: index * 2.1,
+      outdoor: false,
+    });
+  }
 
   // Постоянного огня в подземелье нет: свет туда приносят в руке.
   // Городские огни отсюда всё равно не видны — до города восемь километров,
@@ -271,7 +306,7 @@ export function createLights(scene: THREE.Scene): WorldLights {
       for (const torch of torches) {
         for (const { bone, rest } of torch.bones) bone.scale.copy(rest);
         torch.mixer.update(torchStep);
-        for (const { bone } of torch.bones) bone.scale.multiplyScalar(flameSize);
+        for (const { bone } of torch.bones) bone.scale.multiplyScalar(torch.indoor ? 1 : flameSize);
       }
       for (const material of torchMaterials) material.emissiveIntensity = TORCH_GLOW * outdoorScale;
 
@@ -530,7 +565,7 @@ function makeTorch(group: THREE.Group, spot: (typeof TORCHES)[number], index: nu
   // Пока модель не приехала — только ореол там, где будет пламя: огонь виден
   // сразу, а модель встанет под него, как догрузится (loadTorches).
   const x = spot.x + spot.face.x * TORCH_REACH;
-  const y = TORCH_TOP - TORCH_HEIGHT * 0.2;
+  const y = (spot.top ?? TORCH_TOP) - TORCH_HEIGHT * 0.2;
   const z = spot.z + spot.face.z * TORCH_REACH;
   const glow = new THREE.Group();
   glow.add(makeHalo(0xffb257, 1.2));
@@ -548,7 +583,7 @@ function makeTorch(group: THREE.Group, spot: (typeof TORCHES)[number], index: nu
     glow,
     base: 14,
     phase: index * 1.7,
-    outdoor: true,
+    outdoor: !spot.indoor,
   };
 }
 
@@ -763,7 +798,7 @@ async function loadTorches(
 
       const holder = new THREE.Group();
       holder.add(model);
-      holder.position.set(spot.x, TORCH_TOP, spot.z);
+      holder.position.set(spot.x, spot.top ?? TORCH_TOP, spot.z);
       // Кронштейн (−X модели) — в стену, то есть против нормали грани.
       holder.rotation.y = Math.atan2(-spot.face.z, spot.face.x);
       group.add(holder);
@@ -775,7 +810,16 @@ async function loadTorches(
         // она попадала бы наравне со стенами.
         mesh.castShadow = false;
         const material = mesh.material as THREE.MeshStandardMaterial;
-        if (material.emissive) materials.add(material);
+        if (!material.emissive) return;
+        if (spot.indoor) {
+          // Материал у клонов общий, а общий гаснет днём — у факела под
+          // крышей свой, горящий всегда.
+          const own = material.clone();
+          own.emissiveIntensity = TORCH_GLOW;
+          mesh.material = own;
+        } else {
+          materials.add(material);
+        }
       });
 
       const head = flameCenter(holder);
@@ -797,7 +841,7 @@ async function loadTorches(
           bones.push({ bone: node, rest: node.scale.clone() });
         }
       });
-      torches.push({ mixer, bones });
+      torches.push({ mixer, bones, indoor: spot.indoor === true });
     }
   } catch (error) {
     // Без модели остаётся ореол: огонь на месте, просто без рукояти.

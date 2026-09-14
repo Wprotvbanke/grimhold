@@ -25,15 +25,16 @@
 | `public/music/town_theme.ogg` | [Town Theme RPG](https://opengameart.org/content/town-theme-rpg), cynicmusic, OpenGameArt; пережат так же | CC0 |
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
-| `public/models/town_hall.glb` | от владельца проекта, выгрузка Sketchfab «low poly town hall»; собран `scripts/prepare-town.ts` | **уточнить** |
-| `public/models/townhouse.glb` | от владельца проекта, выгрузка Sketchfab «townhouse 3 now with dust»; собран `scripts/prepare-town.ts` | **уточнить** |
-| `public/models/tavern.glb` | от владельца проекта, выгрузка Sketchfab «house5 towern»; ×0.5 — пришла с этажом в 7 м; собран `scripts/prepare-town.ts` | **уточнить** |
-| `public/models/chapel.glb` | от владельца проекта, выгрузка Sketchfab «house3» — часовня со шпилем; приведена к высоте 12 м (пришла в 73 м и на 10 м под землёй) | **уточнить** |
-| `public/models/house_{timber,narrow,gable,tiny}.glb` | от владельца проекта, выгрузки Sketchfab House2, house4, house_Triangle, house_tiny; у `house_timber` нет цветовой текстуры — цвет задан при сборке | **уточнить** |
-| `public/models/wagon.glb` | от владельца проекта, выгрузка Sketchfab «shop on wheels» — лавка на колёсах; поставлена на землю (висела в 4 м над ней) | **уточнить** |
-| `public/models/walls.glb` | от владельца проекта, выгрузка Sketchfab — вышка, пролёт, арка, створки; собран `scripts/prepare-town.ts` без слияния частей | **уточнить** |
-| `public/models/bank.glb` | от владельца проекта, выгрузка Sketchfab — каменный ларец казны; собран `scripts/prepare-town.ts` (поднят на землю, ×1.1) | **уточнить** |
-| `public/models/torch.glb` | от владельца проекта, выгрузка Sketchfab (автор и лицензия в файле не записаны); лежит как есть, 68 КБ — ставит `loadTorches` в `lights.ts` | **уточнить** |
+| `public/models/town_hall.glb` | от владельца проекта, выгрузка Sketchfab «low poly town hall»; собран `scripts/prepare-town.ts` | CC, со слов владельца (вид не указан) |
+| `public/models/townhouse.glb` | от владельца проекта, выгрузка Sketchfab «townhouse 3 now with dust»; собран `scripts/prepare-town.ts` | CC, со слов владельца (вид не указан) |
+| `public/models/tavern_props.glb` | от владельца проекта — мебель старой таверны; возвращена из истории git (скрипт сборки `prepare-tavern.ts` остался там же) | уточнить |
+| `public/models/tavern.glb` | от владельца проекта, выгрузка Sketchfab «house5 towern»; ×0.5 — пришла с этажом в 7 м; собран `scripts/prepare-town.ts` | CC, со слов владельца (вид не указан) |
+| `public/models/chapel.glb` | от владельца проекта, выгрузка Sketchfab «house3» — часовня со шпилем; приведена к высоте 12 м (пришла в 73 м и на 10 м под землёй) | CC, со слов владельца (вид не указан) |
+| `public/models/house_{timber,narrow,gable,tiny}.glb` | от владельца проекта, выгрузки Sketchfab House2, house4, house_Triangle, house_tiny; у `house_timber` нет цветовой текстуры — цвет задан при сборке | CC, со слов владельца (вид не указан) |
+| `public/models/wagon.glb` | от владельца проекта, выгрузка Sketchfab «shop on wheels» — лавка на колёсах; поставлена на землю (висела в 4 м над ней) | CC, со слов владельца (вид не указан) |
+| `public/models/walls.glb` | от владельца проекта, выгрузка Sketchfab — вышка, пролёт, арка, створки; собран `scripts/prepare-town.ts` без слияния частей | CC, со слов владельца (вид не указан) |
+| `public/models/bank.glb` | от владельца проекта, выгрузка Sketchfab — каменный ларец казны; собран `scripts/prepare-town.ts` (поднят на землю, ×1.1) | CC, со слов владельца (вид не указан) |
+| `public/models/torch.glb` | от владельца проекта, выгрузка Sketchfab (автор и лицензия в файле не записаны); лежит как есть, 68 КБ — ставит `loadTorches` в `lights.ts` | CC, со слов владельца (вид не указан) |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
@@ -43,7 +44,13 @@
 | `public/models/lights.glb` | от владельца проекта, собран `scripts/prepare-lights.ts` | уточнить |
 | `public/textures/sky.webp` | от владельца проекта, извлечена `scripts/prepare-sky.ts` | уточнить |
 
-**Единственный не-CC0 в списке — мешочек.** CC-BY разрешает и брать,
+**Модели со Sketchfab от владельца** (факел, ратуша, дом, дома улиц, таверна,
+часовня, повозка, стены, казна) — по его словам, «бесплатная CC»; какая именно,
+не записано. Бесплатные модели Sketchfab чаще всего **CC-BY**, а она требует
+указать автора — для каждой такой модели нужны автор и ссылка, файлом рядом,
+как у мешочка. Пока их нет, это долг лицензий, а не закрытый вопрос.
+
+**Мешочек — CC-BY с записанным автором.** CC-BY разрешает и брать,
 и переделывать, но **требует указания авторства**: оно лежит в
 `public/models/LICENSE-loot-bag.txt`, и удалять этот файл нельзя. Все остальные
 модели ничего не требуют. Если правило «только CC0» решат держать строго,
