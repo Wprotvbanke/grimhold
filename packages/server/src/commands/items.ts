@@ -3,6 +3,7 @@ import {
   arrangeInGrid,
   RECIPES,
   addItem,
+  createBackpack,
   itemAt,
   itemDef,
   place,
@@ -176,10 +177,46 @@ export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
  * Выбросить вещь. Пока просто уничтожение: предметов на земле ещё нет,
  * и появятся они вместе с подземельями, где выброшенное станет добычей.
  */
+/** Докладывать выброшенное в свой мешок, если он лежит ближе этого, м. */
+const DROP_MERGE_RANGE = 1.5;
+
+/**
+ * Выбросить вещь из рюкзака — **на землю мешком**, а не в никуда.
+ *
+ * Раньше выброшенное пропадало насовсем, и промах мышью стоил вещи. Теперь
+ * оно лежит мешком у ног столько же, сколько добыча со зверя (`BAG_SECONDS`):
+ * передумал — поднял, не нужно — его подберёт другой или оно истлеет.
+ *
+ * Выброшенное подряд на одном месте ложится **в один мешок**: иначе пять
+ * выброшенных шкур — это пять мешков стопкой, и разбирать их по одному.
+ * Сетка мешка — размером с рюкзак: всё, что в рюкзаке помещалось, влезет.
+ */
 export const handleDropItem: CommandHandler<DropItemMessage> = (ctx, payload) => {
   const player = ctx.actor;
   const item = itemAt(player.inventory, payload.x, payload.y);
   if (!item) return refuse('Здесь ничего нет');
+
+  const pos = player.state.pos;
+  // `bagsFor` отдаёт мешки в виде для снапшота — сами мешки берём по имени.
+  const nearby =
+    ctx.world
+      .bagsFor(player)
+      .map((entry) => ctx.world.bagById(player.instanceId, entry.id))
+      .find(
+        (bag) =>
+          bag !== null &&
+          bag.owner === player.name &&
+          Math.hypot(bag.pos.x - pos.x, bag.pos.z - pos.z) <= DROP_MERGE_RANGE,
+      ) ?? null;
+  const merged = nearby ? addItem(nearby.grid, item.defId, item.count) : null;
+  if (nearby && merged && merged.leftover === 0) {
+    nearby.grid = merged.grid;
+  } else {
+    const sack = addItem(createBackpack(), item.defId, item.count).grid;
+    if (!ctx.world.dropBag(player.instanceId, pos, player.name, sack)) {
+      return refuse('Вещь не легла на землю');
+    }
+  }
 
   player.inventory = removeItem(player.inventory, item);
   // Выброшенное возвращать неоткуда: ячейка панели, если она была, врала бы.

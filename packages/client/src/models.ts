@@ -239,12 +239,37 @@ async function buildModel(
   const scale = modelHeight > 0 ? targetHeight / modelHeight : 1;
   model.scale.setScalar(scale);
 
+  /**
+   * Ставим модель **тазом** в точку сущности, а не только ногами на пол.
+   *
+   * Скелет пришёл с тазом в 1.37 м от начала координат, и выравнивалась
+   * только высота: тело рисовалось в полутора метрах от своей точки. Сдвиг
+   * этот местный — он вращается вместе с моделью, — и на каждом развороте
+   * скелет описывал дугу и уходил в стену, хотя сам моб стоял в комнате.
+   * Проверка против живого сервера это подтвердила: по данным сервера ни
+   * один моб внутри стен не бывал. Та же ловушка, что у гнома (npc.md).
+   *
+   * Середина — по кости таза, если она есть: габариты у позы с вытянутой
+   * рукой или оружием уезжают в сторону. Нет таза — по середине габаритов.
+   */
+  const center = bounds.getCenter(new THREE.Vector3());
+  let pelvis: THREE.Object3D | null = null;
+  model.traverse((node) => {
+    if (!pelvis && (node as THREE.Bone).isBone && /pelvis|hips/i.test(node.name)) pelvis = node;
+  });
+  if (pelvis) (pelvis as THREE.Object3D).getWorldPosition(center);
+
   // Ставим ноги ровно в ноль: позиция сущности на сервере — точка на полу.
-  model.position.y = -bounds.min.y * scale;
-  model.rotation.y = yaw;
+  model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+
+  // Разворот — у отдельной группы, а не у модели: иначе поправка на середину
+  // сама бы поворачивалась вместе с моделью, и всё вернулось бы как было.
+  const turn = new THREE.Group();
+  turn.rotation.y = yaw;
+  turn.add(model);
 
   const root = new THREE.Group();
-  root.add(model);
+  root.add(turn);
 
   const mixer = new THREE.AnimationMixer(model);
   const available = clips.get(url) ?? [];

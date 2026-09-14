@@ -829,6 +829,9 @@ export class InventoryUi {
       }
       this.updateGhost(event.clientX, event.clientY);
       this.highlightTarget(event);
+      // Вещь вытащили за окно — корзина подсвечивается: отпустишь, и она упадёт.
+      const outside = this.canThrowOut(this.drag) && this.outsidePanel(event);
+      if (!this.discard.matches(':hover')) this.discard.classList.toggle('hot', outside);
     });
 
     window.addEventListener('mouseup', (event) => {
@@ -840,6 +843,12 @@ export class InventoryUi {
       // Отпустили мимо сетки — это могла быть цель-слот или корзина,
       // у них свои обработчики; здесь просто прекращаем перенос.
       if (target) this.dropOn(drag, target);
+      // Вытащили за окно рюкзака и отпустили — вещь падает на землю, как из
+      // корзины. Корзину искать глазами не надо: «выбросить» — это «вынести
+      // из окна». Над панелью быстрого доступа не бросаем: там её назначают.
+      else if (drag.moved && this.canThrowOut(drag) && this.outsidePanel(event)) {
+        this.handlers.onDrop(drag.item.x, drag.item.y);
+      }
       this.cancelDrag();
     });
 
@@ -931,6 +940,24 @@ export class InventoryUi {
   private cellAt(grid: GridKind, x: number, y: number): HTMLElement | null {
     const box = grid === 'bank' ? this.bankCells : this.cells;
     return box.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+  }
+
+  /** Выбросить можно только из рюкзака: содержимое казны не на руках, надетое сперва снимают. */
+  private canThrowOut(drag: DragState): boolean {
+    return drag.from === 'backpack' && !drag.slot;
+  }
+
+  /**
+   * Курсор за пределами окна рюкзака.
+   *
+   * Окно — это панель, а не затемнение вокруг неё: затемнение накрывает весь
+   * экран, и «за окном» значит «на нём». Панель быстрого доступа лежит поверх
+   * и за окно не считается — вещь туда назначают, а не выбрасывают.
+   */
+  private outsidePanel(event: MouseEvent): boolean {
+    const node = document.elementFromPoint(event.clientX, event.clientY);
+    if (!node) return false;
+    return !node.closest('.inv-panel') && !node.closest('#hotbar');
   }
 
   private cellUnder(event: MouseEvent): { grid: GridKind; x: number; y: number } | null {

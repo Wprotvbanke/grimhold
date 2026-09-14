@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BAG_SECONDS, addItem, dungeonInstance } from '@grimhold/shared';
+import { handleDropItem } from '../src/commands/items.js';
 import { emptyOutbox, handlePlayerDeath } from '../src/gameloop.js';
 import { OVERWORLD, World, type Player } from '../src/world.js';
 
@@ -156,5 +157,25 @@ describe('мешок не лежит вечно', () => {
     player.container = { kind: 'bag', bag };
 
     expect(world.tickBags(BAG_SECONDS + 1)).toContain(bag);
+  });
+});
+
+describe('выброшенное из рюкзака', () => {
+  it('ложится мешком у ног, а выброшенное следом — в тот же мешок', () => {
+    const world = new World();
+    const player = spawn(world, OVERWORLD);
+    player.inventory = addItem(player.inventory, 'leather_cap', 1).grid;
+    const ctx = { world, actor: player };
+
+    const silver = player.inventory.items.find((item) => item.defId === 'grave_silver')!;
+    handleDropItem(ctx, { t: 'dropItem', x: silver.x, y: silver.y });
+    const cap = player.inventory.items.find((item) => item.defId === 'leather_cap')!;
+    handleDropItem(ctx, { t: 'dropItem', x: cap.x, y: cap.y });
+
+    // Из рюкзака ушло, но не пропало: лежит на земле, одним мешком.
+    expect(player.inventory.items).toHaveLength(0);
+    const bags = world.bagsFor(player);
+    expect(bags).toHaveLength(1);
+    expect(world.bagById(OVERWORLD, bags[0]!.id)!.grid.items).toHaveLength(2);
   });
 });
