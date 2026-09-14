@@ -104,17 +104,17 @@ export const SOUNDS = {
    */
   stepStone: {
     files: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) => `footstep0${index}.ogg`),
-    volume: 0.25,
+    volume: 0.175,
     positional: true,
     near: 1.5,
     far: 20,
     detune: 0.08,
     lowpass: 1800,
   },
-  /** Шаги по траве и грунту диких земель. Вдвое тише первоначального и без верхов. */
+  /** Шаги по траве и грунту диких земель. Втрое тише первоначального и без верхов. */
   stepGrass: {
     files: five('footstep_grass'),
-    volume: 0.25,
+    volume: 0.175,
     positional: true,
     near: 1.5,
     far: 20,
