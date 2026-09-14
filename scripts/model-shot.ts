@@ -31,6 +31,13 @@ const ZOOM = process.argv[7] ?? '1';
  * со Sketchfab: они в сотнях единиц и лежат вдали от начала координат.
  */
 const FIT = process.argv[8] === 'fit' ? '1' : '0';
+/**
+ * `GRIMHOLD_CAM=x,y,z` и `GRIMHOLD_LOOK=x,y,z` — снять изнутри здания: камера
+ * в точке модели и взгляд в точку. Через переменные, а не аргументы:
+ * позиционных и так восемь.
+ */
+const CAM = process.env.GRIMHOLD_CAM;
+const LOOK = process.env.GRIMHOLD_LOOK;
 
 const browser = await puppeteer.launch({
   headless: true,
@@ -57,7 +64,8 @@ try {
 
   const address =
     `http://localhost:5173/model.html?src=${encodeURIComponent(SOURCE)}` +
-    `&clip=${encodeURIComponent(CLIP)}&turn=${TURN}&at=${AT}&zoom=${ZOOM}&fit=${FIT}`;
+    `&clip=${encodeURIComponent(CLIP)}&turn=${TURN}&at=${AT}&zoom=${ZOOM}&fit=${FIT}` +
+    (CAM && LOOK ? `&cam=${CAM}&look=${LOOK}` : '');
   await page.goto(address, { waitUntil: 'networkidle2', timeout: 60000 });
 
   // Ждём, пока страница доиграет клип до заданной секунды и замрёт.

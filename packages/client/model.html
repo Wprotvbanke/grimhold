@@ -50,6 +50,15 @@
        * камеры отрезала модель целиком — снимок выходил пустым.
        */
       const fit = options.get('fit') === '1';
+      /**
+       * `cam=x,y,z&look=x,y,z` — камера в точке модели и взгляд в точку.
+       *
+       * Нужно зданиям, в которые входят: снаружи не видно, где проём, какой
+       * толщины стены и что внутри. Координаты — модели как она лежит в файле,
+       * без подгонки кадра.
+       */
+      const cam = options.get('cam')?.split(',').map(Number);
+      const look = options.get('look')?.split(',').map(Number);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(900, 900);
@@ -78,7 +87,11 @@
       const bounds = new THREE.Box3().setFromObject(model);
       const height = bounds.max.y - bounds.min.y;
       let camera;
-      if (fit) {
+      if (cam && look) {
+        camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
+        camera.position.set(cam[0], cam[1], cam[2]);
+        camera.lookAt(look[0], look[1], look[2]);
+      } else if (fit) {
         const center = bounds.getCenter(new THREE.Vector3());
         const span = bounds.getSize(new THREE.Vector3()).length();
         model.position.sub(center);
