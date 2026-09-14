@@ -485,6 +485,11 @@
         flex: 0 0 170px; padding: 4px 6px; background: #14141a; color: #d6cdb8;
         border: 1px solid var(--line); border-radius: 3px; font: inherit; font-size: 12px;
       }
+      #settings input[type="range"] { flex: 0 0 170px; accent-color: var(--gold); }
+      #settings h3 {
+        margin: 14px 0 8px; padding-top: 10px; border-top: 1px solid var(--line);
+        font-size: 12px; font-weight: 500; color: var(--gold); letter-spacing: 0.04em;
+      }
       #setStats {
         margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
         font-size: 11px; color: var(--dim); line-height: 1.6; white-space: pre-line;
@@ -758,7 +763,7 @@
          в движении чаще всего не про математику, а про то, что кадры ложатся
          на развёртку монитора неровно. -->
     <div id="settings" hidden>
-      <h2>Настройки картинки</h2>
+      <h2>Настройки</h2>
       <p class="why">
         Браузер рисует по развёртке монитора и сам вертикальную синхронизацию
         не отдаёт. Зато неровный ход лечится пределом кадров: поставь ровную
@@ -803,6 +808,18 @@
           <option value="on">Включено</option>
           <option value="off">Выключено — быстрее</option>
         </select>
+      </label>
+
+      <h3>Звук</h3>
+
+      <label>
+        Громкость
+        <input id="setVolume" type="range" min="0" max="100" step="1" />
+      </label>
+
+      <label>
+        Фон
+        <input id="setAmbience" type="range" min="0" max="100" step="1" />
       </label>
 
       <p id="setStats">замер идёт…</p>

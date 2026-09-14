@@ -14,6 +14,7 @@
 | `public/models/dwarf.glb` | [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 |
 | `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com) | CC0 |
 | `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
+| `public/sounds/*.ogg` | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds); лицензия рядом, `LICENSE-kenney-interface.txt` | CC0 |
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
@@ -155,6 +156,21 @@ npx tsx scripts/model-shot.ts gnome Walk снимок.png [поворот°] [с
   Имена клипов короткие (`Idle`, `Walk`, `Attack`, `Death`) и уже есть в `CLIPS`.
   Отдельные модели лежат на [Poly Pizza](https://poly.pizza) — там прямая ссылка
   на `.glb` без логина, её видно в исходнике страницы.
+
+### Звук
+
+- **[Kenney](https://kenney.nl)** — CC0, три пакета с прямой ссылкой на архив
+  без логина: `rpg-audio` (шаги, рубка, монеты, скрип, замки, ткань),
+  `impact-sounds` (удары о металл, латы, дерево и плоть, шаги по разным
+  поверхностям, тяжёлый колокол), `interface-sounds` (щелчки, подтверждения).
+  Ссылка на архив видна в исходнике страницы пакета:
+  `kenney.nl/media/pages/assets/<пакет>/…/kenney_<пакет>.zip`. Внутри уже `.ogg`
+  — конвертировать не нужно. `License.txt` класть рядом, переименовав
+  по пакету.
+- **Рыков, фоновых петель, треска огня и свиста взмаха у Kenney нет.** Искать
+  на [OpenGameArt](https://opengameart.org) и [Freesound](https://freesound.org)
+  **только с фильтром CC0** и записывать источник каждого файла. Не нашёлся
+  CC0 — звук молчит, а не подменяется CC-BY.
 
 ## Анимации скелета
 

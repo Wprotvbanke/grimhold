@@ -65,6 +65,7 @@ import { guardBrowserKeys, toggleFullCapture, wireFullCapture } from './keyboard
 import { createQuality } from './quality.js';
 import { createFrameStats } from './frames.js';
 import { createSettings, loadSettings } from './settings.js';
+import { createSound } from './sound.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -133,6 +134,14 @@ camera.rotation.order = 'YXZ';
 const lanternLight = new THREE.PointLight(0xffd9a0, 0, 16, 2);
 camera.add(lanternLight);
 scene.add(camera);
+
+/**
+ * Звук. Слушатель сидит на камере: слышно оттуда, откуда видно.
+ *
+ * Заводится до настроек — сохранённая громкость применяется сразу, как только
+ * они создадутся, и к этому моменту ей должно быть к чему примениться.
+ */
+const sound = createSound(camera, scene);
 
 /** Всё, что появляется только после входа в мир конкретным персонажем. */
 interface GameSession {
@@ -545,7 +554,7 @@ window.addEventListener('keydown', (event) => {
   }
 
   /**
-   * Настройки картинки — F1.
+   * Настройки картинки и звука — F1.
    *
    * Не Escape: его при захваченной мыши браузер забирает себе, и до игры оно
    * доходит только в полном экране. F1 приходит всегда и означает одно.
@@ -690,14 +699,19 @@ let lastAim = 0;
 const frameStats = createFrameStats();
 
 /**
- * Настройки картинки. Они же экран паузы: мышь отпущена — меню открыто.
+ * Настройки картинки и звука. Они же экран паузы: мышь отпущена — меню открыто.
  *
  * Отдельного экрана паузы в игре нет намеренно, мир видно всегда; меню
  * не закрывает его целиком и снимается тем же щелчком, что возвращает мышь.
  */
 const settings = createSettings(
-  (chosen) => quality.configure({ resolution: chosen.resolution, shadows: chosen.shadows }),
+  (chosen) => {
+    quality.configure({ resolution: chosen.resolution, shadows: chosen.shadows });
+    sound.setVolumes(chosen);
+  },
   () => controls.requestLock(),
+  // Громкость отпустили — короткий образец, чтобы слышно было, на что поставил.
+  () => sound.play('confirm'),
 );
 /**
  * Служебное меню ведущего. Заводится всегда, показывается только тому,

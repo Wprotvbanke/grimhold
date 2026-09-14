@@ -1,7 +1,7 @@
 /**
- * Настройки картинки и меню паузы.
+ * Настройки картинки и звука и меню паузы.
  *
- * Всё, что здесь есть, существует ради одного: **ровного кадра**. Дрожание
+ * Настройки картинки существуют ради одного: **ровного кадра**. Дрожание
  * картинки в движении чаще всего не про математику, а про то, что кадры
  * ложатся на развёртку монитора неровно — и лечится это со стороны игрока,
  * а не кода: предел кадров, разрешение, цена теней.
@@ -27,6 +27,15 @@ export interface Settings {
   /** Множитель разрешения. `auto` — подстраивается сам, см. quality.ts. */
   resolution: 'auto' | number;
   shadows: Shadows;
+  /** Общая громкость, 0..1. */
+  volume: number;
+  /**
+   * Громкость фона, 0..1: ветер, гул подземелья.
+   *
+   * Отдельно от общей, потому что фон мешает первым: человек, которому надоел
+   * гул, не должен ради тишины терять шаги за спиной.
+   */
+  ambience: number;
 }
 
 const STORAGE_KEY = 'grimhold.settings';
@@ -36,12 +45,21 @@ const DEFAULTS: Settings = {
   antialias: true,
   resolution: 'auto',
   shadows: 'half',
+  volume: 0.8,
+  ambience: 0.6,
 };
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`нет элемента #${id}`);
   return node as T;
+}
+
+/** Громкость из хранилища: число в 0..1, всё остальное — значение по умолчанию. */
+function level(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : fallback;
 }
 
 /**
@@ -66,6 +84,8 @@ export function loadSettings(): Settings {
         parsed.shadows === 'every' || parsed.shadows === 'half' || parsed.shadows === 'off'
           ? parsed.shadows
           : DEFAULTS.shadows,
+      volume: level(parsed.volume, DEFAULTS.volume),
+      ambience: level(parsed.ambience, DEFAULTS.ambience),
     };
   } catch {
     // Хранилище может быть недоступно (приватное окно) — это не повод падать.
@@ -87,6 +107,8 @@ export interface SettingsUi {
 export function createSettings(
   onChange: (settings: Settings) => void,
   onResume: () => void,
+  /** Громкость отпустили — дать услышать, на что поставили. */
+  onSoundSet: () => void = () => {},
 ): SettingsUi {
   const current = loadSettings();
 
@@ -95,12 +117,16 @@ export function createSettings(
   const resolution = el<HTMLSelectElement>('setRes');
   const shadows = el<HTMLSelectElement>('setShadow');
   const smoothing = el<HTMLSelectElement>('setAa');
+  const volume = el<HTMLInputElement>('setVolume');
+  const ambience = el<HTMLInputElement>('setAmbience');
   const readout = el<HTMLParagraphElement>('setStats');
 
   fps.value = String(current.fpsCap);
   resolution.value = String(current.resolution);
   shadows.value = current.shadows;
   smoothing.value = current.antialias ? 'on' : 'off';
+  volume.value = String(Math.round(current.volume * 100));
+  ambience.value = String(Math.round(current.ambience * 100));
 
   function save(): void {
     try {
@@ -129,6 +155,28 @@ export function createSettings(
     // Менять на ходу нечего: сглаживание задаётся при создании рендерера.
     readout.textContent = 'Сглаживание краёв применится после обновления страницы (F5).';
   });
+
+  /**
+   * Ползунок громкости слушается на ходу, а пишется по отпусканию.
+   *
+   * На ходу — чтобы менять громкость, слыша игру. По отпусканию — чтобы
+   * не писать хранилище на каждый пиксель движения мыши, и чтобы короткий
+   * звук-образец прозвучал один раз, а не очередью.
+   */
+  for (const [slider, key] of [
+    [volume, 'volume'],
+    [ambience, 'ambience'],
+  ] as const) {
+    slider.addEventListener('input', () => {
+      current[key] = Number(slider.value) / 100;
+      onChange(current);
+    });
+    slider.addEventListener('change', () => {
+      current[key] = Number(slider.value) / 100;
+      save();
+      onSoundSet();
+    });
+  }
 
   el<HTMLButtonElement>('setResume').addEventListener('click', () => {
     api.hide();
