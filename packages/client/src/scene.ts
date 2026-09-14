@@ -89,7 +89,9 @@ export function setAnisotropy(limit: number): void {
   anisotropy = Math.max(1, Math.floor(limit));
   for (const texture of loaded) {
     texture.anisotropy = anisotropy;
-    texture.needsUpdate = true;
+    // Недогруженную не трогаем: three ругается на обновление без картинки,
+    // а анизотропия и так применится, когда картинка приедет.
+    if (texture.image) texture.needsUpdate = true;
   }
 }
 
