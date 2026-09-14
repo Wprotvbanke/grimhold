@@ -143,9 +143,14 @@ export const BANK = {
   z: 2,
   /** С какого расстояния открывается сундук. */
   range: 3,
+  /**
+   * Габариты — по модели каменного ларца (`bank.glb`, ставит houses.ts):
+   * модель длинной стороной вдоль X, увеличена в 1.1 раза при сборке.
+   * По ним же и коробка столкновений, и прицел «открыть казну».
+   */
   width: 2.2,
-  depth: 1.2,
-  height: 1.1,
+  depth: 1.27,
+  height: 0.75,
 } as const;
 
 /**
@@ -289,18 +294,16 @@ export const TOWN_BOXES: readonly LevelBox[] = [
   // Здания площади: вид им дают модели, здесь только телесность.
   ...houseBoxes(),
 
-  // Колоннада.
-  { kind: 'pillar', box: boxFromCenter(-14, 2, 12, 1.2, 4, 1.2) },
-  { kind: 'pillar', box: boxFromCenter(-10, 2, 12, 1.2, 4, 1.2) },
-  { kind: 'pillar', box: boxFromCenter(-6, 2, 12, 1.2, 4, 1.2) },
 
 
   // Фонари: вид им даёт клиент, здесь только телесность.
   ...lightBoxes(),
 
-  // Городская казна: каменный ларь на площади, кладка его и рисует.
+  // Городская казна: каменный ларец на площади. Вид даёт модель (houses.ts),
+  // здесь только телесность.
   {
     kind: 'brick',
+    hidden: true,
     box: boxFromCenter(BANK.x, BANK.height / 2, BANK.z, BANK.width, BANK.height, BANK.depth),
   },
 

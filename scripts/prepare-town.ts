@@ -16,7 +16,7 @@
  */
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRMaterialsUnlit } from '@gltf-transform/extensions';
-import { dedup, draco, flatten, join, prune, textureCompress, weld } from '@gltf-transform/functions';
+import { dedup, draco, flatten, getBounds, join, prune, textureCompress, weld } from '@gltf-transform/functions';
 import draco3d from 'draco3dgltf';
 import sharp from 'sharp';
 import { statSync } from 'node:fs';
@@ -26,9 +26,27 @@ const ROOT = resolve(import.meta.dirname, '..');
 const SOURCE = 'C:/Users/Wprot/OneDrive/Рабочий стол/Town';
 const OUTPUT = resolve(ROOT, 'packages/client/public/models');
 
-const MODELS: { source: string; output: string }[] = [
-  { source: 'low_poly_town_hall (1).glb', output: 'town_hall.glb' },
-  { source: 'townhouse_3_now_with_dust.glb', output: 'townhouse.glb' },
+const DESKTOP = 'C:/Users/Wprot/OneDrive/Рабочий стол';
+
+/**
+ * `normalize` — привести модель к нашим правилам прямо в файле: основанием
+ * на ноль, серединой пятна в начало координат, в нужный размер. Выгрузки
+ * приходят то висящими в воздухе, то наполовину под землёй, то в сотнях
+ * единиц — и лучше один раз исправить файл, чем помнить поправку в коде.
+ * `scale` — множитель, `height` — целевая высота в метрах (перебивает `scale`).
+ */
+interface ModelSpec {
+  source: string;
+  output: string;
+  normalize?: { scale?: number; height?: number };
+}
+
+const MODELS: ModelSpec[] = [
+  { source: `${SOURCE}/low_poly_town_hall (1).glb`, output: 'town_hall.glb' },
+  { source: `${SOURCE}/townhouse_3_now_with_dust.glb`, output: 'townhouse.glb' },
+  // Казна: каменный ларец. Середина в нуле, половина под землёй — поднимаем;
+  // чуть больше исходника, чтобы читался на площади.
+  { source: `${DESKTOP}/bank/bank.glb`, output: 'bank.glb', normalize: { scale: 1.1 } },
 ];
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(2)} МБ`;
@@ -38,12 +56,35 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
   'draco3d.decoder': await draco3d.createDecoderModule(),
 });
 
-for (const { source, output } of MODELS) {
-  const input = `${SOURCE}/${source}`;
+for (const { source, output, normalize } of MODELS) {
+  const input = source;
   const target = resolve(OUTPUT, output);
   const document = await io.read(input);
   const root = document.getRoot();
   const before = root.listMeshes().length;
+
+  if (normalize) {
+    // Всё содержимое сцены — под один узел со сдвигом и масштабом; дальше
+    // `flatten` раскладывает его по сеткам, и файл уже стоит как надо.
+    const scene = root.listScenes()[0]!;
+    const bounds = getBounds(scene);
+    const scale = normalize.height
+      ? normalize.height / (bounds.max[1] - bounds.min[1])
+      : (normalize.scale ?? 1);
+    const pivot = document
+      .createNode('pivot')
+      .setScale([scale, scale, scale])
+      .setTranslation([
+        (-(bounds.min[0] + bounds.max[0]) / 2) * scale,
+        -bounds.min[1] * scale,
+        (-(bounds.min[2] + bounds.max[2]) / 2) * scale,
+      ]);
+    for (const child of scene.listChildren()) {
+      scene.removeChild(child);
+      pivot.addChild(child);
+    }
+    scene.addChild(pivot);
+  }
 
   // Материал без освещения — снимаем расширение, материал остаётся обычным.
   // Блеск металла у штукатурки и черепицы не нужен: матовые, как всё в городе.

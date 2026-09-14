@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { TOWN_HOUSES } from '@grimhold/shared';
+import { BANK, TOWN_HOUSES } from '@grimhold/shared';
 
 /**
  * Здания площади: ратуша и городской дом — готовые модели целиком.
@@ -29,6 +29,29 @@ export function createHouses(scene: THREE.Scene): Houses {
   const draco = new DRACOLoader();
   draco.setDecoderPath('/draco/');
   loader.setDRACOLoader(draco);
+
+  /**
+   * Казна — каменный ларец. Коробка у неё в `level.ts` (`BANK`), здесь вид.
+   * Модель лежит длинной стороной вдоль Z — разворачиваем на четверть оборота,
+   * чтобы совпасть с коробкой, вытянутой вдоль X.
+   */
+  loader.load(
+    '/models/bank.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      model.position.set(BANK.x, 0, BANK.z);
+      model.rotation.y = Math.PI / 2;
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      });
+      group.add(model);
+    },
+    undefined,
+    () => console.warn('[здания] не загрузилась /models/bank.glb'),
+  );
 
   for (const house of TOWN_HOUSES) {
     const url = `/models/${house.model}.glb`;

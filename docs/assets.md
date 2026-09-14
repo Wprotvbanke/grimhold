@@ -27,6 +27,7 @@
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/town_hall.glb` | от владельца проекта, выгрузка Sketchfab «low poly town hall»; собран `scripts/prepare-town.ts` | **уточнить** |
 | `public/models/townhouse.glb` | от владельца проекта, выгрузка Sketchfab «townhouse 3 now with dust»; собран `scripts/prepare-town.ts` | **уточнить** |
+| `public/models/bank.glb` | от владельца проекта, выгрузка Sketchfab — каменный ларец казны; собран `scripts/prepare-town.ts` (поднят на землю, ×1.1) | **уточнить** |
 | `public/models/torch.glb` | от владельца проекта, выгрузка Sketchfab (автор и лицензия в файле не записаны); лежит как есть, 68 КБ — ставит `loadTorches` в `lights.ts` | **уточнить** |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
