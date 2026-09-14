@@ -153,7 +153,7 @@ export const SOUNDS = {
     detune: 0.05,
   },
   /** Рюкзак открыли — кожаный ремень. Закрытие молчит: оно всегда за открытием. */
-  backpack: { files: ['clothBelt.ogg', 'clothBelt2.ogg'], volume: 0.5, positional: false, detune: 0.06 },
+  backpack: { files: ['clothBelt.ogg', 'clothBelt2.ogg'], volume: 0.4, positional: false, detune: 0.06 },
   /** Выдохся — отдышка. Слышно раньше, чем заметно по ногам. */
   breath: { files: ['breathing_tired.ogg'], volume: 0.6, positional: false },
   /**
@@ -303,7 +303,10 @@ export interface SoundApi {
   stopLoop(key: string): void;
   /** Сменить фон. `null` — тишина. Тот же фон — ничего не происходит. */
   setAmbience(id: SoundId | null): void;
-  setVolumes(settings: { volume: number; ambience: number }): void;
+  setVolumes(settings: { volume: number; ambience: number; music: number }): void;
+  /** Контекст и шина музыки: музыка играет потоком и живёт в music.ts. */
+  readonly context: AudioContext;
+  readonly musicBus: AudioNode;
 }
 
 export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi {
@@ -343,6 +346,9 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
    */
   const ambienceBus = context.createGain();
   ambienceBus.connect(listener.getInput());
+  /** Своя шина и у музыки — по той же причине: свой ползунок в F1. */
+  const musicBus = context.createGain();
+  musicBus.connect(listener.getInput());
 
   const buffers = new Map<string, AudioBuffer>();
 
@@ -505,9 +511,13 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
       startAmbience();
     },
 
-    setVolumes({ volume, ambience: level }) {
+    setVolumes({ volume, ambience: level, music }) {
       listener.setMasterVolume(volume);
       ambienceBus.gain.value = level;
+      musicBus.gain.value = music;
     },
+
+    context,
+    musicBus,
   };
 }

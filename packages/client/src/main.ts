@@ -71,6 +71,7 @@ import { createSteps, surfaceAt, type Walker } from './steps.js';
 import { createAtmosphere } from './atmosphere.js';
 import { createLabour, labourForWork, type Worker } from './labour.js';
 import { createShowcase } from './showcase.js';
+import { createMusic } from './music.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -149,6 +150,8 @@ scene.add(camera);
  * они создадутся, и к этому моменту ей должно быть к чему примениться.
  */
 const sound = createSound(camera, scene);
+/** Музыка города — по сценарию: день, ночь, таверна. См. music.ts. */
+const music = createMusic(sound.context, sound.musicBus);
 
 /** Звуки боя: что звучит на какое событие — и как одному замаху не звучать очередью. */
 const cues = createCues(sound);
@@ -1009,6 +1012,8 @@ renderer.setAnimationLoop((frameTime: number) => {
     ? timeOfDay(connection.latestSnapshot.tick, serverTickRate, daytimeShift)
     : DAY_START;
   world.update(now / 1000, worldTime, camera);
+  // Музыка нужна часам мира: ночью город звучит иначе, чем днём.
+  if (game) music.update(dt, renderPos.x, renderPos.z, undergroundNow, worldTime);
 
   // Руки живут в своей сцене со своим светом, но темнеть обязаны вместе
   // с миром: иначе ночью они светятся посреди тёмного города.

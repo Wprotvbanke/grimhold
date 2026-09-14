@@ -36,6 +36,8 @@ export interface Settings {
    * гул, не должен ради тишины терять шаги за спиной.
    */
   ambience: number;
+  /** Громкость музыки, 0..1. Отдельно: музыку выключают первой, звук — никогда. */
+  music: number;
 }
 
 const STORAGE_KEY = 'grimhold.settings';
@@ -47,6 +49,7 @@ const DEFAULTS: Settings = {
   shadows: 'half',
   volume: 0.8,
   ambience: 0.6,
+  music: 0.5,
 };
 
 function el<T extends HTMLElement>(id: string): T {
@@ -86,6 +89,7 @@ export function loadSettings(): Settings {
           : DEFAULTS.shadows,
       volume: level(parsed.volume, DEFAULTS.volume),
       ambience: level(parsed.ambience, DEFAULTS.ambience),
+      music: level(parsed.music, DEFAULTS.music),
     };
   } catch {
     // Хранилище может быть недоступно (приватное окно) — это не повод падать.
@@ -119,6 +123,7 @@ export function createSettings(
   const smoothing = el<HTMLSelectElement>('setAa');
   const volume = el<HTMLInputElement>('setVolume');
   const ambience = el<HTMLInputElement>('setAmbience');
+  const music = el<HTMLInputElement>('setMusic');
   const readout = el<HTMLParagraphElement>('setStats');
 
   fps.value = String(current.fpsCap);
@@ -127,6 +132,7 @@ export function createSettings(
   smoothing.value = current.antialias ? 'on' : 'off';
   volume.value = String(Math.round(current.volume * 100));
   ambience.value = String(Math.round(current.ambience * 100));
+  music.value = String(Math.round(current.music * 100));
 
   function save(): void {
     try {
@@ -166,6 +172,7 @@ export function createSettings(
   for (const [slider, key] of [
     [volume, 'volume'],
     [ambience, 'ambience'],
+    [music, 'music'],
   ] as const) {
     slider.addEventListener('input', () => {
       current[key] = Number(slider.value) / 100;
