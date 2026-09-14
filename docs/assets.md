@@ -17,7 +17,7 @@
 | `public/sounds/*.ogg` | Kenney: [Interface Sounds](https://kenney.nl/assets/interface-sounds), [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio); лицензии рядом, `LICENSE-kenney-*.txt` | CC0 |
 | `public/sounds/dungeon_ambient.ogg` | [Loopable Dungeon Ambience](https://opengameart.org/content/loopable-dungeon-ambience), OpenGameArt | CC0 |
 | `public/sounds/wind_loop.ogg` | [wind whoosh loop](https://opengameart.org/content/wind-whoosh-loop), OpenGameArt | CC0 |
-| `public/sounds/fire_crackle.ogg` | [Fire Crackling](https://opengameart.org/content/fire-crackling), OpenGameArt | CC0 |
+| `public/sounds/torch_fire.wav` | [Fireplace Sound loop](https://opengameart.org/content/fireplace-sound-loop), OpenGameArt; из 29 с и 10 МБ взяты 10 с, моно, 16 бит, 22 кГц, конец сведён с началом для бесшовной петли | CC0 |
 | `public/sounds/breathing_tired.ogg` | [Breathing Tired](https://opengameart.org/content/breathing-tired), OpenGameArt | CC0 |
 | `public/sounds/swish_*.wav` | [Swishes Sound Pack](https://opengameart.org/content/swishes-sound-pack), OpenGameArt; `.wav` оставлен как есть — конвертера под рукой не было, а файлы по сорок килобайт | CC0 |
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |

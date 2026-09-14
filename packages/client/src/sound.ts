@@ -88,9 +88,9 @@ export const SOUNDS = {
    * Слышны на двадцать метров — дальше, чем видно во мгле. Это и есть смысл:
    * шаги за стеной предупреждают раньше, чем из темноты выйдет тот, кто идёт.
    */
-  stepStone: { files: five('footstep_concrete'), volume: 0.5, positional: true, near: 1.5, far: 20, detune: 0.08 },
-  /** Шаги по траве и грунту диких земель. */
-  stepGrass: { files: five('footstep_grass'), volume: 0.5, positional: true, near: 1.5, far: 20, detune: 0.08 },
+  stepStone: { files: five('footstep_concrete'), volume: 0.25, positional: true, near: 1.5, far: 20, detune: 0.08 },
+  /** Шаги по траве и грунту диких земель. Вдвое тише первоначального — на слух шаги заглушали всё. */
+  stepGrass: { files: five('footstep_grass'), volume: 0.25, positional: true, near: 1.5, far: 20, detune: 0.08 },
 
   /**
    * Хозяин глубины пал.
@@ -105,8 +105,15 @@ export const SOUNDS = {
   transition: { files: ['doorOpen_1.ogg', 'doorOpen_2.ogg'], volume: 0.6, positional: false },
   /** Выдохся — отдышка. Слышно раньше, чем заметно по ногам. */
   breath: { files: ['breathing_tired.ogg'], volume: 0.6, positional: false },
-  /** Свой огонь в руке — треск петлёй, пока горит. */
-  torch: { files: ['fire_crackle.ogg'], volume: 0.35, positional: false },
+  /**
+   * Свой огонь в руке — ровное пламя петлёй, пока горит.
+   *
+   * Сначала стоял короткий треск в пару секунд: петля повторяла одни и те же
+   * резкие щелчки без конца, и на слух огонь «хрустел» часто и громко.
+   * Теперь это десять секунд спокойного очага, тихо: огонь в руке должен
+   * быть фоном, а не событием.
+   */
+  torch: { files: ['torch_fire.wav'], volume: 0.18, positional: false },
 
   /** Фон подземелья: гул и капель. Петлёй, на своей громкости. */
   ambDungeon: { files: ['dungeon_ambient.ogg'], volume: 0.7, positional: false },
