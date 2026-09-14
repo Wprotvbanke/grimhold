@@ -70,6 +70,7 @@ import { createCues } from './cues.js';
 import { createSteps, surfaceAt, type Walker } from './steps.js';
 import { createAtmosphere } from './atmosphere.js';
 import { createLabour, labourForWork, type Worker } from './labour.js';
+import { createShowcase } from './showcase.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -112,6 +113,8 @@ setAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
 const world = createScene();
 const scene = world.scene;
+/** Пробная модель на площади — см. showcase.ts. */
+const showcase = createShowcase(scene);
 
 /** Лампы снарядов: пул постоянного размера, см. scene.ts. */
 const projectileLights = createProjectileLights(scene);
@@ -905,6 +908,7 @@ renderer.setAnimationLoop((frameTime: number) => {
 
     // 4. Чужие рисуются в прошлом, плавно между снапшотами.
     updateAvatars(now, dt);
+    showcase.update(dt, !undergroundNow);
     updateNametags();
     combatUi.updateCooldowns(now);
 

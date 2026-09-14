@@ -23,6 +23,7 @@
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
+| `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
 | `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
@@ -82,6 +83,7 @@ npx tsx scripts/prepare-nature.ts     # 68 моделей растительно
 npx tsx scripts/prepare-tavern.ts     # обстановка таверны: 34.5 МБ → 0.8 МБ
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
 npx tsx scripts/prepare-gnome.ts      # житель площади: 2 МБ FBX → 0.12 МБ
+npx tsx scripts/prepare-dwarf-test.ts # пробный дворф, три клипа: 11 МБ FBX → 0.26 МБ
 npx tsx scripts/prepare-bag.ts        # мешочек с добычей: 0.64 МБ → 0.04 МБ
 npx tsx scripts/prepare-symbol.ts     # знак выхода: 98 КБ → 50 КБ
 npx tsx scripts/prepare-sky.ts        # панорама неба: 12 КБ
