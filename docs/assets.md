@@ -14,7 +14,7 @@
 | `public/models/dwarf.glb` | [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 |
 | `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com) | CC0 |
 | `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
-| `public/sounds/*.ogg` | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds); лицензия рядом, `LICENSE-kenney-interface.txt` | CC0 |
+| `public/sounds/*.ogg` | Kenney: [Interface Sounds](https://kenney.nl/assets/interface-sounds), [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio); лицензии рядом, `LICENSE-kenney-*.txt` | CC0 |
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |

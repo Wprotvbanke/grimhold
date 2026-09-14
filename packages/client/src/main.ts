@@ -66,6 +66,7 @@ import { createQuality } from './quality.js';
 import { createFrameStats } from './frames.js';
 import { createSettings, loadSettings } from './settings.js';
 import { createSound } from './sound.js';
+import { createCues } from './cues.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -142,6 +143,9 @@ scene.add(camera);
  * они создадутся, и к этому моменту ей должно быть к чему примениться.
  */
 const sound = createSound(camera, scene);
+
+/** Звуки боя: что звучит на какое событие — и как одному замаху не звучать очередью. */
+const cues = createCues(sound);
 
 /** Всё, что появляется только после входа в мир конкретным персонажем. */
 interface GameSession {
@@ -268,6 +272,11 @@ const controls = new Controls(renderer.domElement, {
     if (stamina < ViewModel.staminaCost(kind, evasionLevel) || !game.hands.beginAction(kind)) {
       return;
     }
+
+    // Звук — там же, где руки: сразу и по тем же правилам, по которым пройдёт
+    // удар. Отказанный удар молчит так же, как молчат руки.
+    const bowInHand = mainHandItem !== null && itemDef(mainHandItem as ItemId).skill === 'archery';
+    cues.ownAction(kind, bowInHand);
 
     connection.send({ t: 'action', kind, seq: actionSeq++, viewTick: viewTick() });
   },
@@ -1305,6 +1314,11 @@ function consumeSnapshot(): void {
 
   syncProjectiles(newest.projectiles);
   syncBags(newest.bags);
+
+  // Чужие замахи и стрелы звучат по свежему снапшоту — и только в начале:
+  // «замахивается» он повторяет двадцать раз в секунду, а звук нужен один.
+  cues.entities(newest.entities, connection.playerId);
+  cues.projectiles(newest.projectiles);
 }
 
 /**
@@ -1660,6 +1674,8 @@ function updateNametags(): void {
 function handleCombatEvent(event: CombatEvent): void {
   const selfId = connection.playerId ?? '';
   combatUi.showEvent(event, projectToScreen(event.x, event.y, event.z), selfId);
+  // Исход удара звучит из точки удара: свой рядом, чужая драка — издалека.
+  cues.combat(event);
 
   // Полоска цели: показываем, по кому попал именно ты.
   if (event.attackerId === selfId && event.targetId) {

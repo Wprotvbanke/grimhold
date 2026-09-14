@@ -35,9 +35,52 @@ interface SoundDef {
   detune?: number;
 }
 
+/** Пять вариантов одного звука: `name_000.ogg` … `name_004.ogg`, как у Kenney. */
+function five(name: string): string[] {
+  return [0, 1, 2, 3, 4].map((index) => `${name}_00${index}.ogg`);
+}
+
 export const SOUNDS = {
   /** Громкость в F1 отпустили — слышно, на что поставил. */
   confirm: { files: ['confirmation_001.ogg'], volume: 0.5, positional: false },
+
+  /**
+   * Взмах: свой — сразу, как дёрнулись руки; чужой — в начале замаха.
+   *
+   * Замах чужого — главное, что стоит услышать: по нему решают, отходить или
+   * ставить щит, а во мгле его не видно.
+   */
+  swing: {
+    files: ['knifeSlice.ogg', 'knifeSlice2.ogg'],
+    volume: 0.45,
+    positional: true,
+    near: 2,
+    far: 18,
+    detune: 0.1,
+  },
+  hit: { files: five('impactPunch_medium'), volume: 0.8, positional: true, near: 2, far: 25, detune: 0.08 },
+  /** Удар в щит звенит металлом — его не спутать с попаданием. */
+  blocked: { files: five('impactPlate_medium'), volume: 0.75, positional: true, near: 2, far: 25, detune: 0.06 },
+  /** Уход рывком — шорох одежды: неуязвимость слышна, а не только видна. */
+  dodge: {
+    files: ['cloth1.ogg', 'cloth2.ogg', 'cloth3.ogg', 'cloth4.ogg'],
+    volume: 0.5,
+    positional: true,
+    near: 1.5,
+    far: 14,
+    detune: 0.1,
+  },
+  death: { files: five('impactSoft_heavy'), volume: 0.9, positional: true, near: 3, far: 30, detune: 0.05 },
+  heal: { files: ['confirmation_002.ogg'], volume: 0.45, positional: true, near: 2, far: 15 },
+  /** Тетива. Звучит, когда стрела появилась, — у своего выстрела тоже. */
+  bow: {
+    files: ['pluck_001.ogg', 'pluck_002.ogg'],
+    volume: 0.6,
+    positional: true,
+    near: 2,
+    far: 25,
+    detune: 0.06,
+  },
 } satisfies Record<string, SoundDef>;
 
 export type SoundId = keyof typeof SOUNDS;
