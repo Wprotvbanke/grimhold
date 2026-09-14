@@ -31,6 +31,7 @@ import {
 import './fog.js';
 import { createBuildings } from './buildings.js';
 import { createDayNight } from './daynight.js';
+import { createHouses } from './houses.js';
 import { createLights } from './lights.js';
 import { createParticles } from './particles.js';
 import { createNature, disposeNature } from './nature.js';
@@ -419,6 +420,8 @@ export function createScene(): World3D {
   // Пыль в свете своего огня и мошкара у фонарей — см. particles.ts.
   const particles = createParticles(scene);
   const buildings = createBuildings(scene);
+  // Ратуша и дом на площади — модели целиком, см. houses.ts.
+  const houses = createHouses(scene);
   const nature = createNature();
   const nodes = createNodes();
   // Обстановка таверны: мебель приезжает отдельными моделями, а не коробками.
@@ -695,6 +698,7 @@ export function createScene(): World3D {
        */
       const nearTown = Math.hypot(camera.position.x, camera.position.z) < CHUNK_SIZE;
       buildings.group.visible = nearTown;
+      houses.group.visible = nearTown;
       furniture.visible = nearTown;
       /**
        * Огонь нужен и в городе, и под землёй — значит группу не прячем там,

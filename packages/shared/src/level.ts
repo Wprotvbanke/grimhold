@@ -260,6 +260,85 @@ export const DUNGEON_GATE = {
   height: 0.6,
 } as const;
 
+/**
+ * Здания площади — ратуша и городской дом, модели от владельца.
+ *
+ * Встали вместо двух голых стен, что делили площадь: стены были «есть за чем
+ * прятаться», здания дают то же укрытие, но выглядят городом, а не полигоном.
+ *
+ * Стоят **вдоль восточной стороны северной улицы**, друг за другом через
+ * проход в полтора метра, фасадом с дверью к улице, на запад. Первым их
+ * поставили к северу от точки появления фасадом на площадь — и ратуша
+ * перегородила ось северных ворот: из города было не выйти, упал тест
+ * движения. Ось ворот держим пустой, как и для фонарей.
+ *
+ * `footprint` — пятно здания в его собственных координатах, по габаритам
+ * модели и чуть внутрь: крыльцо и свесы кровли не должны останавливать
+ * за полметра до стены. Внутрь не войти — это коробка, а не таверна.
+ * `turn` — разворот вокруг вертикали, в радианах, как у `rotation.y` в three:
+ * фасад модели смотрит в +Z, −π/2 разворачивает его на −X, к улице.
+ *
+ * Соседи: фонарь в (10, −2) южнее, платформы с x = 12 восточнее, дорога
+ * сквозных проверок к люку идёт по z = −2 — всё снаружи.
+ */
+export const TOWN_HOUSES: readonly {
+  model: 'town_hall' | 'townhouse';
+  x: number;
+  z: number;
+  turn: number;
+  height: number;
+  footprint: { minX: number; maxX: number; minZ: number; maxZ: number };
+}[] = [
+  {
+    model: 'town_hall',
+    x: 7.1,
+    z: -7.8,
+    turn: -Math.PI / 2,
+    height: 10,
+    footprint: { minX: -3.6, maxX: 3.6, minZ: -4.2, maxZ: 4.3 },
+  },
+  {
+    model: 'townhouse',
+    x: 6.9,
+    z: -15.8,
+    turn: -Math.PI / 2,
+    height: 12,
+    footprint: { minX: -2.9, maxX: 2.9, minZ: -3.0, maxZ: 4.1 },
+  },
+];
+
+/**
+ * Коробка здания в мире: пятно поворачивается вместе с моделью.
+ *
+ * Поворот тот же, что у `rotation.y` в three: x' = x·cos + z·sin,
+ * z' = −x·sin + z·cos. Разверни одно без другого — и игрок упирается
+ * в воздух сбоку от здания, а сквозь фасад проходит.
+ */
+function houseBoxes(): LevelBox[] {
+  return TOWN_HOUSES.map(({ x, z, turn, height, footprint }): LevelBox => {
+    const cos = Math.cos(turn);
+    const sin = Math.sin(turn);
+    const corners = [
+      [footprint.minX, footprint.minZ],
+      [footprint.minX, footprint.maxZ],
+      [footprint.maxX, footprint.minZ],
+      [footprint.maxX, footprint.maxZ],
+    ].map(([cx, cz]) => ({ x: x + cx! * cos + cz! * sin, z: z - cx! * sin + cz! * cos }));
+    return {
+      kind: 'wall',
+      hidden: true,
+      box: {
+        minX: Math.min(...corners.map((corner) => corner.x)),
+        maxX: Math.max(...corners.map((corner) => corner.x)),
+        minY: 0,
+        maxY: height,
+        minZ: Math.min(...corners.map((corner) => corner.z)),
+        maxZ: Math.max(...corners.map((corner) => corner.z)),
+      },
+    };
+  });
+}
+
 export const TOWN_BOXES: readonly LevelBox[] = [
   // Мостовая города. Верх на y = 0.
   { kind: 'floor', box: boxFromCenter(0, -0.5, 0, TOWN_SIZE, 1, TOWN_SIZE) },
@@ -270,9 +349,8 @@ export const TOWN_BOXES: readonly LevelBox[] = [
   ...wallWithGate('z', -HALF),
   ...wallWithGate('z', HALF),
 
-  // Внутренние постройки — есть за чем прятаться.
-  { kind: 'wall', box: boxFromCenter(-8, 1.5, -6, 12, 3, 0.8) },
-  { kind: 'wall', box: boxFromCenter(6, 1.5, 8, 0.8, 3, 14) },
+  // Здания площади: вид им дают модели, здесь только телесность.
+  ...houseBoxes(),
 
   // Колоннада.
   { kind: 'pillar', box: boxFromCenter(-14, 2, 12, 1.2, 4, 1.2) },

@@ -25,6 +25,8 @@
 | `public/music/town_theme.ogg` | [Town Theme RPG](https://opengameart.org/content/town-theme-rpg), cynicmusic, OpenGameArt; пережат так же | CC0 |
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
+| `public/models/town_hall.glb` | от владельца проекта, выгрузка Sketchfab «low poly town hall»; собран `scripts/prepare-town.ts` | **уточнить** |
+| `public/models/townhouse.glb` | от владельца проекта, выгрузка Sketchfab «townhouse 3 now with dust»; собран `scripts/prepare-town.ts` | **уточнить** |
 | `public/models/torch.glb` | от владельца проекта, выгрузка Sketchfab (автор и лицензия в файле не записаны); лежит как есть, 68 КБ — ставит `loadTorches` в `lights.ts` | **уточнить** |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
@@ -85,6 +87,7 @@ npx tsx scripts/prepare-arms.ts       # руки с анимациями: 18.6 �
 npx tsx scripts/prepare-bow.ts        # клип натяжения лука в hands.glb — ТОЛЬКО после prepare-arms
 npx tsx scripts/prepare-nature.ts     # 68 моделей растительности: 85 МБ FBX → 0.56 МБ
 npx tsx scripts/prepare-tavern.ts     # обстановка таверны: 34.5 МБ → 0.8 МБ
+npx tsx scripts/prepare-town.ts       # ратуша и дом на площади: 15.2 МБ → 1.8 МБ, 418 сеток дома → 3
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
 npx tsx scripts/prepare-gnome.ts      # житель площади: 2 МБ FBX → 0.12 МБ
 npx tsx scripts/prepare-dwarf-test.ts # пробный дворф, три клипа: 11 МБ FBX → 0.26 МБ
