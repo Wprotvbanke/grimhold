@@ -27,6 +27,10 @@
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/town_hall.glb` | от владельца проекта, выгрузка Sketchfab «low poly town hall»; собран `scripts/prepare-town.ts` | **уточнить** |
 | `public/models/townhouse.glb` | от владельца проекта, выгрузка Sketchfab «townhouse 3 now with dust»; собран `scripts/prepare-town.ts` | **уточнить** |
+| `public/models/tavern.glb` | от владельца проекта, выгрузка Sketchfab «house5 towern»; ×0.5 — пришла с этажом в 7 м; собран `scripts/prepare-town.ts` | **уточнить** |
+| `public/models/chapel.glb` | от владельца проекта, выгрузка Sketchfab «house3» — часовня со шпилем; приведена к высоте 12 м (пришла в 73 м и на 10 м под землёй) | **уточнить** |
+| `public/models/house_{timber,narrow,gable,tiny}.glb` | от владельца проекта, выгрузки Sketchfab House2, house4, house_Triangle, house_tiny; у `house_timber` нет цветовой текстуры — цвет задан при сборке | **уточнить** |
+| `public/models/wagon.glb` | от владельца проекта, выгрузка Sketchfab «shop on wheels» — лавка на колёсах; поставлена на землю (висела в 4 м над ней) | **уточнить** |
 | `public/models/walls.glb` | от владельца проекта, выгрузка Sketchfab — вышка, пролёт, арка, створки; собран `scripts/prepare-town.ts` без слияния частей | **уточнить** |
 | `public/models/bank.glb` | от владельца проекта, выгрузка Sketchfab — каменный ларец казны; собран `scripts/prepare-town.ts` (поднят на землю, ×1.1) | **уточнить** |
 | `public/models/torch.glb` | от владельца проекта, выгрузка Sketchfab (автор и лицензия в файле не записаны); лежит как есть, 68 КБ — ставит `loadTorches` в `lights.ts` | **уточнить** |
@@ -88,7 +92,7 @@ npx tsx scripts/prepare-skeleton.ts   # 408 тыс. треугольников �
 npx tsx scripts/prepare-arms.ts       # руки с анимациями: 18.6 МБ → 5.9 МБ
 npx tsx scripts/prepare-bow.ts        # клип натяжения лука в hands.glb — ТОЛЬКО после prepare-arms
 npx tsx scripts/prepare-nature.ts     # 68 моделей растительности: 85 МБ FBX → 0.56 МБ
-npx tsx scripts/prepare-town.ts       # ратуша, дом, казна, стены: 34 МБ → 3.4 МБ, 418 сеток дома → 3
+npx tsx scripts/prepare-town.ts       # здания, таверна, дома, повозка, казна, стены: 145 МБ → 12.9 МБ
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
 npx tsx scripts/prepare-gnome.ts      # житель площади: 2 МБ FBX → 0.12 МБ
 npx tsx scripts/prepare-dwarf-test.ts # пробный дворф, три клипа: 11 МБ FBX → 0.26 МБ

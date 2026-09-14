@@ -45,7 +45,14 @@ interface ModelSpec {
    * в одну — распахнуть было бы нечего.
    */
   keepParts?: boolean;
+  /**
+   * Цвет материалам, у которых нет цветовой текстуры. У одного дома в
+   * выгрузке пришли только рельеф и затенение — без этого он белый, как гипс.
+   */
+  tint?: [number, number, number];
 }
+
+const HOUSES = `${DESKTOP}/houses`;
 
 const MODELS: ModelSpec[] = [
   { source: `${SOURCE}/low_poly_town_hall (1).glb`, output: 'town_hall.glb' },
@@ -56,6 +63,18 @@ const MODELS: ModelSpec[] = [
   // Городские стены: вышка, пролёт, арка и две створки — части ставит houses.ts
   // по именам, поэтому не сливаются.
   { source: `${DESKTOP}/walls/walls.glb`, output: 'walls.glb', keepParts: true },
+
+  // Дома улиц. Все основанием на ноль и серединой в начало координат.
+  // Таверна пришла вдвое крупнее жизни — этаж в семь метров; ужата до трёх с половиной.
+  { source: `${HOUSES}/house5_towern.glb`, output: 'tavern.glb', normalize: { scale: 0.5 } },
+  // Часовня пришла в сотнях единиц и на десять метров под землёй: 73 м высоты.
+  { source: `${HOUSES}/house3.glb`, output: 'chapel.glb', normalize: { height: 12 } },
+  { source: `${HOUSES}/House2.glb`, output: 'house_timber.glb', normalize: {}, tint: [0.72, 0.64, 0.52] },
+  { source: `${HOUSES}/house4.glb`, output: 'house_narrow.glb', normalize: {} },
+  { source: `${HOUSES}/house_Triangle.glb`, output: 'house_gable.glb', normalize: {} },
+  { source: `${HOUSES}/house_tiny.glb`, output: 'house_tiny.glb', normalize: {} },
+  // Повозка висела в четырёх метрах над землёй и в шести сбоку от начала.
+  { source: `${HOUSES}/shop_on_wheels.glb`, output: 'wagon.glb', normalize: {} },
 ];
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(2)} МБ`;
@@ -65,7 +84,7 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
   'draco3d.decoder': await draco3d.createDecoderModule(),
 });
 
-for (const { source, output, normalize, keepParts } of MODELS) {
+for (const { source, output, normalize, keepParts, tint } of MODELS) {
   const input = source;
   const target = resolve(OUTPUT, output);
   const document = await io.read(input);
@@ -93,6 +112,12 @@ for (const { source, output, normalize, keepParts } of MODELS) {
       pivot.addChild(child);
     }
     scene.addChild(pivot);
+  }
+
+  if (tint) {
+    for (const material of root.listMaterials()) {
+      if (!material.getBaseColorTexture()) material.setBaseColorFactor([...tint, 1]);
+    }
   }
 
   // Материал без освещения — снимаем расширение, материал остаётся обычным.
