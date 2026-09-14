@@ -474,8 +474,12 @@ function haloTexture(): THREE.Texture {
 
   const paint = canvas.getContext('2d')!;
   const gradient = paint.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  // Спад крутой, почти до нуля к середине радиуса. С постобработкой ореол
+  // складывается в линейном свете до тонмаппинга, и пологий хвост, незаметный
+  // на экране, там вырастал в светлый диск с краем.
   gradient.addColorStop(0, 'rgba(255,255,255,1)');
-  gradient.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  gradient.addColorStop(0.2, 'rgba(255,255,255,0.35)');
+  gradient.addColorStop(0.5, 'rgba(255,255,255,0.06)');
   gradient.addColorStop(1, 'rgba(255,255,255,0)');
   paint.fillStyle = gradient;
   paint.fillRect(0, 0, size, size);
@@ -495,7 +499,9 @@ function makeTorch(group: THREE.Group, x: number, y: number, z: number, index: n
   const glow = new THREE.Group();
   const core = new THREE.Mesh(
     new THREE.SphereGeometry(0.12, 10, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffcf7a }),
+    // Ярче белого втрое: только такое постобработка считает огнём и даёт
+    // ореол. Без эффектов тонмаппинг сводит его к тому же светлому пятну.
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffcf7a).multiplyScalar(3) }),
   );
   glow.add(core);
   glow.add(makeHalo(0xffb257, 1.4));

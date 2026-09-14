@@ -72,6 +72,7 @@ import { createAtmosphere } from './atmosphere.js';
 import { createLabour, labourForWork, type Worker } from './labour.js';
 import { createShowcase } from './showcase.js';
 import { createMusic } from './music.js';
+import { createPost } from './post.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -134,6 +135,8 @@ let serverTickRate = 1000 / TICK_MS;
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 200);
 camera.rotation.order = 'YXZ';
+/** Свечение огня, цвет и края кадра — см. post.ts. Включается в F1. */
+const post = createPost(renderer, scene, camera);
 
 /**
  * Свет от заклинания «Светоч». Держится на камере, поэтому светит туда же,
@@ -783,6 +786,7 @@ const frameStats = createFrameStats();
 const settings = createSettings(
   (chosen) => {
     quality.configure({ resolution: chosen.resolution, shadows: chosen.shadows });
+    post.configure(chosen);
     sound.setVolumes(chosen);
   },
   () => controls.requestLock(),
@@ -1026,10 +1030,10 @@ renderer.setAnimationLoop((frameTime: number) => {
   // последний, то есть руки.
   renderer.info.reset();
 
-  renderer.clear();
-  renderer.render(scene, camera);
   // Второй проход с очисткой глубины: руки не режутся о стены впритык.
-  if (game && !combatUi.dead) game.hands.render(renderer, camera.aspect);
+  // Рисуются в тот же буфер, что и мир, — свечение и цвет ложатся и на них.
+  const hands = game && !combatUi.dead ? game.hands : null;
+  post.render(hands ? () => hands.render(renderer, camera.aspect) : null);
 
   frameStats.setLoad(renderer.info.render.calls, renderer.info.render.triangles);
   // Отладочная строка переписывается несколько раз в секунду, а не каждый

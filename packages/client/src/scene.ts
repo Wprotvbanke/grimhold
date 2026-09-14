@@ -835,7 +835,8 @@ export function createProjectileMesh(spellId?: SpellId): THREE.Object3D {
   const core = new THREE.Mesh(
     new THREE.SphereGeometry(0.16, 10, 8),
     // Шар светится сам: ему свет и не нужен, он сам себе источник картинки.
-    new THREE.MeshBasicMaterial({ color: SPELL_COLORS[spellId] ?? 0xffffff }),
+    // Ярче белого — чтобы постобработка дала шару ореол, как огню.
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(SPELL_COLORS[spellId] ?? 0xffffff).multiplyScalar(2.5) }),
   );
   group.add(core);
   return group;

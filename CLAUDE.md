@@ -108,7 +108,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/sky.md](docs/sky.md) | небесный купол, облака, цвет неба |
 | [docs/light.md](docs/light.md) | факелы, фонари, костры: как далеко и ярко светит огонь |
 | [docs/weather.md](docs/weather.md) | дождь, снег, времена года — чего ещё нет |
-| [docs/performance.md](docs/performance.md) | тормозит или дёргается; настройки картинки (F1); добавляешь массовое |
+| [docs/performance.md](docs/performance.md) | тормозит или дёргается; настройки картинки (F1); постобработка и свечение огня; добавляешь массовое |
 | [docs/sound.md](docs/sound.md) | звук: движок, пул голосов, громкость в F1, как добавить звук |
 | [docs/architecture.md](docs/architecture.md) | сеть, протокол, слой команд, пакеты, меню ведущего (F2) |
 | [docs/storage.md](docs/storage.md) | база, миграции, что должно переживать перезаход |

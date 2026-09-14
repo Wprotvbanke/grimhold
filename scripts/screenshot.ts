@@ -35,6 +35,19 @@ try {
     if (/ошибк|error/i.test(text)) console.log('  [браузер]', text.slice(0, 160));
   });
 
+  /**
+   * `GRIMHOLD_FX=off` — снять без постобработки.
+   *
+   * Сравнивать «с эффектами» и «без» можно только двумя снимками подряд:
+   * часы мира идут, и кадр в сумерках против кадра ночью ничего не докажет.
+   * Настройки живут в localStorage, поэтому кладём их туда до загрузки игры.
+   */
+  if (process.env.GRIMHOLD_FX === 'off') {
+    await page.evaluateOnNewDocument(() => {
+      localStorage.setItem('grimhold.settings', JSON.stringify({ effects: 'off' }));
+    });
+  }
+
   await page.goto('http://localhost:5173/', { waitUntil: 'networkidle2', timeout: 60000 });
   await wait(2000);
 

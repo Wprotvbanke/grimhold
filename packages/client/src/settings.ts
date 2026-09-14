@@ -38,6 +38,8 @@ export interface Settings {
   ambience: number;
   /** Громкость музыки, 0..1. Отдельно: музыку выключают первой, звук — никогда. */
   music: number;
+  /** Постобработка: свечение огня, цвет, тёмные края кадра. См. post.ts. */
+  effects: 'on' | 'off';
 }
 
 const STORAGE_KEY = 'grimhold.settings';
@@ -50,6 +52,7 @@ const DEFAULTS: Settings = {
   volume: 0.8,
   ambience: 0.6,
   music: 0.5,
+  effects: 'on',
 };
 
 function el<T extends HTMLElement>(id: string): T {
@@ -90,6 +93,7 @@ export function loadSettings(): Settings {
       volume: level(parsed.volume, DEFAULTS.volume),
       ambience: level(parsed.ambience, DEFAULTS.ambience),
       music: level(parsed.music, DEFAULTS.music),
+      effects: parsed.effects === 'on' || parsed.effects === 'off' ? parsed.effects : DEFAULTS.effects,
     };
   } catch {
     // Хранилище может быть недоступно (приватное окно) — это не повод падать.
@@ -124,12 +128,14 @@ export function createSettings(
   const volume = el<HTMLInputElement>('setVolume');
   const ambience = el<HTMLInputElement>('setAmbience');
   const music = el<HTMLInputElement>('setMusic');
+  const effects = el<HTMLSelectElement>('setFx');
   const readout = el<HTMLParagraphElement>('setStats');
 
   fps.value = String(current.fpsCap);
   resolution.value = String(current.resolution);
   shadows.value = current.shadows;
   smoothing.value = current.antialias ? 'on' : 'off';
+  effects.value = current.effects;
   volume.value = String(Math.round(current.volume * 100));
   ambience.value = String(Math.round(current.ambience * 100));
   music.value = String(Math.round(current.music * 100));
@@ -160,6 +166,10 @@ export function createSettings(
     save();
     // Менять на ходу нечего: сглаживание задаётся при создании рендерера.
     readout.textContent = 'Сглаживание краёв применится после обновления страницы (F5).';
+  });
+  effects.addEventListener('change', () => {
+    current.effects = effects.value === 'off' ? 'off' : 'on';
+    save();
   });
 
   /**
