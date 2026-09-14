@@ -4,8 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RACES } from '@grimhold/shared';
 
 /**
- * Витрина: пробная модель на площади, которая стоит и по очереди играет
- * свои клипы.
+ * Витрина: пробная модель на площади, которая бегает по дорожке и бьёт
+ * на каждом краю — так видны все её клипы и переходы между ними.
  *
  * Нужна, чтобы посмотреть новую модель и анимации **в мире** — под нашим
  * светом, рядом с Громи и мостовой, — а не только на сером фоне model.html.
@@ -18,26 +18,44 @@ import { RACES } from '@grimhold/shared';
 
 const URL = '/models/dwarf_test.glb';
 
-/** Середина маршрута Громи: он обходит витрину кругом и всегда рядом. */
-const SPOT = { x: -3, y: 0, z: 4 };
-
-/** Лицом к югу площади, откуда подходят из таверны. */
-const FACING = 0;
+/**
+ * Концы дорожки — поперёк середины маршрута Громи: он обходит витрину
+ * кругом и всегда рядом, а восьми метров хватает, чтобы разбежаться.
+ */
+const ENDS = [
+  { x: -7, y: 0, z: 4 },
+  { x: 1, y: 0, z: 4 },
+] as const;
 
 /**
- * Порядок показа. Между клипами — стойка: так видно, как модель входит
- * в движение и выходит из него, а не только само движение.
- * `seconds: null` — клип играется один раз целиком.
+ * Скорость бега, м/с. Клип нарисован на месте (корень в нём почти не
+ * уходит), поэтому своей скорости не подсказывает — подобрано на глаз.
  */
-const PROGRAM: { clip: string; seconds: number | null }[] = [
-  { clip: 'Idle', seconds: 2 },
-  { clip: 'Kick', seconds: null },
-  { clip: 'Idle', seconds: 2 },
-  { clip: 'Run', seconds: 3 },
+const RUN_SPEED = 3.6;
+
+/**
+ * Порядок показа: добежал до края — остановился — ударил — развернулся
+ * и бежит обратно. `seconds: null` у бега — до края, у удара — клип целиком.
+ */
+type Step =
+  | { clip: 'Run' }
+  | { clip: 'Idle'; seconds: number; turn: boolean }
+  | { clip: 'Kick' };
+
+const PROGRAM: Step[] = [
+  { clip: 'Run' },
+  { clip: 'Idle', seconds: 0.4, turn: false },
+  { clip: 'Kick' },
+  { clip: 'Idle', seconds: 0.6, turn: true },
 ];
 
 /** Сколько секунд один клип перетекает в другой. */
 const BLEND = 0.25;
+
+/** Поворот вокруг вертикали, при котором модель смотрит из `from` на `to`. У glTF «вперёд» — +Z. */
+function yawTowards(from: { x: number; z: number }, to: { x: number; z: number }): number {
+  return Math.atan2(to.x - from.x, to.z - from.z);
+}
 
 export interface Showcase {
   /** Каждый кадр. `visible: false` — под землёй витрины нет. */
@@ -46,8 +64,8 @@ export interface Showcase {
 
 export function createShowcase(scene: THREE.Scene): Showcase {
   const root = new THREE.Group();
-  root.position.set(SPOT.x, SPOT.y, SPOT.z);
-  root.rotation.y = FACING;
+  root.position.set(ENDS[0].x, ENDS[0].y, ENDS[0].z);
+  root.rotation.y = yawTowards(ENDS[0], ENDS[1]);
   scene.add(root);
 
   let mixer: THREE.AnimationMixer | null = null;
@@ -55,23 +73,45 @@ export function createShowcase(scene: THREE.Scene): Showcase {
   let step = -1;
   let left = 0;
   let current: THREE.AnimationAction | null = null;
+  /** К какому концу бежит сейчас — или побежит после разворота. */
+  let target = 1;
+  /** Поворот в начале и в конце разворота. */
+  let turnFrom = 0;
+  let turnTo = 0;
+  let turnLength = 1;
 
   function next(): void {
     step = (step + 1) % PROGRAM.length;
-    const { clip, seconds } = PROGRAM[step]!;
-    const action = actions.get(clip);
+    const program = PROGRAM[step]!;
+    const action = actions.get(program.clip);
     if (!action) {
       left = 1;
       return;
     }
-    const once = seconds === null;
+    const once = program.clip === 'Kick';
     action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
     action.clampWhenFinished = once;
     action.reset().fadeIn(BLEND).play();
     if (current && current !== action) current.fadeOut(BLEND);
     current = action;
-    // Однократный клип уступает место чуть раньше конца — на время перетекания.
-    left = once ? Math.max(BLEND, action.getClip().duration - BLEND) : seconds;
+
+    if (program.clip === 'Run') {
+      // Бег кончается не по часам, а на краю — см. update.
+      left = Infinity;
+    } else if (program.clip === 'Kick') {
+      // Однократный клип уступает место чуть раньше конца — на время перетекания.
+      left = Math.max(BLEND, action.getClip().duration - BLEND);
+    } else {
+      left = program.seconds;
+      if (program.turn) {
+        target = 1 - target;
+        turnFrom = root.rotation.y;
+        turnTo = yawTowards(root.position, ENDS[target]!);
+        // Кратчайшим путём, а не через полный оборот.
+        turnTo = turnFrom + Math.atan2(Math.sin(turnTo - turnFrom), Math.cos(turnTo - turnFrom));
+        turnLength = program.seconds;
+      }
+    }
   }
 
   const loader = new GLTFLoader();
@@ -109,7 +149,31 @@ export function createShowcase(scene: THREE.Scene): Showcase {
       root.visible = visible;
       if (!mixer || !visible) return;
       mixer.update(dt);
+      const program = PROGRAM[step];
+
+      if (program?.clip === 'Run') {
+        const end = ENDS[target]!;
+        const dx = end.x - root.position.x;
+        const dz = end.z - root.position.z;
+        const distance = Math.hypot(dx, dz);
+        const travel = RUN_SPEED * dt;
+        if (travel >= distance) {
+          root.position.set(end.x, end.y, end.z);
+          next();
+        } else {
+          root.position.x += (dx / distance) * travel;
+          root.position.z += (dz / distance) * travel;
+        }
+        return;
+      }
+
       left -= dt;
+      if (program?.clip === 'Idle' && program.turn) {
+        const done = Math.min(1, 1 - left / turnLength);
+        // Плавно в начале и в конце: разворот на месте, а не щелчок.
+        const eased = done * done * (3 - 2 * done);
+        root.rotation.y = turnFrom + (turnTo - turnFrom) * eased;
+      }
       if (left <= 0) next();
     },
   };
