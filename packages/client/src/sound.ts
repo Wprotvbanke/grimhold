@@ -81,6 +81,16 @@ export const SOUNDS = {
     far: 25,
     detune: 0.06,
   },
+
+  /**
+   * Шаги по камню: подземелье и мостовая города.
+   *
+   * Слышны на двадцать метров — дальше, чем видно во мгле. Это и есть смысл:
+   * шаги за стеной предупреждают раньше, чем из темноты выйдет тот, кто идёт.
+   */
+  stepStone: { files: five('footstep_concrete'), volume: 0.5, positional: true, near: 1.5, far: 20, detune: 0.08 },
+  /** Шаги по траве и грунту диких земель. */
+  stepGrass: { files: five('footstep_grass'), volume: 0.5, positional: true, near: 1.5, far: 20, detune: 0.08 },
 } satisfies Record<string, SoundDef>;
 
 export type SoundId = keyof typeof SOUNDS;
@@ -154,7 +164,13 @@ export function withinHearing(listener: Place, at: Place, far: number): boolean 
 }
 
 export interface SoundApi {
-  play(id: SoundId, at?: Place): void;
+  /**
+   * Сыграть звук. Без места — плоский, «в голове».
+   *
+   * `gain` — множитель громкости поверх табличной: крыса и огр ступают одним
+   * звуком, но звучат по-разному.
+   */
+  play(id: SoundId, at?: Place, gain?: number): void;
   setVolumes(settings: { volume: number; ambience: number }): void;
 }
 
@@ -219,7 +235,7 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
   const heard = new THREE.Vector3();
 
   return {
-    play(id, at) {
+    play(id, at, gain = 1) {
       const def: SoundDef = SOUNDS[id];
       const variants = def.files.filter((file) => buffers.has(file));
       if (variants.length === 0) return;
@@ -241,7 +257,7 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
 
       if (voice.isPlaying) voice.stop();
       voice.setBuffer(buffer);
-      voice.setVolume(def.volume);
+      voice.setVolume(def.volume * gain);
       const detune = def.detune ?? 0;
       voice.setPlaybackRate(1 + (Math.random() * 2 - 1) * detune);
       voice.play();

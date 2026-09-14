@@ -67,6 +67,7 @@ import { createFrameStats } from './frames.js';
 import { createSettings, loadSettings } from './settings.js';
 import { createSound } from './sound.js';
 import { createCues } from './cues.js';
+import { createSteps, surfaceAt, type Walker } from './steps.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -146,6 +147,20 @@ const sound = createSound(camera, scene);
 
 /** Звуки боя: что звучит на какое событие — и как одному замаху не звучать очередью. */
 const cues = createCues(sound);
+
+/** Шаги: свои и всех, кто рядом, — по пройденному, а не по таймеру. */
+const steps = createSteps(sound);
+
+/**
+ * Кто сейчас идёт рядом — для чужих шагов.
+ *
+ * Список переиспользуется, а не собирается заново: он обновляется каждый
+ * кадр, и мусор отсюда аукался бы рывками сборки — как у `carried`.
+ */
+const walkers: Walker[] = [];
+
+/** Дальше этого чужие шаги не слышны — и голоса не просят. */
+const STEP_RANGE = 20;
 
 /** Всё, что появляется только после входа в мир конкретным персонажем. */
 interface GameSession {
@@ -905,6 +920,18 @@ renderer.setAnimationLoop((frameTime: number) => {
       onGround: game.predictor.state.onGround,
       alive: self?.alive ?? true,
     });
+
+    // Свои шаги — по той же скорости и тому же касанию земли, что у рук: руки
+    // идут в шаг, и звук обязан идти в шаг с ними. Мёртвые не шагают.
+    if (self?.alive ?? true) {
+      steps.own(
+        dt,
+        Math.hypot(velocity.x, velocity.z),
+        game.predictor.state.onGround,
+        RACES[game.character.race].height,
+        surfaceAt(renderPos.x, renderPos.z, undergroundNow),
+      );
+    }
   } else {
     // Пока идёт вход — медленный облёт города вместо чёрного экрана.
     world.streamChunks(0, 0);
@@ -1474,6 +1501,15 @@ function updateAvatars(now: number, dt: number): void {
     }
   }
 
+  /**
+   * Чужие шаги прошлого кадра звучат в начале этого.
+   *
+   * Список собирается в обходе ниже, а обход длинный и выходит из себя через
+   * `continue` в нескольких местах — звать шаги после него значило бы искать
+   * каждый выход. Задержка в один кадр на слух не заметна.
+   */
+  steps.others(dt, walkers, surfaceAt(camera.position.x, camera.position.z, undergroundNow));
+  walkers.length = 0;
   carried.length = 0;
 
   for (const avatar of avatars.values()) {
@@ -1482,6 +1518,25 @@ function updateAvatars(now: number, dt: number): void {
 
     avatar.group.position.set(avatar.pose.x, avatar.pose.y, avatar.pose.z);
     avatar.group.rotation.y = avatar.pose.yaw;
+
+    // Идёт рядом — его шаги должны быть слышны. Дальних и мёртвых не берём:
+    // голоса на них не хватит, а слышно их всё равно не было бы.
+    if (
+      avatar.entity.alive &&
+      Math.hypot(avatar.pose.x - camera.position.x, avatar.pose.z - camera.position.z) <= STEP_RANGE
+    ) {
+      walkers.push({
+        id: avatar.entity.id,
+        x: avatar.pose.x,
+        y: avatar.pose.y,
+        z: avatar.pose.z,
+        speed: avatar.pose.speed,
+        height:
+          avatar.entity.kind === 'mob' && avatar.entity.mobId
+            ? MOBS[avatar.entity.mobId].height
+            : RACES[avatar.entity.race].height,
+      });
+    }
 
     /**
      * Огонь в чужой руке.
