@@ -72,6 +72,22 @@ try {
   await wait(12000);
 
   /**
+   * `GRIMHOLD_WALK=секунды` — пройти вперёд перед снимком.
+   *
+   * С точки появления до городских стен семьдесят метров, и стыки кладки
+   * или створки ворот оттуда не разглядеть. Прямо вперёд — северная арка.
+   */
+  const walk = Number(process.env.GRIMHOLD_WALK ?? 0);
+  if (walk > 0) {
+    await page.click('canvas');
+    await wait(600);
+    await page.keyboard.down('KeyW');
+    await wait(walk * 1000);
+    await page.keyboard.up('KeyW');
+    await wait(1200);
+  }
+
+  /**
    * Второй аргумент — что открыть перед снимком.
    *
    * Панели живут за клавишей, и снять их иначе нельзя: мышь захвачена,

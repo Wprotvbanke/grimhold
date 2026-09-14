@@ -88,6 +88,29 @@ export function createHouses(scene: THREE.Scene): Houses {
   return { group };
 }
 
+/**
+ * Пятно **тела** части — по вершинам на высоте человека, без зубцов и карниза.
+ *
+ * Габарит у кладки врёт: верх шире тела, и стыковка по габариту оставляла
+ * щели между пролётами и у вышек. Меряем там, где стена стоит, а не где
+ * у неё выступы.
+ */
+function bodyBox(geometry: THREE.BufferGeometry): { minX: number; maxX: number; minZ: number; maxZ: number } {
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute;
+  const box = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  for (let i = 0; i < position.count; i++) {
+    const y = position.getY(i);
+    if (y < 0.2 || y > 3) continue;
+    const x = position.getX(i);
+    const z = position.getZ(i);
+    box.minX = Math.min(box.minX, x);
+    box.maxX = Math.max(box.maxX, x);
+    box.minZ = Math.min(box.minZ, z);
+    box.maxZ = Math.max(box.maxZ, z);
+  }
+  return box;
+}
+
 /** Геометрия части стены: преобразования узла запечены, середина пятна — в нуле. */
 function partGeometry(mesh: THREE.Mesh, center?: THREE.Vector3): { geometry: THREE.BufferGeometry; center: THREE.Vector3 } {
   const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
@@ -135,7 +158,10 @@ function addWalls(group: THREE.Group, source: THREE.Object3D): void {
   const instanced = (mesh: THREE.Mesh, kind: 'tower' | 'wall'): void => {
     const pieces = layout.filter((piece) => piece.kind === kind);
     const { geometry } = partGeometry(mesh);
-    const width = geometry.boundingBox!.max.x - geometry.boundingBox!.min.x;
+    // Пролёт растягивается по телу, а не по габариту: иначе соседние пролёты
+    // смыкаются зубцами, а между телами остаётся щель.
+    const body = bodyBox(geometry);
+    const width = body.maxX - body.minX;
     const batch = new THREE.InstancedMesh(geometry, mesh.material, pieces.length);
     for (const [index, piece] of pieces.entries()) {
       turn.setFromAxisAngle(up, piece.turn);
@@ -171,7 +197,18 @@ function addWalls(group: THREE.Group, source: THREE.Object3D): void {
     body.receiveShadow = true;
     holder.add(body);
 
-    // Створки: петля у внешнего края каждой, распахнуты наружу (+Z модели).
+    /**
+     * Створки: петля у края прохода **на внешней грани арки**, распахнуты
+     * наружу (+Z модели).
+     *
+     * Сначала петля стояла посреди толщины арки, где створки висят закрытыми,
+     * и распахнутая створка ложилась внутрь прохода, уходя в кладку опоры —
+     * владелец увидел это у ворот. С петлёй на внешней грани створка
+     * торчит из стены наружу и камня не касается.
+     */
+    // Грань тела, а не карниза: по габариту створка повисла бы в воздухе
+    // перед стеной.
+    const outerFace = bodyBox(archPart.geometry).maxZ;
     for (const [door, hingeAtMax, angle] of [
       [doorLeft, true, Math.PI / 2],
       [doorRight, false, -Math.PI / 2],
@@ -181,11 +218,10 @@ function addWalls(group: THREE.Group, source: THREE.Object3D): void {
       geometry.computeBoundingBox();
       const box = geometry.boundingBox!;
       const hingeX = hingeAtMax ? box.max.x : box.min.x;
-      const hingeZ = (box.min.z + box.max.z) / 2;
-      geometry.translate(-hingeX, 0, -hingeZ);
+      geometry.translate(-hingeX, 0, -(box.min.z + box.max.z) / 2);
 
       const hinge = new THREE.Group();
-      hinge.position.set(hingeX, 0, hingeZ);
+      hinge.position.set(hingeX, 0, outerFace);
       hinge.rotation.y = angle;
       hinge.add(new THREE.Mesh(geometry, door.material));
       holder.add(hinge);
