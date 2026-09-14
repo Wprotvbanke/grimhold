@@ -127,8 +127,14 @@ describe('шаг симуляции движения', () => {
   });
 
   it('можно запрыгнуть на ступень и стоять на ней', () => {
-    // Первая ступень помоста: верх на y = 0.5, центр (14, _, -10).
-    const onStep = simulate(createMoveState({ x: 14, y: 3, z: -10 }), input(), 180);
+    // Ступень своя, а не из города: помост с площади убрали, и проверка,
+    // опиравшаяся на него, упала бы вместе с ним. Верх ступени — y = 0.5.
+    const step1 = { minX: 12, maxX: 16, minY: 0, maxY: 0.5, minZ: -12, maxZ: -8 };
+    const floor = { minX: -50, maxX: 50, minY: -1, maxY: 0, minZ: -50, maxZ: 50 };
+    let onStep = createMoveState({ x: 14, y: 3, z: -10 });
+    for (let i = 0; i < 180; i++) {
+      onStep = step(onStep, { ...input(), seq: i }, [floor, step1]);
+    }
 
     expect(onStep.pos.y).toBeCloseTo(0.5, 5);
     expect(onStep.onGround).toBe(true);

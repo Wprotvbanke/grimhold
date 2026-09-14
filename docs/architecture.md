@@ -242,9 +242,8 @@ F2 открывает окно, где можно выдать себе любо
 - `sky.ts`, `daynight.ts` — небо и смена суток — [sky.md](sky.md), [sun.md](sun.md).
 - `lights.ts` — весь рукотворный огонь — [light.md](light.md).
 - `nature.ts` — растительность пачками — [nature.md](nature.md).
-- `buildings.ts` — то в постройках, чего не сделать коробкой — [buildings.md](buildings.md).
+- `houses.ts` — здания площади моделями целиком — [buildings.md](buildings.md).
 - `quality.ts` — разрешение подстраивается под машину — [performance.md](performance.md).
-- `props.ts` — обстановка таверны — [buildings.md](buildings.md).
 - `inventoryui.ts` — рюкзак — [loot.md](loot.md).
 - `combatui.ts` — полоски, всплывающий урон, экран смерти — [combat.md](combat.md).
 - `keyboard.ts` — клавиатура принадлежит игре, пока мышь захвачена или открыт

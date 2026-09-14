@@ -1,9 +1,11 @@
-import { TAVERN, isDaylight, isSafe } from '@grimhold/shared';
+import { isDaylight, isSafe } from '@grimhold/shared';
 
 /**
  * Музыка: разная по сценарию.
  *
- * Музыка звучит **только в городе** — днём, ночью и в таверне по-своему.
+ * Музыка звучит **только в городе** — днём и ночью по-своему. Была и музыка
+ * таверны, но таверну снесли под другое здание: плейлист `tavern` ждёт его,
+ * а место внутри вернётся в `musicSceneAt` вместе с новыми стенами.
  * В диких землях и в подземелье её нет намеренно: там слух работает на
  * выживание — шаги за стеной, чужой замах, — и мелодия глушила бы ровно то,
  * ради чего заведён звук. Город — единственное место, где можно выдохнуть.
@@ -43,7 +45,7 @@ const PAUSE_MIN = 20;
 const PAUSE_MAX = 45;
 /**
  * Сколько секунд новое место должно продержаться, прежде чем сменить музыку.
- * Иначе шаг туда-обратно через дверь таверны дёргает треки.
+ * Иначе шаг туда-обратно через городские ворота дёргает треки.
  */
 const SETTLE = 1.5;
 
@@ -55,9 +57,6 @@ export function musicSceneAt(
   time: number,
 ): MusicScene | null {
   if (underground) return null;
-  const inTavern =
-    Math.abs(x - TAVERN.centerX) <= TAVERN.width / 2 && Math.abs(z - TAVERN.centerZ) <= TAVERN.depth / 2;
-  if (inTavern) return 'tavern';
   if (!isSafe(x, z)) return null;
   return isDaylight(time) ? 'day' : 'night';
 }

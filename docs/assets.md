@@ -35,7 +35,6 @@
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
 | `public/models/nature.glb` | от владельца проекта, собран `scripts/prepare-nature.ts` | уточнить |
 | `public/models/lights.glb` | от владельца проекта, собран `scripts/prepare-lights.ts` | уточнить |
-| `public/models/tavern_props.glb` | от владельца проекта, собран `scripts/prepare-tavern.ts` | уточнить |
 | `public/textures/sky.webp` | от владельца проекта, извлечена `scripts/prepare-sky.ts` | уточнить |
 
 **Единственный не-CC0 в списке — мешочек.** CC-BY разрешает и брать,
@@ -72,7 +71,8 @@ upper_armL_0454` от Rigify. Положить такой клип в модел
 вслух.
 
 Убраны за ненадобностью и лежат в истории git: пак таверны KayKit (заменён
-`tavern_props.glb`), скелет Quaternius (заменён человеческим) и клип ходьбы
+`tavern_props.glb`, а тот снесён вместе с таверной и `prepare-tavern.ts` —
+под таверну пойдёт другое здание), скелет Quaternius (заменён человеческим) и клип ходьбы
 Mixamo. Если понадобятся — качаются заново по ссылкам выше.
 
 ## Обработка тяжёлых моделей
@@ -86,7 +86,6 @@ npx tsx scripts/prepare-skeleton.ts   # 408 тыс. треугольников �
 npx tsx scripts/prepare-arms.ts       # руки с анимациями: 18.6 МБ → 5.9 МБ
 npx tsx scripts/prepare-bow.ts        # клип натяжения лука в hands.glb — ТОЛЬКО после prepare-arms
 npx tsx scripts/prepare-nature.ts     # 68 моделей растительности: 85 МБ FBX → 0.56 МБ
-npx tsx scripts/prepare-tavern.ts     # обстановка таверны: 34.5 МБ → 0.8 МБ
 npx tsx scripts/prepare-town.ts       # ратуша и дом на площади: 15.2 МБ → 1.8 МБ, 418 сеток дома → 3
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
 npx tsx scripts/prepare-gnome.ts      # житель площади: 2 МБ FBX → 0.12 МБ

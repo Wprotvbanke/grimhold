@@ -29,14 +29,12 @@ import {
 } from '@grimhold/shared';
 // Туман у земли подменяет кусочки шейдера — до того, как соберётся хоть один.
 import './fog.js';
-import { createBuildings } from './buildings.js';
 import { createDayNight } from './daynight.js';
 import { createHouses } from './houses.js';
 import { createLights } from './lights.js';
 import { createParticles } from './particles.js';
 import { createNature, disposeNature } from './nature.js';
 import { createNodes, disposeNodes, type NodeField } from './nodes.js';
-import { populateTavern } from './props.js';
 import { createSky } from './sky.js';
 
 /**
@@ -419,13 +417,10 @@ export function createScene(): World3D {
   const lights = createLights(scene);
   // Пыль в свете своего огня и мошкара у фонарей — см. particles.ts.
   const particles = createParticles(scene);
-  const buildings = createBuildings(scene);
   // Ратуша и дом на площади — модели целиком, см. houses.ts.
   const houses = createHouses(scene);
   const nature = createNature();
   const nodes = createNodes();
-  // Обстановка таверны: мебель приезжает отдельными моделями, а не коробками.
-  const furniture = populateTavern(scene);
 
   /**
    * Свет над кольцом портала.
@@ -692,14 +687,12 @@ export function createScene(): World3D {
        * Город показываем, только пока он рядом.
        *
        * Его коробки выгружаются вместе с чанком, а всё, что построено моделями
-       * — кровля, мебель, фонари, — живёт в сцене всю сессию. Без этой проверки
+       * — здания, фонари, — живёт в сцене всю сессию. Без этой проверки
        * они оставались висеть в воздухе над пустым местом, да ещё и считались
        * каждый кадр.
        */
       const nearTown = Math.hypot(camera.position.x, camera.position.z) < CHUNK_SIZE;
-      buildings.group.visible = nearTown;
       houses.group.visible = nearTown;
-      furniture.visible = nearTown;
       /**
        * Огонь нужен и в городе, и под землёй — значит группу не прячем там,
        * где он есть. Городские факелы при этом не мешают: пул выбирает
@@ -707,11 +700,10 @@ export function createScene(): World3D {
        */
       lights.group.visible = nearTown || underground;
 
-      // Насколько светло снаружи: по этому числу гаснет уличный огонь
-      // и загорается свет в окнах. Плавно, а не щелчком на рассвете.
+      // Насколько светло снаружи: по этому числу гаснет уличный огонь.
+      // Плавно, а не щелчком на рассвете.
       const daylight = Math.max(0, Math.min(1, sunHeight(worldTime) * 3));
       lights.update(elapsed, daylight, camera);
-      buildings.update(daylight);
       particles.update(dt, elapsed, camera, {
         underground,
         lit: daynight.torch,
@@ -740,8 +732,8 @@ function buildChunkMesh(scene: THREE.Scene, boxes: LevelBox[]): THREE.Group {
   const byKind = new Map<LevelBox['kind'], THREE.BufferGeometry[]>();
 
   for (const entry of boxes) {
-    // Невидимые коробки только преграждают путь: их вид дают модели
-    // обстановки, см. props.ts.
+    // Невидимые коробки только преграждают путь: их вид дают модели —
+    // здания площади (houses.ts), столбы фонарей (lights.ts).
     if (entry.hidden) continue;
 
     const { box } = entry;

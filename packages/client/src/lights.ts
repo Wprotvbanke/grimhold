@@ -4,7 +4,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   LAMP_HEIGHT,
-  TAVERN,
   TOWN_LAMPS,
 } from '@grimhold/shared';
 
@@ -23,14 +22,6 @@ import {
 /** Модели фонаря и костра. Один файл: и то и другое нужно сразу по всему городу. */
 const MODEL_URL = '/models/lights.glb';
 
-/**
- * Целевая высота огня в очаге.
- *
- * Костров под открытым небом в городе нет: модель из пака на площади
- * не смотрелась. В камине она читается иначе — там её держат каменный портал
- * и полумрак вокруг.
- */
-const FIRE_HEIGHT = 0.9;
 
 /**
  * Настенный факел — модель от владельца (выгрузка Sketchfab), лежит как есть:
@@ -108,22 +99,6 @@ const TORCHES: { x: number; z: number; face: { x: number; z: number } }[] = [
   { x: -6, z: 12.6, face: { x: 0, z: 1 } },
   // Ещё два висели на рыночной и длинной стенах — стены убрали с площади
   // вместе с ними, на их месте теперь здания (TOWN_HOUSES).
-];
-
-const HALF_W = TAVERN.width / 2;
-const HALF_D = TAVERN.depth / 2;
-
-/** Огни таверны: тёплые пятна, разбавляющие тёмные углы зала. */
-const TAVERN_LIGHTS: { x: number; y: number; z: number; color: number; intensity: number }[] = [
-  // Очаг: самый яркий и самый тёплый источник зала.
-  { x: HALF_W - 1.1, y: 0.8, z: -HALF_D + 1.2, color: 0xff8a34, intensity: 16 },
-  // Настенные факелы по бокам.
-  { x: -HALF_W + 0.5, y: 2.3, z: 0, color: 0xff9a3c, intensity: 9 },
-  { x: HALF_W - 0.5, y: 2.3, z: -1.5, color: 0xff9a3c, intensity: 7 },
-  // Свечи на стойке и над столами — от них зал и читается.
-  { x: -2, y: 1.5, z: -HALF_D + 1.3, color: 0xffb066, intensity: 6 },
-  { x: -3, y: 1.9, z: 1.2, color: 0xffc98a, intensity: 5 },
-  { x: 3, y: 1.9, z: 1.2, color: 0xffc98a, intensity: 5 },
 ];
 
 /**
@@ -228,20 +203,8 @@ export function createLights(scene: THREE.Scene): WorldLights {
   const torchMaterials = new Set<THREE.MeshStandardMaterial>();
   let torchClock = 0;
 
-  for (const [index, spot] of TAVERN_LIGHTS.entries()) {
-    flames.push({
-      x: TAVERN.centerX + spot.x,
-      y: spot.y,
-      z: TAVERN.centerZ + spot.z,
-      color: spot.color,
-      range: 24,
-      glow: null,
-      // Затухание стало мягче — прежние числа слепили бы вблизи.
-      base: spot.intensity * 0.42,
-      phase: index * 2.1,
-      outdoor: false,
-    });
-  }
+  // Огни под крышей (зал и очаг таверны) ушли вместе с таверной: её снесли
+  // под другое здание. Появится новая — её огонь заводится здесь же.
 
   // Постоянного огня в подземелье нет: свет туда приносят в руке.
   // Городские огни отсюда всё равно не видны — до города восемь километров,
@@ -732,32 +695,6 @@ function footprint(model: THREE.Object3D, bounds: THREE.Box3): { x: number; z: n
 }
 
 /**
- * Зажигает само пламя.
- *
- * Огонь в модели — обычный меш, и в темноте он освещается наравне с поленьями:
- * костёр читался кучей дров. Пламя обязано светиться само, независимо от того,
- * досталась ли этому костру лампа из пула, — иначе дальний костёр выглядит
- * потухшим.
- */
-function kindleFlame(model: THREE.Object3D): void {
-  model.traverse((node) => {
-    const mesh = node as THREE.Mesh;
-    if (!mesh.isMesh || !/^Fuego/i.test(mesh.name)) return;
-
-    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-      const standard = material as THREE.MeshStandardMaterial;
-      if (!standard.emissive) continue;
-      // Тёплым, а не своим цветом: материал пламени в модели почти белый,
-      // и как есть костёр светился как лампа дневного света.
-      standard.emissive.setHex(0xff7a22);
-      standard.emissiveIntensity = 2.2;
-    }
-    // Тень от пламени — бессмыслица, а в проход теней оно попадает как все.
-    mesh.castShadow = false;
-  });
-}
-
-/**
  * Середина пламени — по вершинам верхней трети, **со скином**.
  *
  * У модели со скелетом вершины в файле лежат в позе привязки и в своих
@@ -883,7 +820,6 @@ async function loadModels(group: THREE.Group, flames: Flame[]): Promise<void> {
 
     const gltf = await loader.loadAsync(MODEL_URL);
     const lamp = gltf.scene.getObjectByName('streetlight');
-    const fire = gltf.scene.getObjectByName('bonfire');
 
     if (lamp) {
       for (const [index, spot] of TOWN_LAMPS.entries()) {
@@ -919,37 +855,6 @@ async function loadModels(group: THREE.Group, flames: Flame[]): Promise<void> {
           base: 13,
           phase: index * 0.9,
           outdoor: true,
-        });
-      }
-    }
-
-    if (fire) {
-      // Очаг таверны — единственный огонь такого рода в городе.
-      const spots = [
-        {
-          x: TAVERN.centerX + HALF_W - 1.1,
-          z: TAVERN.centerZ - HALF_D + 1.2,
-          y: 0.1,
-          outdoor: false,
-        },
-      ];
-
-      for (const [index, spot] of spots.entries()) {
-        const model = place(fire, FIRE_HEIGHT);
-        model.position.set(spot.x, spot.y, spot.z);
-        kindleFlame(model);
-        group.add(model);
-
-        flames.push({
-          x: spot.x,
-          y: spot.y + 0.6,
-          z: spot.z,
-          color: 0xff7a28,
-          range: 30,
-          glow: model,
-          base: 17,
-          phase: 4 + index * 1.3,
-          outdoor: spot.outdoor,
         });
       }
     }

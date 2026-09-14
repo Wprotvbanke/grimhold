@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { TAVERN } from '@grimhold/shared';
 import { musicSceneAt } from '../src/music.js';
 
 const NOON = 0.5;
@@ -9,10 +8,6 @@ describe('музыка по сценарию', () => {
   it('в городе днём и ночью играет разное', () => {
     expect(musicSceneAt(0, 0, false, NOON)).toBe('day');
     expect(musicSceneAt(0, 0, false, MIDNIGHT)).toBe('night');
-  });
-
-  it('в таверне своя музыка в любой час', () => {
-    expect(musicSceneAt(TAVERN.centerX, TAVERN.centerZ, false, MIDNIGHT)).toBe('tavern');
   });
 
   it('в диких землях и в подземелье тишина', () => {
