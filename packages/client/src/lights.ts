@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   LAMP_HEIGHT,
   TAVERN,
@@ -30,6 +31,33 @@ const MODEL_URL = '/models/lights.glb';
  * и полумрак вокруг.
  */
 const FIRE_HEIGHT = 0.9;
+
+/**
+ * Настенный факел — модель от владельца (выгрузка Sketchfab), лежит как есть:
+ * 68 КБ, текстуры 256 пикселей, пламя качается на двух костях.
+ *
+ * Кронштейн у модели смотрит в −X — по нему модель и разворачивается к стене.
+ */
+const TORCH_URL = '/models/torch.glb';
+/** Высота факела от острия рукояти до верха пламени, м. */
+const TORCH_HEIGHT = 0.8;
+/** На какой высоте верх пламени: там же горел прежний огонёк без модели. */
+const TORCH_TOP = 2.95;
+/** Как далеко от грани ждёт ореол, пока модель не приехала, м. */
+const TORCH_REACH = 0.3;
+/** Кости пламени. Днём сжимаются в ноль: пламя уходит в рукоять. */
+const FLAME_BONES = /^Torch[01]_0[12]$/;
+/**
+ * Яркость пламени — выше белого: только такое постобработка считает огнём.
+ * Текстура свечения в модели тёмная везде, кроме самого пламени.
+ */
+const TORCH_GLOW = 2.5;
+
+/** Поставленная модель факела: своя анимация и кости пламени. */
+interface WallTorch {
+  mixer: THREE.AnimationMixer;
+  bones: { bone: THREE.Object3D; rest: THREE.Vector3 }[];
+}
 
 /**
  * Огонь как **данные**, а не как лампа.
@@ -68,15 +96,19 @@ interface Flame {
  * Ставятся **на грань**, а не в середину того, к чему крепятся. Колонны здесь
  * толщиной 1.2 м, и факел по их координатам оказывался внутри камня: света
  * не видно, огонька не видно, и непонятно, что вообще не так.
+ *
+ * Точка лежит ровно на грани, `face` — наружу от неё. Пока факел был огоньком
+ * без модели, точка висела в воздухе перед гранью; модели нужен сам камень:
+ * кронштейн упирается в него, пламя выносится на площадь.
  */
-const TORCHES: { x: number; z: number; y?: number }[] = [
-  // Южные грани колонн — те, что смотрят на площадь.
-  { x: -14, z: 12.75 },
-  { x: -10, z: 12.75 },
-  { x: -6, z: 12.75 },
-  // Западная грань рыночной стены и северная грань длинной.
-  { x: 5.25, z: 4 },
-  { x: -2.6, z: -5.15 },
+const TORCHES: { x: number; z: number; face: { x: number; z: number } }[] = [
+  // Грани колонн, что смотрят на площадь.
+  { x: -14, z: 12.6, face: { x: 0, z: 1 } },
+  { x: -10, z: 12.6, face: { x: 0, z: 1 } },
+  { x: -6, z: 12.6, face: { x: 0, z: 1 } },
+  // Рыночная стена и длинная — их грани, обращённые к площади.
+  { x: 5.6, z: 4, face: { x: -1, z: 0 } },
+  { x: -2.6, z: -5.6, face: { x: 0, z: 1 } },
 ];
 
 const HALF_W = TAVERN.width / 2;
@@ -190,9 +222,12 @@ export function createLights(scene: THREE.Scene): WorldLights {
     pool.push(light);
   }
 
-  for (const [index, spot] of TORCHES.entries()) {
-    flames.push(makeTorch(group, spot.x, spot.y ?? 2.7, spot.z, index));
-  }
+  const torchFlames = TORCHES.map((spot, index) => makeTorch(group, spot, index));
+  flames.push(...torchFlames);
+  /** Модели факелов: догружаются позже огня и встают под его ореол. */
+  const torches: WallTorch[] = [];
+  const torchMaterials = new Set<THREE.MeshStandardMaterial>();
+  let torchClock = 0;
 
   for (const [index, spot] of TAVERN_LIGHTS.entries()) {
     flames.push({
@@ -214,6 +249,7 @@ export function createLights(scene: THREE.Scene): WorldLights {
   // и в отбор ближайших он не попадает никогда.
 
   void loadModels(group, flames);
+  void loadTorches(group, torchFlames, torches, torchMaterials);
 
   /**
    * Отбор ближайших огней. Записи переиспользуются, а не создаются заново:
@@ -262,6 +298,24 @@ export function createLights(scene: THREE.Scene): WorldLights {
       const outdoorScale = Math.max(0, 1 - daylight * 1.4);
       camera.getWorldPosition(eye);
       litCount = 0;
+
+      /**
+       * Факелы: пламя качается, а днём гаснет вместе со светом.
+       *
+       * Кости пламени сперва возвращаются в покой, потом их двигает анимация,
+       * и только потом они сжимаются по свету. Иначе сжатие копилось бы
+       * от кадра к кадру — клип может не трогать масштаб, и пламя однажды
+       * схлопнулось бы насовсем.
+       */
+      const torchStep = Math.min(0.1, Math.max(0, elapsed - torchClock));
+      torchClock = elapsed;
+      const flameSize = Math.max(0.001, outdoorScale);
+      for (const torch of torches) {
+        for (const { bone, rest } of torch.bones) bone.scale.copy(rest);
+        torch.mixer.update(torchStep);
+        for (const { bone } of torch.bones) bone.scale.multiplyScalar(flameSize);
+      }
+      for (const material of torchMaterials) material.emissiveIntensity = TORCH_GLOW * outdoorScale;
 
       for (const flame of flames) {
         const flame_flicker = flicker(elapsed, flame.phase);
@@ -514,25 +568,16 @@ function haloTexture(): THREE.Texture {
  * Модели у настенного факела нет, и она не нужна: на стене он читается
  * пятном света, а не силуэтом.
  */
-function makeTorch(group: THREE.Group, x: number, y: number, z: number, index: number): Flame {
+function makeTorch(group: THREE.Group, spot: (typeof TORCHES)[number], index: number): Flame {
+  // Пока модель не приехала — только ореол там, где будет пламя: огонь виден
+  // сразу, а модель встанет под него, как догрузится (loadTorches).
+  const x = spot.x + spot.face.x * TORCH_REACH;
+  const y = TORCH_TOP - TORCH_HEIGHT * 0.2;
+  const z = spot.z + spot.face.z * TORCH_REACH;
   const glow = new THREE.Group();
-  const core = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12, 10, 8),
-    // Ярче белого втрое: только такое постобработка считает огнём и даёт
-    // ореол. Без эффектов тонмаппинг сводит его к тому же светлому пятну.
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffcf7a).multiplyScalar(3) }),
-  );
-  glow.add(core);
-  glow.add(makeHalo(0xffb257, 1.4));
+  glow.add(makeHalo(0xffb257, 1.2));
   glow.position.set(x, y, z);
   group.add(glow);
-
-  const bracket = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6),
-    new THREE.MeshStandardMaterial({ color: 0x3a2d20, roughness: 1 }),
-  );
-  bracket.position.set(x, y - 0.3, z);
-  group.add(bracket);
 
   // Дальность и яркость подобраны под мягкое затухание: факел должен
   // освещать стену в пятнадцати метрах, а не гаснуть в двух шагах.
@@ -686,6 +731,121 @@ function kindleFlame(model: THREE.Object3D): void {
     // Тень от пламени — бессмыслица, а в проход теней оно попадает как все.
     mesh.castShadow = false;
   });
+}
+
+/**
+ * Середина пламени — по вершинам верхней трети, **со скином**.
+ *
+ * У модели со скелетом вершины в файле лежат в позе привязки и в своих
+ * единицах: брать их как есть — значит искать пламя в сотне метров от факела.
+ * `getVertexPosition` у такой сетки сам прогоняет вершину через кости.
+ */
+function flameCenter(holder: THREE.Object3D): THREE.Vector3 {
+  holder.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(holder);
+  const floor = bounds.max.y - (bounds.max.y - bounds.min.y) * 0.35;
+
+  let count = 0;
+  const sum = new THREE.Vector3();
+  const point = new THREE.Vector3();
+  holder.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const position = mesh.geometry.getAttribute('position');
+    if (!position) return;
+    for (let i = 0; i < position.count; i++) {
+      mesh.getVertexPosition(i, point).applyMatrix4(mesh.matrixWorld);
+      if (point.y < floor) continue;
+      sum.add(point);
+      count++;
+    }
+  });
+  return count > 0 ? sum.divideScalar(count) : bounds.getCenter(new THREE.Vector3());
+}
+
+/**
+ * Ставит модели факелов к стенам.
+ *
+ * Модель клонируется вместе со скелетом (`SkeletonUtils`): обычный клон
+ * делит кости с исходником, и все факелы качались бы одним пламенем — или
+ * не качались вовсе.
+ *
+ * Размер и точка крепления считаются по габаритам в покое: рост приводится
+ * к `TORCH_HEIGHT`, самая дальняя по −X точка (конец кронштейна) прижимается
+ * к грани, верх пламени встаёт на `TORCH_TOP`. Потом разворот кронштейном
+ * в стену — и свет с ореолом переезжают в пламя модели.
+ */
+async function loadTorches(
+  group: THREE.Group,
+  flames: readonly Flame[],
+  torches: WallTorch[],
+  materials: Set<THREE.MeshStandardMaterial>,
+): Promise<void> {
+  if (typeof document === 'undefined') return;
+
+  try {
+    const gltf = await new GLTFLoader().loadAsync(TORCH_URL);
+    const clip = gltf.animations[0] ?? null;
+
+    for (const [index, spot] of TORCHES.entries()) {
+      const flame = flames[index];
+      if (!flame) continue;
+
+      const model = cloneSkinned(gltf.scene);
+      model.position.set(0, 0, 0);
+      model.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(model);
+      const height = bounds.max.y - bounds.min.y;
+      const scale = height > 0 ? TORCH_HEIGHT / height : 1;
+      model.scale.setScalar(scale);
+      model.position.set(
+        -bounds.min.x * scale,
+        -bounds.max.y * scale,
+        (-(bounds.min.z + bounds.max.z) / 2) * scale,
+      );
+
+      const holder = new THREE.Group();
+      holder.add(model);
+      holder.position.set(spot.x, TORCH_TOP, spot.z);
+      // Кронштейн (−X модели) — в стену, то есть против нормали грани.
+      holder.rotation.y = Math.atan2(-spot.face.z, spot.face.x);
+      group.add(holder);
+
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        // Тонкая палка с пламенем: тень от неё не видна, а в проход теней
+        // она попадала бы наравне со стенами.
+        mesh.castShadow = false;
+        const material = mesh.material as THREE.MeshStandardMaterial;
+        if (material.emissive) materials.add(material);
+      });
+
+      const head = flameCenter(holder);
+      flame.x = head.x;
+      flame.y = head.y;
+      flame.z = head.z;
+      flame.glow?.position.copy(head);
+
+      const mixer = new THREE.AnimationMixer(model);
+      if (clip) {
+        const action = mixer.clipAction(clip);
+        action.play();
+        // Вразнобой: пять факелов, качающихся в такт, читаются как один механизм.
+        action.time = (index * 0.37) % clip.duration;
+      }
+      const bones: WallTorch['bones'] = [];
+      model.traverse((node) => {
+        if ((node as THREE.Bone).isBone && FLAME_BONES.test(node.name)) {
+          bones.push({ bone: node, rest: node.scale.clone() });
+        }
+      });
+      torches.push({ mixer, bones });
+    }
+  } catch (error) {
+    // Без модели остаётся ореол: огонь на месте, просто без рукояти.
+    console.warn(`[свет] не загрузился ${TORCH_URL}`, error);
+  }
 }
 
 async function loadModels(group: THREE.Group, flames: Flame[]): Promise<void> {

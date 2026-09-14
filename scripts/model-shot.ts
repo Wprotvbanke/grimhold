@@ -26,6 +26,11 @@ const TURN = process.argv[5] ?? '0';
 const AT = process.argv[6] ?? '3';
 /** Отдаление камеры: поза может увести модель далеко за её габариты в покое. */
 const ZOOM = process.argv[7] ?? '1';
+/**
+ * `fit` — центр модели в ноль и кадр по наибольшему размеру. Нужен выгрузкам
+ * со Sketchfab: они в сотнях единиц и лежат вдали от начала координат.
+ */
+const FIT = process.argv[8] === 'fit' ? '1' : '0';
 
 const browser = await puppeteer.launch({
   headless: true,
@@ -52,7 +57,7 @@ try {
 
   const address =
     `http://localhost:5173/model.html?src=${encodeURIComponent(SOURCE)}` +
-    `&clip=${encodeURIComponent(CLIP)}&turn=${TURN}&at=${AT}&zoom=${ZOOM}`;
+    `&clip=${encodeURIComponent(CLIP)}&turn=${TURN}&at=${AT}&zoom=${ZOOM}&fit=${FIT}`;
   await page.goto(address, { waitUntil: 'networkidle2', timeout: 60000 });
 
   // Ждём, пока страница доиграет клип до заданной секунды и замрёт.

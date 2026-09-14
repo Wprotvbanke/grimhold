@@ -25,6 +25,7 @@
 | `public/music/town_theme.ogg` | [Town Theme RPG](https://opengameart.org/content/town-theme-rpg), cynicmusic, OpenGameArt; пережат так же | CC0 |
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
+| `public/models/torch.glb` | от владельца проекта, выгрузка Sketchfab (автор и лицензия в файле не записаны); лежит как есть, 68 КБ — ставит `loadTorches` в `lights.ts` | **уточнить** |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
