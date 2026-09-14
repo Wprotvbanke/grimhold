@@ -78,28 +78,40 @@ const TAVERN_PROPS: Prop[] = [
   { model: 'cup', x: -2.1, z: 1.3, y: 0.78 },
   { model: 'jug', x: -2.5, z: 1.6, y: 0.78 },
 
-  // Стол у двери — накрыт иначе: одинаковые столы выглядят копипастой.
-  { model: 'table_long', x: 0.3, z: 3.0 },
-  { model: 'chair', x: 1.5, z: 2.4, yaw: -Math.PI / 2 },
-  { model: 'stool', x: -0.8, z: 2.5 },
-  { model: 'stool', x: -0.8, z: 3.6 },
-  { model: 'stool', x: 0.4, z: 4.4, yaw: Math.PI },
-  { model: 'bowl', x: 0.2, z: 2.7, y: 0.78, height: 0.1 },
-  { model: 'tankard', x: -0.1, z: 3.2, y: 0.78 },
-  { model: 'book', x: 0.4, z: 3.7, y: 0.78, yaw: 0.4 },
-  { model: 'book', x: 0.6, z: 3.5, y: 0.78, yaw: -0.2 },
+  // Второй стол — тоже вдоль западной стены, рядом с первым. Стоял у двери
+  // и мешал войти. Накрыт иначе: одинаковые столы выглядят копипастой.
+  { model: 'table_long', x: -2.4, z: 3.6 },
+  { model: 'chair', x: -3.5, z: 3.1, yaw: Math.PI / 2 },
+  { model: 'chair', x: -3.5, z: 4.2, yaw: Math.PI / 2 },
+  { model: 'stool', x: -1.3, z: 3.1 },
+  { model: 'stool', x: -1.3, z: 4.2 },
+  { model: 'bowl', x: -2.3, z: 3.2, y: 0.78, height: 0.1 },
+  { model: 'tankard', x: -2.6, z: 3.7, y: 0.78 },
+  { model: 'book', x: -2.2, z: 4.2, y: 0.78, yaw: 0.4 },
+  { model: 'book', x: -2.0, z: 4.0, y: 0.78, yaw: -0.2 },
 
-  // Припасы в крыле.
-  { model: 'barrel', x: 3.5, z: -4.8 },
-  { model: 'barrel', x: 3.5, z: -4.0, yaw: 0.6 },
-  { model: 'crate', x: 2.6, z: -4.8 },
-  { model: 'crate', x: 2.6, z: -4.8, y: 0.8, yaw: 0.3 },
-  { model: 'barrel_big', x: 3.4, z: -1.0 },
+  // Барная стойка в крыле — ящики рядом, как прилавок. За ней проход:
+  // заходят с севера и стоят, как за стойкой. Кружки на ящиках.
+  ...barCrates(),
+  { model: 'tankard', x: 2.55, z: -2.6, y: 0.8 },
+  { model: 'jug', x: 2.5, z: -1.4, y: 0.8 },
+  { model: 'tankard', x: 2.6, z: -0.8, y: 0.8 },
+  // Бочка и ящики в северных углах крыла — запас за стойкой.
+  { model: 'barrel', x: 3.6, z: -4.9 },
+  { model: 'crate', x: 2.5, z: -4.9 },
+  { model: 'crate', x: 2.5, z: -4.9, y: 0.8, yaw: 0.3 },
 
-  // Припасы в юго-западном углу.
-  { model: 'barrel', x: -3.5, z: 4.6 },
-  { model: 'crate', x: -3.4, z: 3.6 },
+  // Припасы у южной стены, в стороне от двери.
+  { model: 'barrel', x: 1.5, z: 4.75 },
+  { model: 'crate', x: 0.9, z: 4.75 },
 ];
+
+/** Барная стойка из ящиков: вдоль крыла, от северного прохода до южной стены. */
+function barCrates(): Prop[] {
+  const props: Prop[] = [];
+  for (let i = 0; i < 4; i++) props.push({ model: 'crate', x: 2.5, z: -3.0 + i * 0.8, yaw: Math.PI / 2 });
+  return props;
+}
 
 /**
  * Обставляет таверну и отдаёт группу, в которой всё лежит.

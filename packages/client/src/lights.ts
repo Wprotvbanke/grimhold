@@ -116,7 +116,7 @@ const TORCHES: {
 /** Свечи зала таверны — над столами и на стойке. Без ореола: это свет, а не маяк. */
 const TAVERN_CANDLES: { x: number; y: number; z: number; color: number; intensity: number }[] = [
   { x: -2.4, y: 1.9, z: 0.8, color: 0xffc98a, intensity: 5 },
-  { x: 0.3, y: 1.9, z: 3.0, color: 0xffc98a, intensity: 5 },
+  { x: -2.4, y: 1.9, z: 3.6, color: 0xffc98a, intensity: 5 },
   { x: -1.8, y: 1.5, z: -4.3, color: 0xffb066, intensity: 6 },
 ];
 
