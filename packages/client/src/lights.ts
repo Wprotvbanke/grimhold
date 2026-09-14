@@ -170,6 +170,11 @@ export interface WorldLights {
    * видно.
    */
   update(elapsed: number, daylight: number, camera: THREE.Camera): void;
+  /**
+   * Уличный огонь — фонари и настенные факелы. У них ночью вьётся мошкара
+   * (particles.ts). Список растёт, когда догружаются модели фонарей.
+   */
+  readonly lamps: readonly { x: number; y: number; z: number }[];
 }
 
 export function createLights(scene: THREE.Scene): WorldLights {
@@ -235,8 +240,22 @@ export function createLights(scene: THREE.Scene): WorldLights {
   const slots = pool.map(() => ({ flame: null as Flame | null, level: 0 }));
   let previous = 0;
 
+  /**
+   * Уличные огни пересобираются, только когда их стало больше: модели фонарей
+   * приезжают позже факелов, а каждый кадр фильтровать незачем.
+   */
+  let lamps: Flame[] = [];
+  let counted = -1;
+
   return {
     group,
+    get lamps() {
+      if (counted !== flames.length) {
+        counted = flames.length;
+        lamps = flames.filter((flame) => flame.outdoor);
+      }
+      return lamps;
+    },
     update(elapsed, daylight, camera) {
       // Днём уличный огонь не просто тускнеет, а гаснет совсем: горящий
       // в полдень фонарь читается как ошибка.

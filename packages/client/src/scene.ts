@@ -27,9 +27,12 @@ import {
   type Race,
   type SpellId,
 } from '@grimhold/shared';
+// Туман у земли подменяет кусочки шейдера — до того, как соберётся хоть один.
+import './fog.js';
 import { createBuildings } from './buildings.js';
 import { createDayNight } from './daynight.js';
 import { createLights } from './lights.js';
+import { createParticles } from './particles.js';
 import { createNature, disposeNature } from './nature.js';
 import { createNodes, disposeNodes, type NodeField } from './nodes.js';
 import { populateTavern } from './props.js';
@@ -413,6 +416,8 @@ export function createScene(): World3D {
   const sky = createSky(scene);
   const daynight = createDayNight(scene, sky);
   const lights = createLights(scene);
+  // Пыль в свете своего огня и мошкара у фонарей — см. particles.ts.
+  const particles = createParticles(scene);
   const buildings = createBuildings(scene);
   const nature = createNature();
   const nodes = createNodes();
@@ -703,6 +708,12 @@ export function createScene(): World3D {
       const daylight = Math.max(0, Math.min(1, sunHeight(worldTime) * 3));
       lights.update(elapsed, daylight, camera);
       buildings.update(daylight);
+      particles.update(dt, elapsed, camera, {
+        underground,
+        lit: daynight.torch,
+        daylight,
+        lamps: lights.lamps,
+      });
     },
   };
 
