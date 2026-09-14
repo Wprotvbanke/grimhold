@@ -51,28 +51,154 @@ export interface LevelBox {
   noCollide?: boolean;
 }
 
-export const TOWN_SIZE = 60;
-const WALL_HEIGHT = 4;
-const WALL_THICKNESS = 1;
+/**
+ * Сторона города, м.
+ *
+ * Было 60 — город помещался в один чанк. Владелец расставил по нему таверну,
+ * ратушу и семь домов с улицами, и в 60 метров это не влезало даже тесно.
+ * Город вырос вдвое и вышел за свой чанк: его коробки по-прежнему живут
+ * в чанке (0, 0), а столкновения берутся из девяти чанков вокруг игрока,
+ * так что стена на 60-м метре видна и телесна из соседнего чанка тоже.
+ * Соседние чанки диких земель при этом обязаны уступать место городу —
+ * см. `insideTown` и `TOWN_CLEARANCE`.
+ */
+export const TOWN_SIZE = 120;
 const HALF = TOWN_SIZE / 2;
-/** Ширина проёма в стене — через него выходят в дикие земли. */
-const GATE = 8;
 
-/** Стена с воротами посередине: два отрезка вместо одного сплошного. */
-function wallWithGate(axis: 'x' | 'z', offset: number): LevelBox[] {
-  const segment = (TOWN_SIZE - GATE) / 2;
-  const shift = GATE / 2 + segment / 2;
+/**
+ * Сколько метров за стеной дикие земли держат пустыми.
+ *
+ * Камень, дерево или нода, выросшие вплотную к стене, торчали бы из неё
+ * и загораживали ворота; вышки к тому же выступают за линию стены.
+ */
+export const TOWN_CLEARANCE = 8;
 
-  if (axis === 'x') {
-    return [
-      { kind: 'wall', box: boxFromCenter(-shift, WALL_HEIGHT / 2, offset, segment, WALL_HEIGHT, WALL_THICKNESS) },
-      { kind: 'wall', box: boxFromCenter(shift, WALL_HEIGHT / 2, offset, segment, WALL_HEIGHT, WALL_THICKNESS) },
-    ];
+/** Внутри ли точка города — с запасом `margin` за стены. */
+export function insideTown(x: number, z: number, margin = 0): boolean {
+  return Math.abs(x) <= HALF + margin && Math.abs(z) <= HALF + margin;
+}
+
+/**
+ * Городские стены — модели `walls.glb` (вышка, пролёт стены, арка с воротами).
+ *
+ * Размеры здесь — после масштаба, в метрах: по ним и коробки столкновений,
+ * и расстановка моделей на клиенте (houses.ts). Масштаб у каждой части свой:
+ * вышка и арка крупнее исходника, чтобы угол и въезд читались издалека,
+ * а проход в арке — четыре метра, не три: исходные ворота были тесны даже
+ * для игрока, не то что для двоих рядом.
+ */
+export const TOWN_WALLS = {
+  tower: { scale: 1.2, size: 4.5, height: 7.7 },
+  arch: { scale: 1.3, width: 10.3, depth: 2.3, height: 5.5, opening: 4, lintel: 3.9 },
+  /** `piece` — длина пролёта в модели; на стене пролёты растягиваются ровно по промежутку. */
+  wall: { piece: 12, thickness: 1, height: 4.1 },
+} as const;
+
+export interface WallPiece {
+  kind: 'tower' | 'wall' | 'arch';
+  x: number;
+  z: number;
+  /**
+   * Разворот как у `rotation.y` в three. Локальная X модели идёт вдоль стены,
+   * локальная −Z смотрит внутрь города.
+   */
+  turn: number;
+  /** Длина вдоль стены, м. */
+  length: number;
+}
+
+/**
+ * Раскладка стен: вышки по углам, арка с воротами посреди каждой стороны,
+ * между ними пролёты.
+ *
+ * Одна функция на клиент и сервер: по ней и модели, и коробки. Разъедься
+ * они — игрок упирался бы в воздух у стены или проходил сквозь вышку.
+ */
+export function townWallLayout(): WallPiece[] {
+  const { tower, arch, wall } = TOWN_WALLS;
+  const pieces: WallPiece[] = [];
+
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      pieces.push({ kind: 'tower', x: sx * HALF, z: sz * HALF, turn: 0, length: tower.size });
+    }
   }
-  return [
-    { kind: 'wall', box: boxFromCenter(offset, WALL_HEIGHT / 2, -shift, WALL_THICKNESS, WALL_HEIGHT, segment) },
-    { kind: 'wall', box: boxFromCenter(offset, WALL_HEIGHT / 2, shift, WALL_THICKNESS, WALL_HEIGHT, segment) },
-  ];
+
+  // Разворот такой, чтобы локальная −Z смотрела внутрь: x' = x·cos + z·sin,
+  // z' = −x·sin + z·cos (как `rotation.y` в three).
+  const sides = [
+    { along: 'x', at: -HALF, turn: Math.PI },
+    { along: 'x', at: HALF, turn: 0 },
+    { along: 'z', at: -HALF, turn: -Math.PI / 2 },
+    { along: 'z', at: HALF, turn: Math.PI / 2 },
+  ] as const;
+
+  for (const side of sides) {
+    const at = (along: number): { x: number; z: number } =>
+      side.along === 'x' ? { x: along, z: side.at } : { x: side.at, z: along };
+
+    pieces.push({ kind: 'arch', ...at(0), turn: side.turn, length: arch.width });
+
+    const from = arch.width / 2;
+    const to = HALF - tower.size / 2;
+    const count = Math.ceil((to - from) / wall.piece);
+    const length = (to - from) / count;
+    for (const sign of [-1, 1]) {
+      for (let i = 0; i < count; i++) {
+        pieces.push({ kind: 'wall', ...at(sign * (from + length * (i + 0.5))), turn: side.turn, length });
+      }
+    }
+  }
+
+  return pieces;
+}
+
+/**
+ * Коробки стен. Вид дают модели, поэтому все невидимые.
+ *
+ * Арка — не одна коробка, а две опоры и перемычка над проходом: иначе ворота
+ * были бы глухими.
+ */
+function townWallBoxes(): LevelBox[] {
+  const { tower, arch, wall } = TOWN_WALLS;
+  const boxes: LevelBox[] = [];
+
+  for (const piece of townWallLayout()) {
+    const alongX = Math.abs(Math.cos(piece.turn)) > 0.5;
+    /** Коробка на стене: `offset` вдоль стены от середины части. */
+    const onWall = (offset: number, length: number, depth: number, fromY: number, toY: number): LevelBox => ({
+      kind: 'wall',
+      hidden: true,
+      box: boxFromCenter(
+        alongX ? piece.x + offset : piece.x,
+        (fromY + toY) / 2,
+        alongX ? piece.z : piece.z + offset,
+        alongX ? length : depth,
+        toY - fromY,
+        alongX ? depth : length,
+      ),
+    });
+
+    if (piece.kind === 'tower') {
+      boxes.push({
+        kind: 'wall',
+        hidden: true,
+        box: boxFromCenter(piece.x, tower.height / 2, piece.z, tower.size, tower.height, tower.size),
+      });
+    } else if (piece.kind === 'wall') {
+      boxes.push(onWall(0, piece.length, wall.thickness, 0, wall.height));
+    } else {
+      const post = (arch.width - arch.opening) / 2;
+      const shift = arch.opening / 2 + post / 2;
+      boxes.push(
+        onWall(-shift, post, arch.depth, 0, arch.height),
+        onWall(shift, post, arch.depth, 0, arch.height),
+        onWall(0, arch.opening, arch.depth, arch.lintel, arch.height),
+      );
+    }
+  }
+
+  return boxes;
 }
 
 
@@ -88,11 +214,12 @@ function wallWithGate(axis: 'x' | 'z', offset: number): LevelBox[] {
  * это только когда стали считать столкновения.
  */
 export const TOWN_LAMPS: readonly { x: number; z: number }[] = [
-  // По бокам ворот, а не в самом проёме.
-  { x: 3.2, z: 24 },
-  { x: -3.2, z: 24 },
-  { x: 3.2, z: -24 },
-  { x: -3.2, z: -24 },
+  // По бокам северных и южных ворот, а не в самом проёме: у опор арки,
+  // в четырёх с половиной метрах внутрь от стены.
+  { x: 6.8, z: 55.5 },
+  { x: -6.8, z: 55.5 },
+  { x: 6.8, z: -55.5 },
+  { x: -6.8, z: -55.5 },
   // Вдоль улиц.
   { x: -6, z: 6 },
   { x: 9, z: 6 },
@@ -285,11 +412,8 @@ export const TOWN_BOXES: readonly LevelBox[] = [
   // Мостовая города. Верх на y = 0.
   { kind: 'floor', box: boxFromCenter(0, -0.5, 0, TOWN_SIZE, 1, TOWN_SIZE) },
 
-  // Городские стены с воротами на все четыре стороны.
-  ...wallWithGate('x', -HALF),
-  ...wallWithGate('x', HALF),
-  ...wallWithGate('z', -HALF),
-  ...wallWithGate('z', HALF),
+  // Городские стены: вышки по углам, арки с воротами на все четыре стороны.
+  ...townWallBoxes(),
 
   // Здания площади: вид им дают модели, здесь только телесность.
   ...houseBoxes(),

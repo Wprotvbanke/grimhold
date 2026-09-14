@@ -1,4 +1,5 @@
 import { CHUNK_SIZE, chunkCenter, isInsideWorld } from './chunks.js';
+import { TOWN_CLEARANCE, insideTown } from './level.js';
 import type { ItemId, ToolKind } from './items.js';
 
 /**
@@ -274,15 +275,16 @@ export function generateNodes(cx: number, cz: number): ResourceNode[] {
     const count = profile.min_per_chunk + Math.floor(random() * span);
 
     for (let i = 0; i < count; i++) {
-      nodes.push({
-        id: `${cx}.${cz}.${nodes.length}`,
-        nodeId: profile.id,
-        x: originX + (random() * 2 - 1) * spread,
-        z: originZ + (random() * 2 - 1) * spread,
-        yaw: random() * Math.PI * 2,
-        scale: 0.85 + random() * 0.35,
-        model: profile.models[Math.floor(random() * profile.models.length)]!,
-      });
+      const x = originX + (random() * 2 - 1) * spread;
+      const z = originZ + (random() * 2 - 1) * spread;
+      const yaw = random() * Math.PI * 2;
+      const scale = 0.85 + random() * 0.35;
+      const model = profile.models[Math.floor(random() * profile.models.length)]!;
+      // Город вышел за свой чанк: на его месте нод нет. Числа при этом
+      // вытянуты — иначе сдвинулись бы все следующие ноды чанка. Имя ноды —
+      // её номер в списке, поэтому пропуск меняет имена одинаково у обеих сторон.
+      if (insideTown(x, z, TOWN_CLEARANCE)) continue;
+      nodes.push({ id: `${cx}.${cz}.${nodes.length}`, nodeId: profile.id, x, z, yaw, scale, model });
     }
   }
 

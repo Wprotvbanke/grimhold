@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   EXPERIENCE_PER_RIPOSTE,
   RIPOSTE_SECONDS,
+  TOWN_SIZE,
   attributesFor,
   fullVitals,
 } from '@grimhold/shared';
@@ -17,7 +18,12 @@ import type { Combatant } from '../src/combatant.js';
  * от настоящего удара и тут же достать foeа.
  */
 
-const OUTSIDE = -60;
+/**
+ * За городской стеной — там, где драться можно. От размера города, а не числом:
+ * город вырос вдвое, и прежние −60 оказались ровно на линии новой стены,
+ * то есть ещё под защитой.
+ */
+const OUTSIDE = -(TOWN_SIZE / 2 + 10);
 
 function fighter(id: string, z: number): Combatant {
   const attributes = attributesFor('human', 'warrior');

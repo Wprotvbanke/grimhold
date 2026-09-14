@@ -16,6 +16,8 @@ import {
   mobsForDungeon,
   TORCH_SECONDS,
   BAG_SECONDS,
+  TOWN_CLEARANCE,
+  insideTown,
   DUNGEON_CAPACITY,
   DUNGEON_JOIN_SECONDS,
   DUNGEON_CENTER,
@@ -1440,6 +1442,9 @@ function findFreeSpot(
     if (options.away && Math.hypot(x - options.away.x, z - options.away.z) < options.away.range) {
       continue;
     }
+    // Город вышел за свой чанк, а зверьё селится вокруг середины соседних:
+    // без этой проверки волк рождался бы посреди улицы.
+    if (insideTown(x, z, TOWN_CLEARANCE)) continue;
     const candidate = { x, y: 0.1, z };
     const body = playerAabb(candidate, { radius: 0.9, height: 2.9 });
 

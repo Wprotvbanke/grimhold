@@ -4,6 +4,7 @@ import {
   ChunkedWorld,
   PLAYER_HEIGHT,
   SPAWN_POINT,
+  TOWN_SIZE,
   WORLD_CHUNK_RADIUS,
   aabbOverlap,
   createMoveState,
@@ -67,7 +68,7 @@ describe('шаг симуляции движения', () => {
     expect(insideGeometry(result)).toBe(false);
     // Ворота в городской стене есть, а край мира — глухой.
     expect(result.pos.z).toBeGreaterThan(-WORLD_EDGE);
-    expect(result.pos.z).toBeLessThan(-30);
+    expect(result.pos.z).toBeLessThan(-TOWN_SIZE / 2);
   });
 
   it('не проходит сквозь стены ни под каким углом', () => {

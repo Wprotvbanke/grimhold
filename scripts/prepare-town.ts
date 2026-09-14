@@ -39,6 +39,12 @@ interface ModelSpec {
   source: string;
   output: string;
   normalize?: { scale?: number; height?: number };
+  /**
+   * Не сливать сетки по материалу. Нужно, когда части берутся по имени:
+   * в стенах обе створки ворот на одном материале, и слияние склеило бы их
+   * в одну — распахнуть было бы нечего.
+   */
+  keepParts?: boolean;
 }
 
 const MODELS: ModelSpec[] = [
@@ -47,6 +53,9 @@ const MODELS: ModelSpec[] = [
   // Казна: каменный ларец. Середина в нуле, половина под землёй — поднимаем;
   // чуть больше исходника, чтобы читался на площади.
   { source: `${DESKTOP}/bank/bank.glb`, output: 'bank.glb', normalize: { scale: 1.1 } },
+  // Городские стены: вышка, пролёт, арка и две створки — части ставит houses.ts
+  // по именам, поэтому не сливаются.
+  { source: `${DESKTOP}/walls/walls.glb`, output: 'walls.glb', keepParts: true },
 ];
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(2)} МБ`;
@@ -56,7 +65,7 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
   'draco3d.decoder': await draco3d.createDecoderModule(),
 });
 
-for (const { source, output, normalize } of MODELS) {
+for (const { source, output, normalize, keepParts } of MODELS) {
   const input = source;
   const target = resolve(OUTPUT, output);
   const document = await io.read(input);
@@ -102,7 +111,7 @@ for (const { source, output, normalize } of MODELS) {
     flatten(),
     weld(),
     // Сетки с одним материалом — в одну: вызов отрисовки на материал, а не на доску.
-    join(),
+    ...(keepParts ? [] : [join()]),
     dedup(),
     prune(),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024] }),

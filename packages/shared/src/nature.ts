@@ -13,7 +13,7 @@
  */
 
 import { CHUNK_SIZE, chunkCenter, isInsideWorld } from './chunks.js';
-import { TOWN_SIZE } from './level.js';
+import { TOWN_CLEARANCE, TOWN_SIZE, insideTown } from './level.js';
 
 /** Что можно поставить. Имена — узлы в `public/models/nature.glb`. */
 export type PlantId =
@@ -259,7 +259,9 @@ export function generateNature(cx: number, cz: number): Plant[] {
     }
   }
 
-  return plants;
+  // Город вышел за свой чанк: то, что выросло на его месте или вплотную
+  // к стене, отбрасываем — после раскладки, чтобы остальное не сдвинулось.
+  return plants.filter((plant) => !insideTown(plant.x, plant.z, TOWN_CLEARANCE));
 }
 
 /**

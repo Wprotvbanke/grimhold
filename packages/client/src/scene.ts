@@ -22,6 +22,7 @@ import {
   SPELLS,
   chunkKey,
   sunHeight,
+  TOWN_SIZE,
   type LevelBox,
   type MobId,
   type Race,
@@ -691,7 +692,9 @@ export function createScene(): World3D {
        * они оставались висеть в воздухе над пустым местом, да ещё и считались
        * каждый кадр.
        */
-      const nearTown = Math.hypot(camera.position.x, camera.position.z) < CHUNK_SIZE;
+      // Город больше своего чанка: стены стоят на 60-м метре, и видно их
+      // издалека — прячем модели, только когда отошли на его сторону.
+      const nearTown = Math.hypot(camera.position.x, camera.position.z) < TOWN_SIZE;
       houses.group.visible = nearTown;
       /**
        * Огонь нужен и в городе, и под землёй — значит группу не прячем там,

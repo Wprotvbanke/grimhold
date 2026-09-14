@@ -1,5 +1,5 @@
 import { type Aabb, boxFromCenter } from './math.js';
-import { TOWN_BOXES, TOWN_SIZE, type LevelBox } from './level.js';
+import { TOWN_BOXES, TOWN_CLEARANCE, TOWN_SIZE, insideTown, type LevelBox } from './level.js';
 import { generateNature } from './nature.js';
 import { NODES, generateNodes } from './nodes.js';
 
@@ -91,34 +91,59 @@ function townChunk(): LevelBox[] {
   return boxes;
 }
 
+/**
+ * Грунт чанка без того, что занял город: до четырёх полос вокруг городского
+ * квадрата. Чанк, до города не достающий, получает грунт целиком.
+ */
+function groundAroundTown(originX: number, originZ: number): LevelBox[] {
+  const half = CHUNK_SIZE / 2;
+  const town = TOWN_SIZE / 2;
+  const minX = originX - half;
+  const maxX = originX + half;
+  const minZ = originZ - half;
+  const maxZ = originZ + half;
+
+  const cutMinX = Math.max(minX, -town);
+  const cutMaxX = Math.min(maxX, town);
+  const cutMinZ = Math.max(minZ, -town);
+  const cutMaxZ = Math.min(maxZ, town);
+  if (cutMinX >= cutMaxX || cutMinZ >= cutMaxZ) {
+    return [{ kind: 'ground', box: boxFromCenter(originX, -0.5, originZ, CHUNK_SIZE, 1, CHUNK_SIZE) }];
+  }
+
+  const strips: LevelBox[] = [];
+  const strip = (fromX: number, toX: number, fromZ: number, toZ: number): void => {
+    if (toX - fromX < 0.01 || toZ - fromZ < 0.01) return;
+    strips.push({ kind: 'ground', box: { minX: fromX, maxX: toX, minY: -1, maxY: 0, minZ: fromZ, maxZ: toZ } });
+  };
+  strip(minX, maxX, minZ, cutMinZ);
+  strip(minX, maxX, cutMaxZ, maxZ);
+  strip(minX, cutMinX, cutMinZ, cutMaxZ);
+  strip(cutMaxX, maxX, cutMinZ, cutMaxZ);
+  return strips;
+}
+
 function wildernessChunk(cx: number, cz: number): LevelBox[] {
   const random = mulberry32(seedOf(cx, cz));
   const { x: originX, z: originZ } = chunkCenter(cx, cz);
   const boxes: LevelBox[] = [];
 
-  // Земля чанка: грунт, а не городская мостовая.
-  boxes.push({
-    kind: 'ground',
-    box: boxFromCenter(originX, -0.5, originZ, CHUNK_SIZE, 1, CHUNK_SIZE),
-  });
+  // Земля чанка: грунт, а не городская мостовая. Город вышел за свой чанк,
+  // и под ним грунт вырезается: лёг бы в одну плоскость с мостовой и мерцал.
+  boxes.push(...groundAroundTown(originX, originZ));
 
   // Валуны: разбросаны, разного размера, дают укрытия и ориентиры.
+  // Числа тянутся как раньше и у тех, что попали в город, — иначе сдвинулась
+  // бы раскладка всего остального чанка.
   const rocks = 6 + Math.floor(random() * 7);
   for (let i = 0; i < rocks; i++) {
     const width = 1.5 + random() * 4;
     const height = 1 + random() * 3.5;
     const depth = 1.5 + random() * 4;
-    boxes.push({
-      kind: 'rock',
-      box: boxFromCenter(
-        originX + (random() - 0.5) * (CHUNK_SIZE - width - 4),
-        height / 2,
-        originZ + (random() - 0.5) * (CHUNK_SIZE - depth - 4),
-        width,
-        height,
-        depth,
-      ),
-    });
+    const x = originX + (random() - 0.5) * (CHUNK_SIZE - width - 4);
+    const z = originZ + (random() - 0.5) * (CHUNK_SIZE - depth - 4);
+    if (insideTown(x, z, TOWN_CLEARANCE + Math.max(width, depth) / 2)) continue;
+    boxes.push({ kind: 'rock', box: boxFromCenter(x, height / 2, z, width, height, depth) });
   }
 
   /**
@@ -166,11 +191,11 @@ function wildernessChunk(cx: number, cz: number): LevelBox[] {
     const along = random() < 0.5;
     const rx = originX + (random() - 0.5) * 30;
     const rz = originZ + (random() - 0.5) * 30;
-    boxes.push({
+    if (!insideTown(rx, rz, TOWN_CLEARANCE + length)) boxes.push({
       kind: 'ruin',
       box: boxFromCenter(rx, 1.6, rz, along ? length : 1, 3.2, along ? 1 : length),
     });
-    boxes.push({
+    if (!insideTown(rx, rz, TOWN_CLEARANCE + length)) boxes.push({
       kind: 'ruin',
       box: boxFromCenter(
         rx + (along ? length / 2 : 0),
