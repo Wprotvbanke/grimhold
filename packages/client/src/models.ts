@@ -35,6 +35,8 @@ const NPC_MODELS: Partial<Record<Race, string>> = {
 /** Файл модели на моба. Остальные пока рисуются примитивами из scene.ts. */
 const MOB_MODELS: Partial<Record<MobId, string>> = {
   skeleton: '/models/skeleton_human.glb',
+  // Хозяин глубины — король крыс (от владельца, собран prepare-town.ts).
+  crypt_lord: '/models/rat_king.glb',
 };
 
 /**
@@ -93,7 +95,9 @@ export type ClipName = 'idle' | 'walk' | 'attack' | 'hurt' | 'death';
  * KayKit, затем короткие имена Quaternius.
  */
 const CLIPS: Record<ClipName, string[]> = {
-  idle: ['Idle', 'Unarmed_Idle'],
+  // «Take 001» — единственный клип короля крыс: он дышит и водит хвостом.
+  // Ходьбы, удара и смерти в модели нет — стоит этой позой и в погоне.
+  idle: ['Idle', 'Unarmed_Idle', 'Take 001'],
   walk: ['Walking_A', 'Walking_B', 'Walking_C', 'Walk'],
   attack: [
     '1H_Melee_Attack_Chop',

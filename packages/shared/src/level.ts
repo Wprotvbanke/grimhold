@@ -233,7 +233,9 @@ export const TOWN_LAMPS: readonly { x: number; z: number }[] = [
   { x: -6, z: -5.8 },
   { x: 10, z: -5.8 },
   { x: -18, z: 5.8 },
-  { x: 18, z: 10 },
+  // Стоял в (18, 10) — ближайший к церкви; владелец попросил перенести его
+  // к ней. Теперь у фасада, по левую руку от двери, у края южной улицы.
+  { x: 5.3, z: 13.9 },
   { x: -24, z: -6 },
   { x: 20, z: -20 },
   // На площади — у края южной улицы, в стороне от маршрута Громи.
@@ -295,8 +297,14 @@ export const BANK = {
  * значило бы наказывать за неудачу прошлого забега.
  */
 export const DUNGEON_GATE = {
-  x: 8,
-  z: 2,
+  /*
+   * Люк стоял посреди площади у казны. Владелец перенёс его в северо-западный
+   * квартал — в проход между лавкой на колёсах и домом, за лавкой: вход
+   * в подземелье не на виду у всего города. Вид даёт модель `trapdoor.glb`
+   * (ставит houses.ts), телесности у люка нет — через раму не шагать.
+   */
+  x: -35.2,
+  z: -9.5,
   /** С какого расстояния открывается спуск. */
   range: 3,
   width: 2.6,
@@ -341,6 +349,8 @@ export const TOWN_HOUSES: readonly {
   x: number;
   z: number;
   turn: number;
+  /** Во сколько раз модель больше собранной; пятно и высота даны уже с ним. */
+  scale?: number;
   height: number;
   footprint: { minX: number; maxX: number; minZ: number; maxZ: number };
 }[] = [
@@ -350,13 +360,16 @@ export const TOWN_HOUSES: readonly {
     // Угол считается от места к центру, а не вписан числом: передвинут —
     // и фасад сам повернётся за площадью.
     // Потом владелец перенёс её в юго-восточный квартал, по-прежнему лицом
-    // к центру.
+    // к центру, и увеличил вдвое. Вдвое большая на его месте (14.6, 19.7)
+    // заходила западным углом на южную улицу — сдвинута на метр к востоку.
     model: 'town_hall',
-    x: 33.4,
-    z: 29.1,
-    turn: facing(33.4, 29.1, 0, 0),
-    height: 10,
-    footprint: { minX: -3.6, maxX: 3.6, minZ: -4.2, maxZ: 4.3 },
+    x: 15.6,
+    z: 19.7,
+    turn: facing(15.6, 19.7, 0, 0),
+    scale: 2,
+    height: 20,
+    // Пятно модели в масштабе 1 было {−3.6…3.6, −4.2…4.3} — здесь вдвое.
+    footprint: { minX: -7.2, maxX: 7.2, minZ: -8.4, maxZ: 8.6 },
   },
   {
     model: 'townhouse',
@@ -502,16 +515,24 @@ function facing(fromX: number, fromZ: number, toX: number, toZ: number): number 
 }
 
 /**
- * На сколько полос режется пятно здания под коробки столкновений.
+ * Размер клетки, которой обводится пятно здания, стоящего под углом к осям.
  *
  * Коробки у нас выровнены по осям, а здание может стоять под любым углом.
  * Одна коробка вокруг повёрнутого пятна раздувается: ратуша под 34° к осям
  * давала коробку 11×11 м вместо 7×8.5, и у углов стояли невидимые стены
- * в полтора метра. Полосы обводят пятно ступенькой, и ступенька тем мельче,
- * чем полос больше. При развороте на четверть оборота полосы складываются
- * ровно в прямоугольник.
+ * в полтора метра.
+ *
+ * Сначала пятно резали на полосы поперёк глубины. Полоса тянется во всю
+ * ширину здания, и её коробка раздувается вдоль фасада тем сильнее, чем
+ * здание шире: у вдвое увеличенной церкви фонарь в двух метрах перед
+ * фасадом оказался внутри невидимой стены. Клетка раздувается одинаково
+ * по обе стороны и не больше, чем на треть своего размера.
+ *
+ * Клетки ставятся **только по краю** пятна: сквозь край внутрь не попасть,
+ * и внутренние коробки только множили бы проверки. Здание вдоль осей — одна
+ * коробка, ровно по пятну.
  */
-const HOUSE_STRIPS = 8;
+const HOUSE_CELL = 1.5;
 
 /**
  * Коробки здания в мире: пятно поворачивается вместе с моделью.
@@ -525,28 +546,39 @@ function houseBoxes(): LevelBox[] {
   for (const { x, z, turn, height, footprint } of TOWN_HOUSES) {
     const cos = Math.cos(turn);
     const sin = Math.sin(turn);
-    const step = (footprint.maxZ - footprint.minZ) / HOUSE_STRIPS;
+    const width = footprint.maxX - footprint.minX;
+    const depth = footprint.maxZ - footprint.minZ;
+    const aligned = Math.abs(sin) < 1e-6 || Math.abs(cos) < 1e-6;
+    const columns = aligned ? 1 : Math.ceil(width / HOUSE_CELL);
+    const rows = aligned ? 1 : Math.ceil(depth / HOUSE_CELL);
+    const stepX = width / columns;
+    const stepZ = depth / rows;
 
-    for (let strip = 0; strip < HOUSE_STRIPS; strip++) {
-      const fromZ = footprint.minZ + step * strip;
-      const corners = [
-        [footprint.minX, fromZ],
-        [footprint.minX, fromZ + step],
-        [footprint.maxX, fromZ],
-        [footprint.maxX, fromZ + step],
-      ].map(([cx, cz]) => ({ x: x + cx! * cos + cz! * sin, z: z - cx! * sin + cz! * cos }));
-      boxes.push({
-        kind: 'wall',
-        hidden: true,
-        box: {
-          minX: Math.min(...corners.map((corner) => corner.x)),
-          maxX: Math.max(...corners.map((corner) => corner.x)),
-          minY: 0,
-          maxY: height,
-          minZ: Math.min(...corners.map((corner) => corner.z)),
-          maxZ: Math.max(...corners.map((corner) => corner.z)),
-        },
-      });
+    for (let column = 0; column < columns; column++) {
+      for (let row = 0; row < rows; row++) {
+        const edge = column === 0 || row === 0 || column === columns - 1 || row === rows - 1;
+        if (!edge) continue;
+        const fromX = footprint.minX + stepX * column;
+        const fromZ = footprint.minZ + stepZ * row;
+        const corners = [
+          [fromX, fromZ],
+          [fromX, fromZ + stepZ],
+          [fromX + stepX, fromZ],
+          [fromX + stepX, fromZ + stepZ],
+        ].map(([cx, cz]) => ({ x: x + cx! * cos + cz! * sin, z: z - cx! * sin + cz! * cos }));
+        boxes.push({
+          kind: 'wall',
+          hidden: true,
+          box: {
+            minX: Math.min(...corners.map((corner) => corner.x)),
+            maxX: Math.max(...corners.map((corner) => corner.x)),
+            minY: 0,
+            maxY: height,
+            minZ: Math.min(...corners.map((corner) => corner.z)),
+            maxZ: Math.max(...corners.map((corner) => corner.z)),
+          },
+        });
+      }
     }
   }
   return boxes;
@@ -577,18 +609,6 @@ export const TOWN_BOXES: readonly LevelBox[] = [
     box: boxFromCenter(BANK.x, BANK.height / 2, BANK.z, BANK.width, BANK.height, BANK.depth),
   },
 
-  // Спуск в подземелье: низкий каменный оклад люка.
-  {
-    kind: 'brick',
-    box: boxFromCenter(
-      DUNGEON_GATE.x,
-      DUNGEON_GATE.height / 2,
-      DUNGEON_GATE.z,
-      DUNGEON_GATE.width,
-      DUNGEON_GATE.height,
-      DUNGEON_GATE.depth,
-    ),
-  },
 
   // Ступени с помостом у восточной стены убраны по просьбе владельца:
   // лестница из пола посреди улицы смотрелась поломкой, место ровное.

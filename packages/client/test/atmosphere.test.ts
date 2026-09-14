@@ -14,6 +14,7 @@ function listen() {
     startLoop: (key) => heard.push(`start:${key}`),
     stopLoop: (key) => heard.push(`stop:${key}`),
     setAmbience: (id) => heard.push(`ambience:${id}`),
+    setNearby: () => {},
   });
   return { atmosphere, heard };
 }

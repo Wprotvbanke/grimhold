@@ -143,11 +143,15 @@ export const SpendPointSchema = z.object({
 
 export const AdminSchema = z.object({
   t: z.literal('admin'),
-  do: z.enum(['give', 'time', 'portals']),
+  do: z.enum(['give', 'time', 'portals', 'teleport']),
   itemId: z.string().max(64).optional(),
   count: z.number().int().min(1).max(999).optional(),
   /** Время суток: 0 — полночь, 0.25 — рассвет, 0.5 — полдень, 0.75 — закат. */
   time: z.number().min(0).max(1).optional(),
+  /** Куда перенести ведущего — в его же мире. Без `y` — на землю. */
+  x: z.number().min(-100000).max(100000).optional(),
+  y: z.number().min(-1000).max(1000).optional(),
+  z: z.number().min(-100000).max(100000).optional(),
 });
 
 const SlotSchema = z.enum(['head', 'chest', 'legs', 'hands', 'mainHand', 'offHand']);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BANK, TAVERN, TOWN_HOUSES, TOWN_WALLS, townWallLayout } from '@grimhold/shared';
+import { BANK, DUNGEON_GATE, TAVERN, TOWN_HOUSES, TOWN_WALLS, townWallLayout } from '@grimhold/shared';
 
 /**
  * Здания площади: ратуша и городской дом — готовые модели целиком.
@@ -18,12 +18,33 @@ import { BANK, TAVERN, TOWN_HOUSES, TOWN_WALLS, townWallLayout } from '@grimhold
 export interface Houses {
   /** Уходит вместе с городом: см. `nearTown` в scene.ts. */
   readonly group: THREE.Group;
+  /** Каждый кадр у города: кружит туман над люком. */
+  update(elapsed: number): void;
 }
+
+/**
+ * Проём люка в метрах — по крышке в `trapdoor.glb`: 2.2 м поперёк петли,
+ * 2.4 м от петли (z ≈ −1.2) к краю. Рама шире — 2.7 × 2.9.
+ */
+const HATCH = { minX: -1.1, maxX: 1.1, minZ: -1.2, maxZ: 1.2 };
+
+/**
+ * Туман из люка: модель в 7 м шириной ужата до 2.8 — чуть шире рамы, чтобы
+ * переливался через край. Слои у модели лежат на 0.2…0.95 м ниже её нуля:
+ * подъём ставит нижний слой в проём, а верхний — невысоко над рамой
+ * (верх рамы — 0.19 м).
+ */
+const HATCH_FOG = { scale: 0.4, lift: 0.42, opacity: 0.35 };
 
 export function createHouses(scene: THREE.Scene): Houses {
   const group = new THREE.Group();
   scene.add(group);
-  if (typeof document === 'undefined') return { group };
+  /** Слои тумана и скорость, с которой каждый кружит. */
+  const fogLayers: { mesh: THREE.Object3D; speed: number }[] = [];
+  const update = (elapsed: number): void => {
+    for (const { mesh, speed } of fogLayers) mesh.rotation.y = elapsed * speed;
+  };
+  if (typeof document === 'undefined') return { group, update };
 
   const loader = new GLTFLoader();
   const draco = new DRACOLoader();
@@ -63,6 +84,7 @@ export function createHouses(scene: THREE.Scene): Houses {
         // Разворот тот же, что у коробки в level.ts: там пятно поворачивается
         // по той же формуле, иначе фасад и телесность разъедутся.
         model.rotation.y = house.turn;
+        model.scale.setScalar(house.scale ?? 1);
         model.traverse((node) => {
           const mesh = node as THREE.Mesh;
           if (!mesh.isMesh) return;
@@ -100,6 +122,91 @@ export function createHouses(scene: THREE.Scene): Houses {
     () => console.warn('[здания] не загрузилась /models/tavern.glb'),
   );
 
+  /**
+   * Люк в подземелье — рама с дощатой крышкой. Клип в модели открывает
+   * крышку; ставим его на последний кадр, крышка распахнута: закрытый люк
+   * читается как пол, а не как вход. Кадр ставится один раз — каждый кадр
+   * гонять анимацию незачем.
+   */
+  loader.load(
+    '/models/trapdoor.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      model.position.set(DUNGEON_GATE.x, 0, DUNGEON_GATE.z);
+      const clip = gltf.animations[0];
+      if (clip) {
+        const mixer = new THREE.AnimationMixer(model);
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+        action.play();
+        mixer.setTime(clip.duration);
+      }
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      });
+      group.add(model);
+    },
+    undefined,
+    () => console.warn('[здания] не загрузилась /models/trapdoor.glb'),
+  );
+
+  /**
+   * Под крышкой — чернота: глубина, которой не разглядеть.
+   *
+   * Без неё в проёме видна мостовая, и люк читается как крышка на земле.
+   * Материал без освещения и без тумана сцены: ни факел, ни фонарь, ни день
+   * не должны высветить дно.
+   */
+  const pit = new THREE.Mesh(
+    new THREE.PlaneGeometry(HATCH.maxX - HATCH.minX, HATCH.maxZ - HATCH.minZ),
+    new THREE.MeshBasicMaterial({ color: 0x000000, fog: false }),
+  );
+  pit.rotation.x = -Math.PI / 2;
+  // Выше мостовой на пару сантиметров — иначе земля пробивается сквозь черноту.
+  pit.position.set(
+    DUNGEON_GATE.x + (HATCH.minX + HATCH.maxX) / 2,
+    0.03,
+    DUNGEON_GATE.z + (HATCH.minZ + HATCH.maxZ) / 2,
+  );
+  group.add(pit);
+
+  /**
+   * Туман над проёмом. Слои полупрозрачные: пишут в глубину — и прячут друг
+   * друга квадратами, поэтому глубину не пишут. Кружат в разные стороны
+   * и с разной скоростью — одинаково кружащий туман выглядит диском.
+   */
+  loader.load(
+    '/models/trapdoor_fog.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      model.position.set(DUNGEON_GATE.x, HATCH_FOG.lift, DUNGEON_GATE.z);
+      model.scale.setScalar(HATCH_FOG.scale);
+      let index = 0;
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const material = mesh.material as THREE.MeshStandardMaterial;
+        material.transparent = true;
+        material.depthWrite = false;
+        // Слои в модели плотные: пять подряд сливались в белый диск и прятали
+        // черноту проёма. Туман должен дымиться над глубиной, а не закрывать её.
+        material.opacity *= HATCH_FOG.opacity;
+        mesh.renderOrder = 1;
+        // Геометрия после сборки в мировых координатах модели и по центру —
+        // кружить можно сам меш вокруг его оси.
+        fogLayers.push({ mesh, speed: (index % 2 === 0 ? 1 : -1) * (0.05 + index * 0.02) });
+        index++;
+      });
+      group.add(model);
+    },
+    undefined,
+    () => console.warn('[здания] не загрузилась /models/trapdoor_fog.glb'),
+  );
+
   loader.load(
     '/models/walls.glb',
     (gltf) => addWalls(group, gltf.scene),
@@ -107,7 +214,7 @@ export function createHouses(scene: THREE.Scene): Houses {
     () => console.warn('[здания] не загрузилась /models/walls.glb'),
   );
 
-  return { group };
+  return { group, update };
 }
 
 /**

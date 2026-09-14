@@ -701,6 +701,7 @@ export function createScene(): World3D {
       // издалека — прячем модели, только когда отошли на его сторону.
       const nearTown = Math.hypot(camera.position.x, camera.position.z) < TOWN_SIZE;
       houses.group.visible = nearTown;
+      if (nearTown) houses.update(elapsed);
       furniture.visible = nearTown;
       /**
        * Огонь нужен и в городе, и под землёй — значит группу не прячем там,

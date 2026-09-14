@@ -80,6 +80,29 @@ export function createAdmin(
   hours.append(portals);
 
   /**
+   * Телепорт в точку — выбраться, если застрял.
+   *
+   * Одна строка, а не три поля: координаты владелец пишет так, как их
+   * показывает редактор, — «33.4, 0.0, 29.1». Три числа — x, y, z;
+   * два — x и z, на землю.
+   */
+  const place = el<HTMLInputElement>('adminTeleport');
+  const teleport = (): void => {
+    const numbers = (place.value.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+    if (numbers.length !== 2 && numbers.length !== 3) {
+      place.classList.add('bad');
+      return;
+    }
+    place.classList.remove('bad');
+    const [x, y, z] = numbers.length === 3 ? numbers : [numbers[0], undefined, numbers[1]];
+    send({ t: 'admin', do: 'teleport', x, y, z });
+  };
+  el<HTMLButtonElement>('adminTeleportGo').addEventListener('click', teleport);
+  place.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') teleport();
+  });
+
+  /**
    * Список строится заново на каждый ввод в строке поиска.
    *
    * Предметов пара сотен, и это меню открыто редко: экономить тут нечего,

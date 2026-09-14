@@ -20,6 +20,8 @@
 | `public/sounds/wind_loop.ogg` | [wind whoosh loop](https://opengameart.org/content/wind-whoosh-loop), OpenGameArt | CC0 |
 | `public/sounds/torch_fire.wav` | [Fireplace Sound loop](https://opengameart.org/content/fireplace-sound-loop), OpenGameArt; из 29 с и 10 МБ взяты 10 с, моно, 16 бит, 22 кГц, конец сведён с началом для бесшовной петли | CC0 |
 | `public/sounds/breathing_tired.ogg` | [Breathing Tired](https://opengameart.org/content/breathing-tired), OpenGameArt | CC0 |
+| `public/sounds/rat_{attack,pain,death}.ogg` | [Squeaky Rat](https://opengameart.org/content/squeaky-rat), qubodup, OpenGameArt; нарезаны на писк замаха, боли и смерти | CC0 |
+| `public/sounds/boss_roar.ogg` | [CC0 Deep Monster Roar](https://opengameart.org/content/cc0-deep-monster-roar), trazzz123, OpenGameArt; 3 с | CC0 |
 | `public/sounds/swish_*.wav` | [Swishes Sound Pack](https://opengameart.org/content/swishes-sound-pack), OpenGameArt; `.wav` оставлен как есть — конвертера под рукой не было, а файлы по сорок килобайт | CC0 |
 | `public/music/{bards_tale,market_day,rising_moon,lament,old_tower_inn,minstrel_dance,kings_feast}.ogg` | RandomMind, OpenGameArt: [The Bard's Tale](https://opengameart.org/content/medieval-the-bards-tale), [Market Day](https://opengameart.org/content/medieval-market-day), [Rising Moon](https://opengameart.org/content/fantasy-rising-moon), [Lament for a Warrior's Soul](https://opengameart.org/content/fantasy-lament-for-a-warriors-soul) (reupload), [The Old Tower Inn](https://opengameart.org/content/medieval-the-old-tower-inn), [Minstrel Dance](https://opengameart.org/content/medieval-minstrel-dance), [King's Feast](https://opengameart.org/content/medieval-kings-feast); mp3 пережаты ffmpeg в ogg Vorbis `-q:a 1` | CC0 |
 | `public/music/town_theme.ogg` | [Town Theme RPG](https://opengameart.org/content/town-theme-rpg), cynicmusic, OpenGameArt; пережат так же | CC0 |
@@ -35,6 +37,9 @@
 | `public/models/walls.glb` | от владельца проекта, выгрузка Sketchfab — вышка, пролёт, арка, створки; собран `scripts/prepare-town.ts` без слияния частей | CC, со слов владельца (вид не указан) |
 | `public/models/bank.glb` | от владельца проекта, выгрузка Sketchfab — каменный ларец казны; собран `scripts/prepare-town.ts` (поднят на землю, ×1.1) | CC, со слов владельца (вид не указан) |
 | `public/models/torch.glb` | от владельца проекта, выгрузка Sketchfab (автор и лицензия в файле не записаны); лежит как есть, 68 КБ — ставит `loadTorches` в `lights.ts` | CC, со слов владельца (вид не указан) |
+| `public/models/trapdoor.glb` | от владельца проекта, выгрузка Sketchfab — люк с крышкой и клипом открытия; 2.64 → 0.17 МБ, `scripts/prepare-town.ts` | CC, со слов владельца (вид не указан) |
+| `public/models/trapdoor_fog.glb` | от владельца проекта, выгрузка Sketchfab «new fog» — слои тумана; собран без слияния частей | CC, со слов владельца (вид не указан) |
+| `public/models/rat_king.glb` | от владельца проекта, выгрузка Sketchfab — король крыс, облик хозяина глубины; 130 → 27 тыс. треугольников, 13.6 → 1.4 МБ | CC, со слов владельца (вид не указан) |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |

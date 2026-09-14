@@ -69,6 +69,17 @@ export const SOUNDS = {
     detune: 0.1,
   },
   hit: { files: five('impactPunch_medium'), volume: 0.8, positional: true, near: 2, far: 25, detune: 0.08 },
+
+  /**
+   * Хозяин глубины — король крыс. Рёв слышен далеко: на дне этажа он и есть
+   * предупреждение. Звучит редко (cues.ts) — трёхсекундный рёв на каждом
+   * замахе превратился бы в постоянный шум.
+   */
+  bossRoar: { files: ['boss_roar.ogg'], volume: 0.75, positional: true, near: 4, far: 40, detune: 0.05 },
+  /** Писк замаха: крысиный, но ниже — крыса большая. */
+  bossAttack: { files: ['rat_attack.ogg'], volume: 0.7, positional: true, near: 3, far: 28, detune: 0.06 },
+  bossPain: { files: ['rat_pain.ogg'], volume: 0.6, positional: true, near: 3, far: 25, detune: 0.08 },
+  bossDeath: { files: ['rat_death.ogg'], volume: 0.9, positional: true, near: 4, far: 40 },
   /** Удар в щит звенит металлом — его не спутать с попаданием. */
   blocked: { files: five('impactPlate_medium'), volume: 0.75, positional: true, near: 2, far: 25, detune: 0.06 },
   /** Уход рывком — шорох одежды: неуязвимость слышна, а не только видна. */
@@ -304,6 +315,12 @@ export interface SoundApi {
   stopLoop(key: string): void;
   /** Сменить фон. `null` — тишина. Тот же фон — ничего не происходит. */
   setAmbience(id: SoundId | null): void;
+  /**
+   * Второй фоновый слой поверх фона места — звук того, что рядом, а не того,
+   * где стоишь: из люка слышно подземелье. `gain` — доля табличной громкости,
+   * 0 — слой уходит в тишину. Идёт через ту же шину фона и тот же ползунок.
+   */
+  setNearby(id: SoundId, gain: number): void;
   setVolumes(settings: { volume: number; ambience: number; music: number }): void;
   /** Контекст и шина музыки: музыка играет потоком и живёт в music.ts. */
   readonly context: AudioContext;
@@ -392,6 +409,13 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
   /** Какой фон хотят и какой голос его играет. */
   let ambience: SoundId | null = null;
   let ambienceVoice: THREE.Audio | null = null;
+
+  /** Голос слоя «рядом» — свой, чтобы не спорить с фоном места за голоса. */
+  const nearbyVoice = new THREE.Audio(listener);
+  nearbyVoice.gain.disconnect();
+  nearbyVoice.gain.connect(ambienceBus);
+  let nearbyId: SoundId | null = null;
+  let nearbyGain = 0;
 
   const heard = new THREE.Vector3();
 
@@ -510,6 +534,32 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
         }, AMBIENCE_FADE * 1000 * 1.5);
       }
       startAmbience();
+    },
+
+    setNearby(id, gain) {
+      // Громкость меняется каждый кадр по шагу игрока — сглаживаем, чтобы
+      // не было ступенек, и не трогаем узел, пока ничего не изменилось.
+      if (gain <= 0 && !nearbyVoice.isPlaying) return;
+      if (nearbyId !== id || !nearbyVoice.isPlaying) {
+        const buffer = pick(id);
+        if (!buffer) return;
+        if (nearbyVoice.isPlaying) nearbyVoice.stop();
+        nearbyVoice.setBuffer(buffer);
+        nearbyVoice.setLoop(true);
+        nearbyVoice.setVolume(0);
+        nearbyVoice.play();
+        nearbyId = id;
+        nearbyGain = 0;
+      }
+      if (Math.abs(gain - nearbyGain) < 0.005) return;
+      nearbyGain = gain;
+      nearbyVoice.gain.gain.setTargetAtTime(SOUNDS[id].volume * gain, context.currentTime, 0.15);
+      if (gain <= 0) {
+        // Ушёл из радиуса — голос гаснет и освобождается, а не крутит петлю в ноль.
+        setTimeout(() => {
+          if (nearbyGain <= 0 && nearbyVoice.isPlaying) nearbyVoice.stop();
+        }, 1000);
+      }
     },
 
     setVolumes({ volume, ambience: level, music }) {

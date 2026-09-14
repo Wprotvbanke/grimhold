@@ -129,8 +129,10 @@ async function descendAgain(client: TestClient): Promise<boolean> {
  * задана точками: южнее стены, потом на восток, потом к люку.
  */
 async function walkToGate(client: TestClient): Promise<number> {
-  await walkTo(client, { x: 3, z: -2 }, 1.5);
-  await walkTo(client, { x: 8, z: -2 }, 1.5);
+  // Люк теперь за лавкой на колёсах в северо-западном квартале: к югу от казны
+  // на западную улицу, по ней на запад и вверх к люку между лавкой и домом.
+  await walkTo(client, { x: 1, z: 4.2 }, 1.5);
+  await walkTo(client, { x: DUNGEON_GATE.x, z: 3 }, 1.5);
   return walkTo(client, DUNGEON_GATE, 1.2);
 }
 

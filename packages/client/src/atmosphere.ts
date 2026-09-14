@@ -1,5 +1,22 @@
-import { isSafe, type SelfState } from '@grimhold/shared';
+import { DUNGEON_GATE, isSafe, type SelfState } from '@grimhold/shared';
 import type { SoundApi, SoundId } from './sound.js';
+
+/**
+ * Из люка в городе слышно подземелье: гул и капель.
+ *
+ * Слышно в пяти метрах от люка и не громче половины того, что внизу: мимо
+ * проходят и слышат, но площадь не звучит подземельем. Громкость растёт
+ * к люку плавно — граница радиуса не должна щёлкать.
+ */
+const GATE_HEARING = 5;
+const GATE_LOUDNESS = 0.5;
+
+/** Доля громкости подземелья у люка на таком расстоянии. */
+export function gateLoudness(x: number, z: number, underground: boolean): number {
+  if (underground) return 0;
+  const distance = Math.hypot(x - DUNGEON_GATE.x, z - DUNGEON_GATE.z);
+  return GATE_LOUDNESS * Math.max(0, 1 - distance / GATE_HEARING);
+}
 
 /**
  * Звуки мира и вылазки: фон по месту, свой огонь, гонг хозяина глубины,
@@ -11,7 +28,7 @@ import type { SoundApi, SoundId } from './sound.js';
  * уже убили, гонга не слышит: для него ничего не случилось.
  */
 
-type Sound = Pick<SoundApi, 'play' | 'startLoop' | 'stopLoop' | 'setAmbience'>;
+type Sound = Pick<SoundApi, 'play' | 'startLoop' | 'stopLoop' | 'setAmbience' | 'setNearby'>;
 
 /** Где стоит слушатель — от этого фон. */
 export type Scenery = 'town' | 'wild' | 'dungeon';
@@ -66,6 +83,7 @@ export function createAtmosphere(sound: Sound): Atmosphere {
 
   return {
     where(x, z, underground) {
+      sound.setNearby('ambDungeon', gateLoudness(x, z, underground));
       const next = sceneryAt(x, z, underground);
       if (next === scenery) return;
       scenery = next;

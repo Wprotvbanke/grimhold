@@ -77,6 +77,22 @@ try {
    * С точки появления до городских стен семьдесят метров, и стыки кладки
    * или створки ворот оттуда не разглядеть. Прямо вперёд — северная арка.
    */
+  /**
+   * `GRIMHOLD_TP="x, z"` или `"x, y, z"` — перенестись в точку перед снимком,
+   * через телепорт служебного меню. До люка за лавкой или до угла таверны
+   * от точки появления не дойти одной клавишей W.
+   */
+  const place = process.env.GRIMHOLD_TP;
+  if (place) {
+    await page.keyboard.press('F2');
+    await wait(600);
+    await page.type('#adminTeleport', place);
+    await page.keyboard.press('Enter');
+    await wait(600);
+    await page.click('#adminClose');
+    await wait(3000);
+  }
+
   const walk = Number(process.env.GRIMHOLD_WALK ?? 0);
   if (walk > 0) {
     await page.click('canvas');

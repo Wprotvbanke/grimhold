@@ -525,6 +525,8 @@
         border: 1px solid var(--line); border-radius: 3px; font: inherit; font-size: 12px;
       }
       #adminCount { flex: 0 0 70px; }
+      #adminTeleport { flex: 1; }
+      #adminTeleport.bad { border-color: #c0504d; }
       /* Ширину и отступы задаём явно: общие правила формы входа делают
          любую кнопку во всю строку, а здесь их десятки в ряд. */
       #admin button {
@@ -842,6 +844,10 @@
     <div id="admin" hidden>
       <h2>Служебное меню</h2>
       <div id="adminHours"></div>
+      <div class="row">
+        <input id="adminTeleport" type="text" placeholder="Телепорт: x, y, z или x, z" />
+        <button id="adminTeleportGo">Перенести</button>
+      </div>
       <div class="row">
         <input id="adminSearch" type="text" placeholder="Поиск предмета" />
         <input id="adminCount" type="number" min="1" max="999" value="1" />

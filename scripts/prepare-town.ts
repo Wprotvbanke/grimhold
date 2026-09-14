@@ -16,7 +16,8 @@
  */
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRMaterialsUnlit } from '@gltf-transform/extensions';
-import { dedup, draco, flatten, getBounds, join, prune, textureCompress, weld } from '@gltf-transform/functions';
+import { dedup, draco, flatten, getBounds, join, prune, simplify, textureCompress, weld } from '@gltf-transform/functions';
+import { MeshoptSimplifier } from 'meshoptimizer';
 import draco3d from 'draco3dgltf';
 import sharp from 'sharp';
 import { statSync } from 'node:fs';
@@ -50,6 +51,14 @@ interface ModelSpec {
    * выгрузке пришли только рельеф и затенение — без этого он белый, как гипс.
    */
   tint?: [number, number, number];
+  /**
+   * С анимацией: иерархию не плющить и сетки не сливать. Кости и узлы,
+   * которые двигает клип, живут в своей иерархии — сплющи её, и крыса
+   * поедет без скелета, а крышка люка перестанет открываться.
+   */
+  animated?: boolean;
+  /** Доля треугольников, которую оставить (meshoptimizer). */
+  simplifyTo?: number;
 }
 
 const HOUSES = `${DESKTOP}/houses`;
@@ -75,6 +84,16 @@ const MODELS: ModelSpec[] = [
   { source: `${HOUSES}/house_tiny.glb`, output: 'house_tiny.glb', normalize: {} },
   // Повозка висела в четырёх метрах над землёй и в шести сбоку от начала.
   { source: `${HOUSES}/shop_on_wheels.glb`, output: 'wagon.glb', normalize: {} },
+
+  // Люк в подземелье за лавкой на колёсах: крышка открывается клипом.
+  { source: `${DESKTOP}/Trapdoor/trapdoor.glb`, output: 'trapdoor.glb', normalize: {}, animated: true },
+  // Туман из люка: пять полупрозрачных слоёв в 7 м шириной. Размер и высоту
+  // над рамой задаёт houses.ts, слои кружит там же — клип в модели почти стоит.
+  { source: `${DESKTOP}/fog/new-fog.glb`, output: 'trapdoor_fog.glb', keepParts: true },
+  // Король крыс — облик хозяина глубины. 130 тысяч треугольников на одного
+  // моба — в пять раз больше, чем нужно в полумраке зала. Размер задаёт игра
+  // по росту босса (MOBS), здесь не трогаем.
+  { source: `${DESKTOP}/Rat_Boss/rat.glb`, output: 'rat_king.glb', animated: true, simplifyTo: 0.2 },
 ];
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(2)} МБ`;
@@ -84,7 +103,9 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
   'draco3d.decoder': await draco3d.createDecoderModule(),
 });
 
-for (const { source, output, normalize, keepParts, tint } of MODELS) {
+await MeshoptSimplifier.ready;
+
+for (const { source, output, normalize, keepParts, tint, animated, simplifyTo } of MODELS) {
   const input = source;
   const target = resolve(OUTPUT, output);
   const document = await io.read(input);
@@ -132,11 +153,13 @@ for (const { source, output, normalize, keepParts, tint } of MODELS) {
   }
 
   await document.transform(
-    // Иерархия автора ни к чему: здание целиком стоит на месте.
-    flatten(),
+    // Иерархия автора ни к чему: здание целиком стоит на месте. У анимированных
+    // — нужна: по ней идут кости и клип.
+    ...(animated ? [] : [flatten()]),
     weld(),
+    ...(simplifyTo ? [simplify({ simplifier: MeshoptSimplifier, ratio: simplifyTo, error: 0.01 })] : []),
     // Сетки с одним материалом — в одну: вызов отрисовки на материал, а не на доску.
-    ...(keepParts ? [] : [join()]),
+    ...(keepParts || animated ? [] : [join()]),
     dedup(),
     prune(),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024] }),
