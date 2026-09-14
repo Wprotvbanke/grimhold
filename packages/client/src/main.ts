@@ -319,6 +319,7 @@ const controls = new Controls(renderer.domElement, {
     // E — единственная клавиша взаимодействия. У казны она открывает сундук,
     // в лесу бьёт по ноде: игроку не нужно помнить две.
     if (aimedPlace === 'vault') {
+      opening = 'vault';
       connection.send({ t: 'openBank' });
       return;
     }
@@ -335,6 +336,7 @@ const controls = new Controls(renderer.domElement, {
       return;
     }
     if (aimedBag) {
+      opening = 'bag';
       connection.send({ t: 'openBag', bagId: aimedBag });
       return;
     }
@@ -448,9 +450,13 @@ const connection = new Connection(SERVER_URL, {
     if (message.note) ui.system(message.note);
   },
   onBank: (message) => {
-    // Казна открывается тем же люком, что и спуск в подземелье. Только
-    // на открытии: переложенная вещь присылает казну заново.
-    if (message.open && !bankOpen) sound.play('transition');
+    // Казна открывается тем же люком, что и спуск в подземелье, мешок
+    // павшего — как свой рюкзак. Только на открытии: переложенная вещь
+    // присылает хранилище заново.
+    if (message.open && !bankOpen) {
+      sound.play(opening === 'bag' ? 'backpack' : 'transition');
+      opening = null;
+    }
     bankOpen = message.open;
     // Сундук открывают из мира: курсор надо вернуть до того, как рисовать
     // казну, иначе панель видно, а взять из неё нечем.
@@ -1039,6 +1045,14 @@ renderer.setAnimationLoop((frameTime: number) => {
 let aimedNode: string | null = null;
 /** Открыт ли сундук казны. Ответ приходит с сервера, клиент его не решает. */
 let bankOpen = false;
+/**
+ * Что игрок просил открыть последним: казну или мешок павшего.
+ *
+ * Сервер открывает оба одним сообщением `bank`, а звучать они должны
+ * по-разному: казна — люком, мешок — как свой рюкзак. Отличить их можно
+ * только по тому, что просили.
+ */
+let opening: 'vault' | 'bag' | null = null;
 /** Внизу ли игрок. От этого зависит, что предлагает клавиша взаимодействия. */
 let undergroundNow = false;
 /** На что нацелен игрок из рукотворного: казна, спуск, портал, лестница. */
