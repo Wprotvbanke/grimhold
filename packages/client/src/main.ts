@@ -817,7 +817,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     }
 
     // 2. Свежий снапшот поправляет предсказание и кормит интерполяцию.
-    consumeSnapshot(now);
+    consumeSnapshot();
 
     // 3. Камера идёт по предсказанию с затухающей поправкой.
     game.predictor.renderPosition(dt, renderPos);
@@ -1238,28 +1238,48 @@ function updateNodeHint(x: number, z: number): void {
   ui.setNodeHint(profile.name, profile.tool ? (TOOL_NAMES[profile.tool] ?? profile.tool) : null, ready);
 }
 
-function consumeSnapshot(now: number): void {
-  const snapshot = connection.latestSnapshot;
-  if (!game || !snapshot || snapshot.tick === lastSnapshotTick) return;
-  lastSnapshotTick = snapshot.tick;
+/**
+ * Разбирает **все** пришедшие снапшоты, а не последний.
+ *
+ * Опознание сущности едет ровно один раз — в том снапшоте, где она впервые
+ * попала в поле зрения. Пока кадр брал только свежий, любой кадр длиннее
+ * пятидесяти миллисекунд выбрасывал снапшот целиком, и если в нём ехало
+ * представление, сущность оставалась безымянной **навсегда**: сервер второй
+ * раз не представляет, пока она не выйдет из радиуса и не вернётся. Моб при
+ * этом жив, ходит и бьёт — просто его не рисуют, а появляется он потом
+ * в неожиданном месте, когда представление наконец доедет.
+ *
+ * Состояние мира берём из самого свежего — оно про «сейчас». Сущности
+ * и выборки интерполяции — из каждого: пропущенный снапшот это и пропущенное
+ * имя, и дырка в дорожке движения.
+ */
+function consumeSnapshot(): void {
+  if (!game) return;
+  const pending = connection.takeSnapshots();
+  const newest = pending[pending.length - 1]?.message;
+  if (!newest || newest.tick === lastSnapshotTick) return;
+  lastSnapshotTick = newest.tick;
 
-  game.predictor.reconcile(snapshot.self, snapshot.ack);
-  combatUi.updateVitals(snapshot.self);
+  game.predictor.reconcile(newest.self, newest.ack);
+  combatUi.updateVitals(newest.self);
   // Выработанные ноды: клиент знает про них всё, кроме того, взяли ли с них
   // урожай, — это единственное, что приходит с сервера.
-  world.nodes.setDepleted(snapshot.depletedNodes);
+  world.nodes.setDepleted(newest.depletedNodes);
   // Вскрытые сундуки — те же исключения, что и выработанные ноды: всё
   // остальное про них клиент считает сам.
   openedChests.clear();
-  for (const id of snapshot.openedChests) openedChests.add(id);
+  for (const id of newest.openedChests) openedChests.add(id);
 
   const seen = new Set<string>();
-  for (const raw of snapshot.entities) {
-    if (raw.id === connection.playerId) continue;
-    const entity = identify(raw);
-    if (!entity) continue;
-    seen.add(entity.id);
-    ensureAvatar(entity).interpolator.push(entity, now);
+  for (const { message, at } of pending) {
+    for (const raw of message.entities) {
+      if (raw.id === connection.playerId) continue;
+      const entity = identify(raw);
+      if (!entity) continue;
+      // Убирать будем по свежему снапшоту: в прошлых мог быть тот, кто уже ушёл.
+      if (message === newest) seen.add(entity.id);
+      ensureAvatar(entity).interpolator.push(entity, at);
+    }
   }
 
   for (const [id, avatar] of avatars) {
@@ -1269,8 +1289,8 @@ function consumeSnapshot(now: number): void {
     avatars.delete(id);
   }
 
-  syncProjectiles(snapshot.projectiles);
-  syncBags(snapshot.bags);
+  syncProjectiles(newest.projectiles);
+  syncBags(newest.bags);
 }
 
 /**

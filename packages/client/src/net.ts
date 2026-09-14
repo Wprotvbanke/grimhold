@@ -48,10 +48,30 @@ export interface ConnectionHandlers {
 /** Перезапуск сервера при разработке — норма, поэтому клиент переподключается сам. */
 const RECONNECT_DELAY_MS = 1000;
 
+/** Сколько снапшотов ждут разбора. Три секунды при двадцати в секунду. */
+const SNAPSHOT_BACKLOG = 60;
+
 export class Connection {
   status: ConnectionStatus = 'connecting';
   playerId: string | null = null;
   latestSnapshot: SnapshotMessage | null = null;
+
+  /**
+   * Пришедшие снапшоты в порядке прихода.
+   *
+   * Одного «последнего» мало, и это стоило невидимых сущностей. Опознание —
+   * имя, вид, порода — едет **ровно один раз**, в том снапшоте, где сущность
+   * впервые попала в поле зрения. Кадр длиннее пятидесяти миллисекунд
+   * пропускает снапшот целиком, и если пропущен был именно тот, клиент уже
+   * никогда не узнает, кто это: сервер второй раз не представляет, пока
+   * сущность не выйдет из радиуса и не вернётся. Моб при этом жив, бьёт
+   * и ходит — просто его не рисуют.
+   *
+   * Поэтому снапшоты копятся, а кадр разбирает их все подряд. Время прихода
+   * хранится рядом: интерполяции важно, **когда** пришла каждая выборка,
+   * а не когда её разобрали.
+   */
+  private readonly snapshots: { message: SnapshotMessage; at: number }[] = [];
 
   private socket!: WebSocket;
 
@@ -85,6 +105,10 @@ export class Connection {
           break;
         case 'snapshot':
           this.latestSnapshot = message;
+          this.snapshots.push({ message, at: performance.now() });
+          // Предел на случай, когда вкладка ушла в фон и кадров нет вовсе:
+          // разбирать минуту прошлого бессмысленно, а память копить незачем.
+          if (this.snapshots.length > SNAPSHOT_BACKLOG) this.snapshots.shift();
           break;
         case 'chatMessage':
           this.handlers.onChat?.(message);
@@ -138,11 +162,22 @@ export class Connection {
       this.status = 'offline';
       this.playerId = null;
       this.latestSnapshot = null;
+      this.snapshots.length = 0;
       this.handlers.onDisconnected?.();
       setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
     });
 
     this.socket.addEventListener('error', () => this.socket.close());
+  }
+
+  /**
+   * Забирает накопленные снапшоты и очищает очередь.
+   *
+   * Отдаёт их **все**, а не последний: в пропущенном мог ехать единственный
+   * раз, когда сервер называл сущность по имени.
+   */
+  takeSnapshots(): { message: SnapshotMessage; at: number }[] {
+    return this.snapshots.splice(0, this.snapshots.length);
   }
 
   send(message: ClientMessage): void {
