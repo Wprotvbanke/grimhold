@@ -51,7 +51,7 @@ export const SOUNDS = {
    * ставить щит, а во мгле его не видно.
    */
   swing: {
-    files: ['knifeSlice.ogg', 'knifeSlice2.ogg'],
+    files: ['swish_1.wav', 'swish_3.wav', 'swish_5.wav', 'swish_10.wav'],
     volume: 0.45,
     positional: true,
     near: 2,
@@ -91,6 +91,27 @@ export const SOUNDS = {
   stepStone: { files: five('footstep_concrete'), volume: 0.5, positional: true, near: 1.5, far: 20, detune: 0.08 },
   /** Шаги по траве и грунту диких земель. */
   stepGrass: { files: five('footstep_grass'), volume: 0.5, positional: true, near: 1.5, far: 20, detune: 0.08 },
+
+  /**
+   * Хозяин глубины пал.
+   *
+   * Плоский, а не из точки: сигнал один на весь забег, и слышать его обязан
+   * каждый — и тот, кто рубил, и тот, кто тремя этажами выше роется в сундуке.
+   */
+  gong: { files: five('impactBell_heavy'), volume: 0.9, positional: false },
+  /** Порталы закрылись по времени — тяжёлый скрип. Опоздавшему остаётся смерть. */
+  portalClose: { files: ['creak1.ogg', 'creak2.ogg', 'creak3.ogg'], volume: 0.7, positional: false },
+  /** Переезд: спуск, лестница, портал, воскрешение. */
+  transition: { files: ['doorOpen_1.ogg', 'doorOpen_2.ogg'], volume: 0.6, positional: false },
+  /** Выдохся — отдышка. Слышно раньше, чем заметно по ногам. */
+  breath: { files: ['breathing_tired.ogg'], volume: 0.6, positional: false },
+  /** Свой огонь в руке — треск петлёй, пока горит. */
+  torch: { files: ['fire_crackle.ogg'], volume: 0.35, positional: false },
+
+  /** Фон подземелья: гул и капель. Петлёй, на своей громкости. */
+  ambDungeon: { files: ['dungeon_ambient.ogg'], volume: 0.7, positional: false },
+  /** Фон диких земель: ветер. Тише подземелья — открытое место. */
+  ambWild: { files: ['wind_loop.ogg'], volume: 0.35, positional: false },
 } satisfies Record<string, SoundDef>;
 
 export type SoundId = keyof typeof SOUNDS;
@@ -105,9 +126,18 @@ const ROOT = '/sounds/';
  * (docs/performance.md): узел панорамы на каждое событие стоит процессора,
  * а толпа мобов рядом дала бы их сотню. Заняты все — забирается самый старый:
  * он уже отзвучал больше других.
+ *
+ * Петли и фон — **в своих голосах**, отдельно от коротких звуков: иначе
+ * треск факела однажды забрал бы голос у удара, а удар — у треска.
  */
 const POSITIONAL_VOICES = 16;
 const FLAT_VOICES = 4;
+const LOOP_VOICES = 2;
+/** Два голоса фона: старый уходит, новый приходит, и они звучат вместе. */
+const AMBIENCE_VOICES = 2;
+
+/** За сколько секунд фон уходит и приходит при смене места. */
+const AMBIENCE_FADE = 1.5;
 
 /**
  * Пул голосов. Без WebAudio: голос тут — что угодно, лишь бы знать, свободен ли.
@@ -171,6 +201,11 @@ export interface SoundApi {
    * звуком, но звучат по-разному.
    */
   play(id: SoundId, at?: Place, gain?: number): void;
+  /** Зациклить плоский звук под именем. Уже звучит под этим именем — ничего. */
+  startLoop(key: string, id: SoundId): void;
+  stopLoop(key: string): void;
+  /** Сменить фон. `null` — тишина. Тот же фон — ничего не происходит. */
+  setAmbience(id: SoundId | null): void;
   setVolumes(settings: { volume: number; ambience: number }): void;
 }
 
@@ -203,20 +238,16 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
     else wake();
   });
 
+  /**
+   * Своя шина у фона.
+   *
+   * Громкость фона в F1 отдельная от общей, и держится она не на каждом
+   * голосе, а одним узлом, через который фон идёт к слушателю.
+   */
+  const ambienceBus = context.createGain();
+  ambienceBus.connect(listener.getInput());
+
   const buffers = new Map<string, AudioBuffer>();
-  const loader = new THREE.AudioLoader();
-  for (const def of Object.values(SOUNDS) as SoundDef[]) {
-    for (const file of def.files) {
-      if (buffers.has(file)) continue;
-      loader.load(
-        ROOT + file,
-        (buffer) => buffers.set(file, buffer),
-        undefined,
-        // Пропавший файл — это тишина, а не упавшая игра. Скажем один раз.
-        () => console.warn(`[звук] не загрузился ${file}`),
-      );
-    }
-  }
 
   const flat = new VoicePool(FLAT_VOICES, () => new THREE.Audio(listener), (v) => !v.isPlaying);
   const positional = new VoicePool(
@@ -231,15 +262,71 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
     },
     (v) => !v.isPlaying,
   );
+  const loopVoices = Array.from({ length: LOOP_VOICES }, () => new THREE.Audio(listener));
+  const loops = new Map<string, THREE.Audio>();
+  const ambienceVoices = Array.from({ length: AMBIENCE_VOICES }, () => {
+    const voice = new THREE.Audio(listener);
+    voice.gain.disconnect();
+    voice.gain.connect(ambienceBus);
+    return voice;
+  });
+
+  /** Какой фон хотят и какой голос его играет. */
+  let ambience: SoundId | null = null;
+  let ambienceVoice: THREE.Audio | null = null;
 
   const heard = new THREE.Vector3();
+
+  function pick(id: SoundId): AudioBuffer | null {
+    const def: SoundDef = SOUNDS[id];
+    const variants = def.files.filter((file) => buffers.has(file));
+    if (variants.length === 0) return null;
+    return buffers.get(variants[Math.floor(Math.random() * variants.length)]!)!;
+  }
+
+  /**
+   * Запускает фон, который хотят сейчас.
+   *
+   * Зовётся и из `setAmbience`, и когда доехал файл: место спрашивают
+   * на первом же кадре, а файл фона самый тяжёлый и приезжает последним.
+   * Не запусти его по приезде — будет тишина до следующей смены места.
+   */
+  function startAmbience(): void {
+    if (!ambience || ambienceVoice) return;
+    const buffer = pick(ambience);
+    if (!buffer) return;
+    const voice = ambienceVoices.find((candidate) => !candidate.isPlaying) ?? ambienceVoices[0]!;
+    if (voice.isPlaying) voice.stop();
+    voice.setBuffer(buffer);
+    voice.setLoop(true);
+    voice.setVolume(0);
+    voice.play();
+    voice.gain.gain.setTargetAtTime(SOUNDS[ambience].volume, context.currentTime, AMBIENCE_FADE / 3);
+    ambienceVoice = voice;
+  }
+
+  const loader = new THREE.AudioLoader();
+  for (const def of Object.values(SOUNDS) as SoundDef[]) {
+    for (const file of def.files) {
+      if (buffers.has(file)) continue;
+      loader.load(
+        ROOT + file,
+        (buffer) => {
+          buffers.set(file, buffer);
+          startAmbience();
+        },
+        undefined,
+        // Пропавший файл — это тишина, а не упавшая игра. Скажем один раз.
+        () => console.warn(`[звук] не загрузился ${file}`),
+      );
+    }
+  }
 
   return {
     play(id, at, gain = 1) {
       const def: SoundDef = SOUNDS[id];
-      const variants = def.files.filter((file) => buffers.has(file));
-      if (variants.length === 0) return;
-      const buffer = buffers.get(variants[Math.floor(Math.random() * variants.length)]!)!;
+      const buffer = pick(id);
+      if (!buffer) return;
 
       let voice: THREE.Audio<GainNode | PannerNode>;
       if (def.positional && at) {
@@ -263,8 +350,52 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
       voice.play();
     },
 
-    setVolumes({ volume }) {
+    startLoop(key, id) {
+      if (loops.has(key)) return;
+      const buffer = pick(id);
+      if (!buffer) return;
+      // Голосов петель мало намеренно: занятые — значит новая петля молчит,
+      // а не отнимает голос у той, что уже звучит.
+      const voice = loopVoices.find((candidate) => !candidate.isPlaying);
+      if (!voice) return;
+      voice.setBuffer(buffer);
+      voice.setLoop(true);
+      voice.setVolume(SOUNDS[id].volume);
+      voice.play();
+      loops.set(key, voice);
+    },
+
+    stopLoop(key) {
+      const voice = loops.get(key);
+      if (!voice) return;
+      if (voice.isPlaying) voice.stop();
+      loops.delete(key);
+    },
+
+    setAmbience(id) {
+      if (id === ambience) return;
+      ambience = id;
+
+      /**
+       * Старый фон уходит плавно, а не обрывается.
+       *
+       * Щелчок смены фона на границе ворот читается как поломка звука;
+       * полторы секунды наложения — как перемена места.
+       */
+      const leaving = ambienceVoice;
+      ambienceVoice = null;
+      if (leaving) {
+        leaving.gain.gain.setTargetAtTime(0, context.currentTime, AMBIENCE_FADE / 3);
+        setTimeout(() => {
+          if (leaving !== ambienceVoice && leaving.isPlaying) leaving.stop();
+        }, AMBIENCE_FADE * 1000 * 1.5);
+      }
+      startAmbience();
+    },
+
+    setVolumes({ volume, ambience: level }) {
       listener.setMasterVolume(volume);
+      ambienceBus.gain.value = level;
     },
   };
 }

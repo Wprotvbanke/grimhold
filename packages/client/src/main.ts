@@ -68,6 +68,7 @@ import { createSettings, loadSettings } from './settings.js';
 import { createSound } from './sound.js';
 import { createCues } from './cues.js';
 import { createSteps, surfaceAt, type Walker } from './steps.js';
+import { createAtmosphere } from './atmosphere.js';
 import { Ui } from './ui.js';
 import { ViewModel } from './viewmodel.js';
 
@@ -161,6 +162,9 @@ const walkers: Walker[] = [];
 
 /** Дальше этого чужие шаги не слышны — и голоса не просят. */
 const STEP_RANGE = 20;
+
+/** Звуки вылазки: фон по месту, свой огонь, гонг хозяина глубины, порталы, отдышка. */
+const atmosphere = createAtmosphere(sound);
 
 /** Всё, что появляется только после входа в мир конкретным персонажем. */
 interface GameSession {
@@ -381,6 +385,8 @@ const connection = new Connection(SERVER_URL, {
       combatUi.showDeath(message.killerName, message.respawnIn ?? 0);
       ui.setResumeHint(false);
       document.exitPointerLock();
+      // Факел гаснет вместе с жизнью — и его треск тоже, не дожидаясь снапшота.
+      atmosphere.died();
     } else {
       combatUi.hideDeath();
       // Захват мыши уже запрошен при клике по кнопке. Если браузер его не дал,
@@ -461,6 +467,9 @@ const connection = new Connection(SERVER_URL, {
       game.predictor.teleport(message.spawn);
       world.streamChunks(message.spawn.x, message.spawn.z);
     }
+    // Переезд слышен — спуск, лестница, портал, воскрешение. И звуки забывают
+    // прошлый мир: жив ли там был хозяин глубины, к новому отношения не имеет.
+    atmosphere.moved();
     undergroundNow = message.instanceId !== 'overworld';
     dungeonSeedNow = isDungeon(message.instanceId) ? dungeonSeed(message.instanceId) : null;
     // Чужой забег к новому отношения не имеет: список вскрытого придёт заново.
@@ -932,6 +941,10 @@ renderer.setAnimationLoop((frameTime: number) => {
         surfaceAt(renderPos.x, renderPos.z, undergroundNow),
       );
     }
+
+    // Фон по месту: спрашивать каждый кадр дёшево, а меняется он только
+    // на смене — у ворот, на спуске, на выходе.
+    atmosphere.where(renderPos.x, renderPos.z, undergroundNow);
   } else {
     // Пока идёт вход — медленный облёт города вместо чёрного экрана.
     world.streamChunks(0, 0);
@@ -1346,6 +1359,10 @@ function consumeSnapshot(): void {
   // «замахивается» он повторяет двадцать раз в секунду, а звук нужен один.
   cues.entities(newest.entities, connection.playerId);
   cues.projectiles(newest.projectiles);
+
+  // Переходы вылазки — гонг, закрытие порталов, отдышка, свой огонь — тоже
+  // по свежему снапшоту: звучит смена, а не состояние.
+  atmosphere.self(newest.self, offHandItem === 'torch');
 }
 
 /**

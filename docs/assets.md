@@ -15,6 +15,11 @@
 | `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com) | CC0 |
 | `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
 | `public/sounds/*.ogg` | Kenney: [Interface Sounds](https://kenney.nl/assets/interface-sounds), [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio); лицензии рядом, `LICENSE-kenney-*.txt` | CC0 |
+| `public/sounds/dungeon_ambient.ogg` | [Loopable Dungeon Ambience](https://opengameart.org/content/loopable-dungeon-ambience), OpenGameArt | CC0 |
+| `public/sounds/wind_loop.ogg` | [wind whoosh loop](https://opengameart.org/content/wind-whoosh-loop), OpenGameArt | CC0 |
+| `public/sounds/fire_crackle.ogg` | [Fire Crackling](https://opengameart.org/content/fire-crackling), OpenGameArt | CC0 |
+| `public/sounds/breathing_tired.ogg` | [Breathing Tired](https://opengameart.org/content/breathing-tired), OpenGameArt | CC0 |
+| `public/sounds/swish_*.wav` | [Swishes Sound Pack](https://opengameart.org/content/swishes-sound-pack), OpenGameArt; `.wav` оставлен как есть — конвертера под рукой не было, а файлы по сорок килобайт | CC0 |
 | `public/draco/*` | декодер Draco из пакета three | Apache 2.0 |
 | `public/models/skeleton_human.glb` | от владельца проекта, обработан `scripts/prepare-skeleton.ts` | уточнить |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
