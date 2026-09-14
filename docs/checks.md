@@ -11,6 +11,11 @@
 npm run e2e · combat · pvp · dungeon · inventory · harvest · craft · bank · trade · netcode · gate
 ```
 
+**Все юнит-тесты разом падают с `Cannot read properties of undefined
+(reading 'config')`** — это не код, а буква диска. Запущенный из `D:\project1`
+вместо `d:\project1` vitest грузит модули дважды под разными путями.
+Перейти в `d:\project1` и запустить заново.
+
 ## Ждать факта, а не паузы
 
 Главное правило, и оно выведено из провалов, которые «не воспроизводятся».

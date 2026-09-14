@@ -445,6 +445,9 @@ const connection = new Connection(SERVER_URL, {
     if (message.note) ui.system(message.note);
   },
   onBank: (message) => {
+    // Казна открывается тем же люком, что и спуск в подземелье. Только
+    // на открытии: переложенная вещь присылает казну заново.
+    if (message.open && !bankOpen) sound.play('transition');
     bankOpen = message.open;
     // Сундук открывают из мира: курсор надо вернуть до того, как рисовать
     // казну, иначе панель видно, а взять из неё нечем.
@@ -493,6 +496,7 @@ const connection = new Connection(SERVER_URL, {
     dungeonSeedNow = isDungeon(message.instanceId) ? dungeonSeed(message.instanceId) : null;
     // Чужой забег к новому отношения не имеет: список вскрытого придёт заново.
     openedChests.clear();
+    chestsKnown = false;
     aimedChest = null;
     syncBags([]);
     // Сервер представит всех заново: память о знакомых относилась к прежнему
@@ -574,6 +578,8 @@ function toggleInventory(): void {
     return;
   }
 
+  // Звучит только открытие по клавише: казна и обмен звучат по-своему.
+  sound.play('backpack');
   openInventory();
 }
 
@@ -1044,6 +1050,11 @@ let aimedChest: string | null = null;
 let dungeonSeedNow: number | null = null;
 /** Вскрытые сундуки: приходят снапшотом, как выработанные ноды. */
 const openedChests = new Set<string>();
+/**
+ * Пришёл ли уже список вскрытых в этом мире. Первый список — это то, что
+ * вскрыли до тебя, и крышки звучать не должны: для тебя ничего не случилось.
+ */
+let chestsKnown = false;
 /** Мешки павших: что видно на полу, то и приходит в снапшоте. */
 const bags = new Map<string, { mesh: THREE.Object3D; x: number; y: number; z: number }>();
 /** Мешок под перекрестием. */
@@ -1355,6 +1366,15 @@ function consumeSnapshot(): void {
   world.nodes.setDepleted(newest.depletedNodes);
   // Вскрытые сундуки — те же исключения, что и выработанные ноды: всё
   // остальное про них клиент считает сам.
+  // Новый в списке — крышка откинулась: слышно из точки, и соседу тоже.
+  if (chestsKnown && dungeonSeedNow !== null) {
+    for (const id of newest.openedChests) {
+      if (openedChests.has(id)) continue;
+      const chest = dungeonChests(dungeonSeedNow).find((candidate) => candidate.id === id);
+      if (chest) sound.play('chestOpen', { x: chest.x, y: CHEST_HEIGHT, z: chest.z });
+    }
+  }
+  chestsKnown = true;
   openedChests.clear();
   for (const id of newest.openedChests) openedChests.add(id);
 

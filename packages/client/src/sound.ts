@@ -33,7 +33,17 @@ interface SoundDef {
   far?: number;
   /** Разброс высоты, доля: 0.08 — плюс-минус восемь процентов. */
   detune?: number;
+  /**
+   * Срез верхов, герцы: выше этой частоты звук глохнет.
+   *
+   * Резкость звука живёт в верхах — щелчок подошвы, скрип. Срез делает
+   * звук мягче, не меняя его сути, и не требует искать новый файл.
+   */
+  lowpass?: number;
 }
+
+/** Срез выше слышимого — фильтр есть, но звук не трогает. */
+const OPEN_FILTER = 20000;
 
 /** Пять вариантов одного звука: `name_000.ogg` … `name_004.ogg`, как у Kenney. */
 function five(name: string): string[] {
@@ -87,10 +97,30 @@ export const SOUNDS = {
    *
    * Слышны на двадцать метров — дальше, чем видно во мгле. Это и есть смысл:
    * шаги за стеной предупреждают раньше, чем из темноты выйдет тот, кто идёт.
+   *
+   * Сначала звучал шаг по бетону — жёсткий щелчок подошвы, на слух «грубо».
+   * Теперь мягкий кожаный шаг из RPG-пакета с десятью вариантами и срезанными
+   * верхами: шаг глухой, как в сапогах по камню, а не каблуком по плитке.
    */
-  stepStone: { files: five('footstep_concrete'), volume: 0.25, positional: true, near: 1.5, far: 20, detune: 0.08 },
-  /** Шаги по траве и грунту диких земель. Вдвое тише первоначального — на слух шаги заглушали всё. */
-  stepGrass: { files: five('footstep_grass'), volume: 0.25, positional: true, near: 1.5, far: 20, detune: 0.08 },
+  stepStone: {
+    files: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) => `footstep0${index}.ogg`),
+    volume: 0.25,
+    positional: true,
+    near: 1.5,
+    far: 20,
+    detune: 0.08,
+    lowpass: 1800,
+  },
+  /** Шаги по траве и грунту диких земель. Вдвое тише первоначального и без верхов. */
+  stepGrass: {
+    files: five('footstep_grass'),
+    volume: 0.25,
+    positional: true,
+    near: 1.5,
+    far: 20,
+    detune: 0.08,
+    lowpass: 2400,
+  },
 
   /**
    * Хозяин глубины пал.
@@ -101,8 +131,29 @@ export const SOUNDS = {
   gong: { files: five('impactBell_heavy'), volume: 0.9, positional: false },
   /** Порталы закрылись по времени — тяжёлый скрип. Опоздавшему остаётся смерть. */
   portalClose: { files: ['creak1.ogg', 'creak2.ogg', 'creak3.ogg'], volume: 0.7, positional: false },
-  /** Переезд: спуск, лестница, портал, воскрешение. */
+  /**
+   * Люк: спуск, лестница, портал, воскрешение — и казна.
+   *
+   * Казна звучит тем же люком намеренно: это тоже тяжёлая крышка, за которой
+   * лежит твоё, и владелец хочет слышать её так же.
+   */
   transition: { files: ['doorOpen_1.ogg', 'doorOpen_2.ogg'], volume: 0.6, positional: false },
+  /**
+   * Сундук поддался — крышка открылась.
+   *
+   * Тот же люк, но из точки: откинутую крышку слышит и сосед, щелчки замка
+   * без неё обрывались ничем, и не было понятно, вскрыт ли сундук.
+   */
+  chestOpen: {
+    files: ['doorOpen_1.ogg', 'doorOpen_2.ogg'],
+    volume: 0.7,
+    positional: true,
+    near: 2,
+    far: 26,
+    detune: 0.05,
+  },
+  /** Рюкзак открыли — кожаный ремень. Закрытие молчит: оно всегда за открытием. */
+  backpack: { files: ['clothBelt.ogg', 'clothBelt2.ogg'], volume: 0.5, positional: false, detune: 0.06 },
   /** Выдохся — отдышка. Слышно раньше, чем заметно по ногам. */
   breath: { files: ['breathing_tired.ogg'], volume: 0.6, positional: false },
   /**
@@ -150,7 +201,14 @@ export const SOUNDS = {
   /** Добыча попала к тебе: монеты звенят, остальное шуршит. */
   coins: { files: ['handleCoins.ogg', 'handleCoins2.ogg'], volume: 0.6, positional: false },
   pickup: { files: ['handleSmallLeather.ogg', 'handleSmallLeather2.ogg'], volume: 0.5, positional: false },
-  skillUp: { files: ['maximize_004.ogg'], volume: 0.45, positional: false },
+  /**
+   * Навык вырос — клинок выходит из ножен.
+   *
+   * Сначала стоял интерфейсный «писк», и после каждой победы он звучал как
+   * тетрис: чужой миру звук там, где игрок сильнее всего слушает. Звук роста
+   * обязан быть из того же мира, что и удар.
+   */
+  skillUp: { files: ['drawKnife1.ogg', 'drawKnife2.ogg', 'drawKnife3.ogg'], volume: 0.4, positional: false },
 } satisfies Record<string, SoundDef>;
 
 export type SoundId = keyof typeof SOUNDS;
@@ -288,11 +346,25 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
 
   const buffers = new Map<string, AudioBuffer>();
 
-  const flat = new VoicePool(FLAT_VOICES, () => new THREE.Audio(listener), (v) => !v.isPlaying);
+  /**
+   * Каждому короткому голосу — свой срез верхов, заведённый вместе с голосом.
+   *
+   * Голос играет то шаг, то удар, поэтому фильтр не ставится и не снимается,
+   * а только двигается его частота: у звуков без среза она выше слышимого.
+   */
+  function filtered<V extends THREE.Audio<GainNode | PannerNode>>(voice: V): V {
+    const filter = context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = OPEN_FILTER;
+    voice.setFilter(filter);
+    return voice;
+  }
+
+  const flat = new VoicePool(FLAT_VOICES, () => filtered(new THREE.Audio(listener)), (v) => !v.isPlaying);
   const positional = new VoicePool(
     POSITIONAL_VOICES,
     () => {
-      const voice = new THREE.PositionalAudio(listener);
+      const voice = filtered(new THREE.PositionalAudio(listener));
       // Линейное затухание доходит до нуля ровно на дальности: так проверка
       // «слышно ли» и то, что слышно на самом деле, говорят одно и то же.
       voice.setDistanceModel('linear');
@@ -384,6 +456,7 @@ export function createSound(camera: THREE.Camera, scene: THREE.Scene): SoundApi 
       if (voice.isPlaying) voice.stop();
       voice.setBuffer(buffer);
       voice.setVolume(def.volume * gain);
+      (voice.getFilter() as BiquadFilterNode).frequency.value = def.lowpass ?? OPEN_FILTER;
       const detune = def.detune ?? 0;
       voice.setPlaybackRate(1 + (Math.random() * 2 - 1) * detune);
       voice.play();
