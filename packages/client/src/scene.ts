@@ -148,22 +148,26 @@ function surface(file: string, tint = 0xffffff, options: SurfaceOptions = {}): T
    * экрана — на камне разницы не видно, а геометрия остаётся прежней.
    *
    * ARM — три карты в одной: затенение (R), шероховатость (G), металл (B).
-   * Металл не берём: камень и дерево не блестят металлом.
+   * Берём **только затенение, и слабо**. Первая версия брала всё как есть,
+   * и владелец сразу увидел: «очень темно, и свет почти не помогает».
+   *
+   * - Затенение в three гасит весь рассеянный свет, а в подземелье и ночью
+   *   картинка на нём и держится. Карты Poly Haven гасят его на 30–50%
+   *   (у земли в среднем 0.48) — это под яркое дневное небо, не под наш мрак.
+   * - Шероховатость из карты делала мостовую и доски гладкими (0.5–0.6):
+   *   свет факела уходил в блики, которые видно под одним углом, вместо
+   *   ровного пятна. Матовые 0.95, как было, — огонь освещает, а не бликует.
    */
   const base = file.replace(/\.[a-z]+$/, '');
-  const arm = repeating(`/textures/${base}_arm.webp`);
   const relief = options.relief;
   return new THREE.MeshStandardMaterial({
     map,
     color: tint,
     normalMap: repeating(`/textures/${base}_normal.webp`),
     normalScale: new THREE.Vector2(relief, relief),
-    roughnessMap: arm,
-    // Множитель поверх карты: сама карта знает, где камень истёрт до гладкости.
-    roughness: 1,
-    aoMap: arm,
-    // Щели темнеют, но не в черноту: свет у нас и так скупой.
-    aoMapIntensity: 0.8,
+    roughness: 0.95,
+    aoMap: repeating(`/textures/${base}_arm.webp`),
+    aoMapIntensity: 0.35,
   });
 }
 
@@ -172,16 +176,17 @@ function surface(file: string, tint = 0xffffff, options: SurfaceOptions = {}): T
  * Оттенки приглушены: снимки сделаны при дневном свете, а у нас сумерки.
  */
 const MATERIALS: Record<LevelBox['kind'], THREE.Material> = {
-  // Сила рельефа подобрана на глаз: мостовая и кладка — во всю силу,
-  // земля мягче (она не камень), скала резче (у неё рельеф и есть вид).
-  floor: surface('pavement.jpg', 0xb9b4aa, { relief: 1 }),
-  ground: surface('ground.jpg', 0xa9a89c, { relief: 0.7 }),
-  wall: surface('stone.jpg', 0xb2ac9e, { relief: 1 }),
-  pillar: surface('stone.jpg', 0xc0b9a8, { relief: 1 }),
-  platform: surface('pavement.jpg', 0xa8a096, { relief: 1 }),
-  rock: surface('rock.jpg', 0x9a958b, { relief: 1.3 }),
-  ruin: surface('stone.jpg', 0x9d968a, { relief: 1 }),
-  timber: surface('planks.jpg', 0xa8998a, { relief: 0.8 }),
+  // Сила рельефа — меньше полной. Во всю силу глубокие швы кладки смотрели
+  // от факела, и заметная доля стены оставалась тёмной при любом огне.
+  // Земля мягче всех (она не камень), скала резче (у неё рельеф и есть вид).
+  floor: surface('pavement.jpg', 0xb9b4aa, { relief: 0.7 }),
+  ground: surface('ground.jpg', 0xa9a89c, { relief: 0.5 }),
+  wall: surface('stone.jpg', 0xb2ac9e, { relief: 0.6 }),
+  pillar: surface('stone.jpg', 0xc0b9a8, { relief: 0.6 }),
+  platform: surface('pavement.jpg', 0xa8a096, { relief: 0.7 }),
+  rock: surface('rock.jpg', 0x9a958b, { relief: 0.9 }),
+  ruin: surface('stone.jpg', 0x9d968a, { relief: 0.6 }),
+  timber: surface('planks.jpg', 0xa8998a, { relief: 0.5 }),
   // Постройки города — пак Kenney, см. docs/buildings.md.
   frame: surface('buildings/wall_timber_structure.png', 0xb0a893, { pixelated: true }),
   brick: surface('buildings/wall_brick_stone_center.png', 0x9fa0a2, { pixelated: true }),
@@ -189,7 +194,7 @@ const MATERIALS: Record<LevelBox['kind'], THREE.Material> = {
   shingle: surface('buildings/roof_clay_grey_center.png', 0x8d99a6, { pixelated: true }),
   // Сундук окован и темнее половиц: в полумраке зала его надо узнавать
   // с десяти шагов, иначе искать добычу приходится наощупь.
-  chest: surface('planks.jpg', 0x6b4f33, { relief: 0.8 }),
+  chest: surface('planks.jpg', 0x6b4f33, { relief: 0.5 }),
 };
 
 /**
