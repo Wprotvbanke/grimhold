@@ -115,11 +115,6 @@ const SWORD = {
   half: 0.46,
   /** Насколько рукоять утоплена в кулак вдоль хвата. */
   grip: 0.02,
-  /**
-   * Насколько клинок доворачивается к направлению пальцев: 0 — строго вдоль
-   * рукояти, 1 — полностью вперёд по кулаку. Подбирается на снимке.
-   */
-  forward: 0.45,
 };
 
 /**
@@ -441,21 +436,13 @@ export class ViewModel {
     const tipAt = local(tipBone);
 
     /** Ось рукояти: поперёк ладони, клинок выходит со стороны указательного. */
-    const grip = indexAt.clone().sub(pinkyAt).normalize();
+    const grip = indexAt.clone().sub(pinkyAt);
+    const width = grip.length();
+    grip.normalize();
     /** Вдоль пальцев — от основания указательного к его кончику. */
     const along = tipAt.clone().sub(indexAt).normalize();
     const palm = new THREE.Vector3().crossVectors(grip, along).normalize();
-
-    /**
-     * Клинок смотрит **вперёд от кулака**, а не строго вдоль рукояти.
-     *
-     * Чистая ось хвата уводила меч вниз-вправо за край кадра: кисть в стойке
-     * повёрнута, и «поперёк ладони» само по себе никуда не целится. Поэтому
-     * ось наклоняется к направлению пальцев — туда, куда смотрит кулак, —
-     * и меч ложится перед собой, как на снимке владельца.
-     */
-    const aim = grip.clone().addScaledVector(along, SWORD.forward).normalize();
-    const side = new THREE.Vector3().crossVectors(aim, palm).normalize();
+    const side = new THREE.Vector3().crossVectors(grip, palm).normalize();
 
     /**
      * Где у модели рукоять: из габаритов не видно, меч лежит вдоль X
@@ -465,7 +452,7 @@ export class ViewModel {
     const hiltSign = this.hiltSide(sword);
 
     // Клинок — вдоль хвата, плоскость клинка — поперёк ладони.
-    const basis = new THREE.Matrix4().makeBasis(aim, palm, side);
+    const basis = new THREE.Matrix4().makeBasis(grip, palm, side);
     const turn = new THREE.Quaternion().setFromRotationMatrix(basis);
     sword.quaternion.copy(turn).multiply(
       new THREE.Quaternion().setFromUnitVectors(
@@ -479,7 +466,7 @@ export class ViewModel {
     const hilt = new THREE.Vector3(hiltSign * SWORD.half * SWORD.scale, 0, 0).applyQuaternion(
       sword.quaternion,
     );
-    sword.position.copy(hilt).negate().addScaledVector(aim, -SWORD.grip);
+    sword.position.copy(hilt).negate().addScaledVector(grip, -SWORD.grip);
 
   }
 
