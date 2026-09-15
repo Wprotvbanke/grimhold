@@ -9,10 +9,8 @@ import {
   dodgeCost,
   RACES,
   WALK_SPEED,
-  itemDef,
   type ActionKind,
   type ActionPhase,
-  type ItemId,
   type Race,
 } from '@grimhold/shared';
 
@@ -93,29 +91,6 @@ const ONCE: HandsClip[] = [
 ];
 
 const MODEL_URL = '/models/hands.glb';
-
-/** Меч в правой руке — тот же файл, что носят в мире. */
-const SWORD_URL = '/models/sword.glb';
-
-/**
- * Как меч сидит в кисти.
- *
- * Модель лежит клинком вдоль +X и в метре длиной; кисть у нас — кость рига,
- * и её оси со сценой не совпадают. Числа подбираются **глазами, на снимке**:
- * замеры по костям в этой модели уже обманывали (docs/hands.md).
- */
-const SWORD = {
-  /**
-   * Руки в кадре увеличены втрое против жизни (см. `anchor`), и меч в полный
-   * рост занял бы весь экран — на первом снимке так и вышло. Доля, а не метры:
-   * масштаб кисти меч наследует сам.
-   */
-  scale: 0.43,
-  /** Половина длины меча в единицах модели: от середины до конца. */
-  half: 0.46,
-  /** Насколько рукоять утоплена в кулак вдоль хвата. */
-  grip: 0.02,
-};
 
 /**
  * Наш «вперёд» — это -Z, а модель выгружена лицом в +Z: без разворота кулак
@@ -221,11 +196,6 @@ export class ViewModel {
   private evasion = 0;
   /** Лук в руке: с ним выстрел отыгрывается своим клипом, а не ударом. */
   private bow = false;
-  /** Кисть правой руки: к ней подвешивается оружие. */
-  private rightHand: THREE.Object3D | null = null;
-  /** Модель меча. Грузится один раз, дальше только показывается и прячется. */
-  private sword: THREE.Object3D | null = null;
-  private swordLoading = false;
 
   /** Был ли игрок на земле в прошлом кадре — по смене ловим прыжок. */
   private grounded = true;
@@ -343,154 +313,6 @@ export class ViewModel {
   /** Что в основной руке. Пока важен только лук: у него своё движение. */
   setWeapon(defId: string | null): void {
     this.bow = defId === 'hunting_bow';
-
-    /**
-     * Клинок видно в руке.
-     *
-     * Показываем на любой клинок — меч, нож, топор: своя модель есть только
-     * у меча, и лучше узнаваемое оружие в руке, чем пустой кулак. Модель
-     * грузится при первой надобности: пустые руки её не ждут.
-     */
-    const blade = defId !== null && itemDef(defId as ItemId).skill === 'blade';
-    if (this.sword) this.sword.visible = blade;
-    if (blade && !this.sword && !this.swordLoading) void this.loadSword();
-  }
-
-  /** Подвешивает меч к кисти. Кисти ещё нет — ждём рига: он всегда приходит. */
-  private async loadSword(): Promise<void> {
-    if (typeof document === 'undefined') return;
-    this.swordLoading = true;
-    try {
-      const loader = new GLTFLoader();
-      const draco = new DRACOLoader();
-      draco.setDecoderPath('/draco/');
-      loader.setDRACOLoader(draco);
-      const gltf = await loader.loadAsync(SWORD_URL);
-      const model = gltf.scene;
-      model.traverse((node) => {
-        const mesh = node as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        mesh.frustumCulled = false;
-        // Тот же притушенный свет, что у рук: иначе сталь светится ярче ладони.
-        for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-          const standard = material as THREE.MeshStandardMaterial;
-          if (standard.color) standard.color.multiplyScalar(HANDS_TINT);
-        }
-      });
-      this.sword = model;
-      if (this.rightHand) {
-        this.rightHand.add(model);
-        this.fitSword();
-      }
-    } catch (error) {
-      console.warn('[руки] меч не загрузился:', error);
-    } finally {
-      this.swordLoading = false;
-    }
-  }
-
-  /**
-   * Сажает меч в кулак — по костям кисти, а не подбором углов.
-   *
-   * **Ось хвата — поперёк ладони, а не вдоль пальцев.** Сжатые пальцы
-   * образуют трубку, и рукоять лежит именно в ней: клинок выходит из кулака
-   * со стороны указательного, навершие — со стороны мизинца. Пока меч клали
-   * вдоль пальцев, он ложился поперёк кадра, будто растёт из запястья, —
-   * владелец прислал снимок, как надо.
-   *
-   * Углы не подбираются: риг развёрнут на пол-оборота, и любое предположение
-   * о знаке в этой модели уже оказывалось обратным (docs/hands.md).
-   */
-  private fitSword(): void {
-    const hand = this.rightHand;
-    const sword = this.sword;
-    if (!hand || !sword) return;
-
-    const boneIn = (pattern: RegExp): THREE.Object3D | null => {
-      let found: THREE.Object3D | null = null;
-      hand.traverse((node) => {
-        if (!found && pattern.test(node.name)) found = node;
-      });
-      return found;
-    };
-
-    const indexBone = boneIn(/^DEF-f_index01R/i);
-    const pinkyBone = boneIn(/^DEF-f_pinky01R/i);
-    const tipBone = boneIn(/^DEF-f_index03R/i) ?? boneIn(/^DEF-f_index02R/i);
-    if (!indexBone || !pinkyBone || !tipBone) return;
-
-    /**
-     * Точки берутся **мировые и переводятся в систему кисти**.
-     *
-     * Локальная `position` у этих костей несравнима: основания указательного
-     * и мизинца висят на разных костях ладони, у каждой свой ноль. Замер это
-     * и показал — между ними выходило три миллиметра, то есть шум, и ось
-     * хвата получалась случайной: меч уезжал из кадра.
-     */
-    this.rig?.updateMatrixWorld(true);
-    const local = (node: THREE.Object3D): THREE.Vector3 =>
-      hand.worldToLocal(node.getWorldPosition(new THREE.Vector3()));
-
-    const indexAt = local(indexBone);
-    const pinkyAt = local(pinkyBone);
-    const tipAt = local(tipBone);
-
-    /** Ось рукояти: поперёк ладони, клинок выходит со стороны указательного. */
-    const grip = indexAt.clone().sub(pinkyAt);
-    const width = grip.length();
-    grip.normalize();
-    /** Вдоль пальцев — от основания указательного к его кончику. */
-    const along = tipAt.clone().sub(indexAt).normalize();
-    const palm = new THREE.Vector3().crossVectors(grip, along).normalize();
-    const side = new THREE.Vector3().crossVectors(grip, palm).normalize();
-
-    /**
-     * Где у модели рукоять: из габаритов не видно, меч лежит вдоль X
-     * серединой в начале координат. Считаем по толщине металла поперёк
-     * клинка — у крестовины с навершием его больше, чем у острия.
-     */
-    const hiltSign = this.hiltSide(sword);
-
-    // Клинок — вдоль хвата, плоскость клинка — поперёк ладони.
-    const basis = new THREE.Matrix4().makeBasis(grip, palm, side);
-    const turn = new THREE.Quaternion().setFromRotationMatrix(basis);
-    sword.quaternion.copy(turn).multiply(
-      new THREE.Quaternion().setFromUnitVectors(
-        new THREE.Vector3(-hiltSign, 0, 0),
-        new THREE.Vector3(1, 0, 0),
-      ),
-    );
-    sword.scale.setScalar(SWORD.scale);
-
-    // Рукоять — в кулак: сдвигаем меч так, чтобы её конец пришёлся на кисть.
-    const hilt = new THREE.Vector3(hiltSign * SWORD.half * SWORD.scale, 0, 0).applyQuaternion(
-      sword.quaternion,
-    );
-    sword.position.copy(hilt).negate().addScaledVector(grip, -SWORD.grip);
-
-  }
-
-  /**
-   * С какой стороны у модели рукоять: +1 — при +X, −1 — при −X.
-   *
-   * Считается один раз при загрузке: вершин четыре с половиной тысячи,
-   * это доли миллисекунды.
-   */
-  private hiltSide(sword: THREE.Object3D): number {
-    let plus = 0;
-    let minus = 0;
-    sword.traverse((node) => {
-      const mesh = node as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const position = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-      for (let i = 0; i < position.count; i++) {
-        const x = position.getX(i);
-        const thickness = Math.hypot(position.getY(i), position.getZ(i));
-        if (x > 0) plus = Math.max(plus, thickness);
-        else minus = Math.max(minus, thickness);
-      }
-    });
-    return plus >= minus ? 1 : -1;
   }
 
   /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */
@@ -842,14 +664,6 @@ export class ViewModel {
       if (!fist) continue;
 
       const hand = fist as THREE.Object3D;
-      // Правая кисть — точка подвеса оружия.
-      if (side === 'R') {
-        this.rightHand = hand;
-        if (this.sword) {
-          hand.add(this.sword);
-          this.fitSword();
-        }
-      }
       const parentWorld = new THREE.Quaternion();
       (found.parent ?? found).getWorldQuaternion(parentWorld);
       const axis = new THREE.Vector3(1, 0, 0).applyQuaternion(parentWorld.invert()).normalize();

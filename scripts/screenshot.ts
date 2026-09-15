@@ -185,69 +185,6 @@ try {
    * и свитком, а снимок нужен сейчас. Идёт через служебное меню, то есть
    * теми же командами, что и у живого ведущего.
    */
-  /**
-   * `sword` — выдать железный меч и взять его в руку.
-   *
-   * Посадку оружия в кисти подбирают глазами: замеры по костям в этой модели
-   * уже обманывали (docs/hands.md).
-   */
-  if (open === 'sword') {
-    /**
-     * Ждём факта, а не паузы.
-     *
-     * Слепые паузы здесь врут: то F2 не доходит до игры, то рюкзак ещё
-     * уезжает — и снимок выходит то с открытым служебным меню, то вовсе
-     * без рук. Та же причина, по которой сквозные проверки ждут события,
-     * а не «столько, сколько обычно хватает» (docs/checks.md).
-     */
-    const hidden = (id: string) =>
-      page.waitForFunction((node: string) => document.getElementById(node)?.hasAttribute('hidden') === true, { timeout: 10000 }, id);
-    const shown = (id: string) =>
-      page.waitForFunction((node: string) => document.getElementById(node)?.hasAttribute('hidden') === false, { timeout: 10000 }, id);
-
-    await page.keyboard.press('F2');
-    await shown('admin');
-    await page.evaluate(() => {
-      const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
-      buttons.find((button) => button.textContent === 'Железный меч')?.click();
-    });
-    await wait(600);
-    /**
-     * Закрываем кнопкой, а не второй F2.
-     *
-     * Открытое служебное меню ставит курсор в поле поиска, и клавиши уходят
-     * туда: игра второго F2 не видит вовсе, а снимок выходил с раскрытым
-     * меню посреди экрана.
-     */
-    await page.click('#adminClose');
-    await hidden('admin');
-
-    await page.keyboard.press('Tab');
-    await shown('inventory');
-    await page.evaluate(() => {
-      const sword = [...document.querySelectorAll('.inv-item')].find((node) =>
-        node.textContent?.includes('Железный меч'),
-      );
-      sword?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    });
-    // Меч в слоте — значит надет; ждём этого, а не «примерно секунду».
-    await page.waitForFunction(
-      () => [...document.querySelectorAll('.slot.filled')].some((node) => node.textContent?.includes('Железный меч')),
-      { timeout: 10000 },
-    );
-
-    await page.keyboard.press('Tab');
-    await hidden('inventory');
-    /**
-     * Захват мыши: без него игра показывает подсказку «щёлкни, чтобы
-     * управлять», а руки в кадр не попадают вовсе. Щелчок по координатам,
-     * а не по элементу: окно рюкзака ещё уезжает, и puppeteer отказывался
-     * жать холст — «не кликабельно».
-     */
-    await page.mouse.click(800, 450);
-    await wait(2500);
-  }
-
   if (open === 'bow') {
     await page.keyboard.press('F2');
     await wait(600);
