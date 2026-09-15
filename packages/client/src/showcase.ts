@@ -64,7 +64,7 @@ function yawTowards(from: { x: number; z: number }, to: { x: number; z: number }
  */
 const LINES = [
   'Эта ведьма сливала что-то в канализацию, я видел!!',
-  'Я вииидел это существо! Это мало похоже на крысу...',
+  'Я вииидел это существо! Это не похоже на крысу...',
 ];
 const LINE_SECONDS = 7;
 /**

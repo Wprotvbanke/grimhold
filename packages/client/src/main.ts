@@ -71,6 +71,7 @@ import { createSteps, surfaceAt, type Walker } from './steps.js';
 import { createAtmosphere } from './atmosphere.js';
 import { createLabour, labourForWork, type Worker } from './labour.js';
 import { createShowcase } from './showcase.js';
+import { createVermin } from './vermin.js';
 import { createMusic } from './music.js';
 import { createPost } from './post.js';
 import { Ui } from './ui.js';
@@ -117,6 +118,8 @@ const world = createScene();
 const scene = world.scene;
 /** Пробная модель на площади — см. showcase.ts. */
 const showcase = createShowcase(scene);
+/** Крысы, бегущие в люк, — картинка города, см. vermin.ts. */
+const vermin = createVermin(scene);
 
 /** Лампы снарядов: пул постоянного размера, см. scene.ts. */
 const projectileLights = createProjectileLights(scene);
@@ -930,6 +933,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     // 4. Чужие рисуются в прошлом, плавно между снапшотами.
     updateAvatars(now, dt);
     showcase.update(dt, !undergroundNow, camera);
+    vermin.update(dt, !undergroundNow);
     updateNametags();
     combatUi.updateCooldowns(now);
 
