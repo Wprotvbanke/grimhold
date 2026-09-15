@@ -36,11 +36,13 @@ import {
   type ResourceNode,
   WORLD_CHUNK_RADIUS,
   dungeonSeed,
+  routeFor,
   generateDungeonChunk,
   timeOfDay,
   TICK_RATE,
   RESPAWN_FORGIVE,
   isDungeon,
+  type Vec3,
   type Attributes,
   type CharacterClass,
   type EntitySnapshot,
@@ -94,6 +96,9 @@ import type { Projectile } from './projectile.js';
  * из разных инстансов просто не попадают в снапшоты друг друга.
  */
 export type InstanceId = string;
+
+/** Как часто мобу пересчитывают дорогу по комнатам, в секундах. */
+const ROUTE_REFRESH = 0.5;
 
 export const OVERWORLD: InstanceId = 'overworld';
 
@@ -709,13 +714,29 @@ export class World {
     // лестницы, и от портала, иначе бой начинался бы с порога.
     const lair = floorCenter(BOSS_FLOOR);
     const arrival = floorArrival(BOSS_FLOOR);
-    const spot = findFreeSpot(terrain, lair.x, lair.z, random, {
-      spread: CHUNK_SIZE - 24,
-      // Тридцать метров, а не двадцать два: на первом этаже в том же углу
-      // стоит портал наверх, и босс у порога запирал выход собой — сквозная
-      // проверка не могла дойти до портала.
-      away: { x: arrival.x, z: arrival.z, range: 30 },
-    }) ?? { x: lair.x, y: 0.1, z: lair.z };
+    /*
+     * Место боссу ищется так же, как всем, но с двумя оговорками.
+     *
+     * Первая: не ближе тридцати метров от прихода — на первом этаже в том же
+     * углу стоит портал наверх, и босс у порога запирал выход собой.
+     * Вторая: **не сдаваться после первой попытки**. Раньше при неудаче он
+     * ставился в середину этажа без всякой проверки — то есть мог оказаться
+     * в перегородке. Лучше подпустить его ближе ко входу, чем в камень.
+     */
+    const spot =
+      findFreeSpot(terrain, lair.x, lair.z, random, {
+        spread: CHUNK_SIZE - 24,
+        away: { x: arrival.x, z: arrival.z, range: 30 },
+      }) ??
+      findFreeSpot(terrain, lair.x, lair.z, random, {
+        spread: CHUNK_SIZE - 24,
+        away: { x: arrival.x, z: arrival.z, range: 16 },
+      }) ??
+      findFreeSpot(terrain, lair.x, lair.z, random, { spread: CHUNK_SIZE - 24 }) ??
+      // Совсем не повезло со случайными бросками — обходим этаж сеткой.
+      // Бросок может не найти места и там, где оно есть; перебор не может.
+      scanFreeSpot(terrain, lair.x, lair.z);
+    if (!spot) return list.length;
     const boss = createMob(`m${this.nextId++}`, DUNGEON_BOSS, spot, instanceId);
     list.push(boss);
     this.dungeonBosses.set(instanceId, boss.id);
@@ -848,6 +869,7 @@ export class World {
       if (player.instanceId === instanceId) return;
     }
 
+    for (const mob of this.mobs.get(instanceId) ?? []) this.mobRoutes.delete(mob.id);
     this.mobs.delete(instanceId);
     this.npcs.delete(instanceId);
     this.terrain.delete(instanceId);
@@ -888,6 +910,46 @@ export class World {
       }
     }
   }
+
+  /**
+   * Куда мобу шагать, чтобы дойти до точки: середина ближайшего прохода.
+   *
+   * Наверху дорога не нужна — там открытые дикие земли, и прямая честна.
+   * Внизу этаж нарезан комнатами, и прямая почти всегда упирается
+   * в перегородку: моб из соседней комнаты всю погоню тёрся о стену
+   * напротив игрока. Связи комнат знает генератор (`routeFor` в общем коде),
+   * поэтому спрашиваем **его**, а не ищем путь заново.
+   *
+   * Дорога пересчитывается не каждый тик: комнаты не меняются, а цель
+   * за полсекунды далеко не уходит.
+   */
+  mobGuide = (mob: Mob, to: Vec3): Vec3 => {
+    if (!isDungeon(mob.instanceId)) return to;
+
+    const floor = floorOf(mob.pos.x);
+    // Цель на другом этаже — дороги туда нет: лестницами мобы не ходят.
+    if (floor !== floorOf(to.x)) return to;
+
+    const cached = this.mobRoutes.get(mob.id);
+    const fresh =
+      cached !== undefined &&
+      this.elapsed - cached.at < ROUTE_REFRESH &&
+      Math.hypot(cached.toX - to.x, cached.toZ - to.z) < 3 &&
+      Math.hypot(cached.point.x - mob.pos.x, cached.point.z - mob.pos.z) > 1.2;
+    if (fresh) return cached.point;
+
+    const route = routeFor(dungeonSeed(mob.instanceId), floor, mob.pos, to);
+    // Ближайшую дверь, до которой ещё идти: стоя в самом проходе, моб должен
+    // целиться уже в следующий, иначе он топчется в двери.
+    const next =
+      route.find((point) => Math.hypot(point.x - mob.pos.x, point.z - mob.pos.z) > 1.2) ?? to;
+    const point = { x: next.x, y: mob.pos.y, z: next.z };
+    this.mobRoutes.set(mob.id, { at: this.elapsed, toX: to.x, toZ: to.z, point });
+    return point;
+  };
+
+  /** Дорога, посчитанная мобу в прошлый раз: считать её каждый тик незачем. */
+  private readonly mobRoutes = new Map<string, { at: number; toX: number; toZ: number; point: Vec3 }>();
 
   /** Двигает моба тем же шагом симуляции, что и игроков. */
   stepMob(mob: Mob, input: MoveInput, dt: number): void {
@@ -1422,6 +1484,32 @@ function seededRandom(key: string): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * Перебор по сетке: последнее средство, когда случайные броски не нашли места.
+ *
+ * Медленнее броска, зато честно отвечает «места нет» только тогда, когда его
+ * действительно нет. Зовётся раз на забег — для босса, которому место
+ * обязано найтись: без него порталы не отпереть ничем.
+ */
+function scanFreeSpot(
+  terrain: ChunkedWorld,
+  originX: number,
+  originZ: number,
+): { x: number; y: number; z: number } | null {
+  const half = (CHUNK_SIZE - 24) / 2;
+  for (let dz = -half; dz <= half; dz += 2) {
+    for (let dx = -half; dx <= half; dx += 2) {
+      const candidate = { x: originX + dx, y: 0.1, z: originZ + dz };
+      const body = playerAabb(candidate, { radius: 0.9, height: 2.9 });
+      const blocked = terrain
+        .collidersAt(candidate.x, candidate.z)
+        .some((box) => box.maxY > 0.05 && aabbOverlap(body, box));
+      if (!blocked) return candidate;
+    }
+  }
+  return null;
 }
 
 /**

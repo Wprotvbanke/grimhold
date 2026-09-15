@@ -536,7 +536,8 @@ function tickMobs(world: World, dt: number, outbox: Outbox): void {
         lit: isLit(player),
       }));
 
-      const decision = decideMob(mob, targets, dt);
+      // Дорогу по комнатам подсказывает мир: связи знает генератор этажа.
+      const decision = decideMob(mob, targets, dt, world.mobGuide);
       world.stepMob(mob, decision.input, dt);
 
       if (!decision.strike) continue;

@@ -121,6 +121,27 @@ async function descendAgain(client: TestClient): Promise<boolean> {
 }
 
 /**
+ * Доводит до портала, сколько бы раз по дороге ни убили.
+ *
+ * Обитатели теперь **обходят перегородки** и доходят до цели, а не трутся
+ * о стену напротив: смерть по дороге к выходу стала обычным делом, и проверка
+ * падала примерно в трети запусков по совершенно честной причине. Проверяется
+ * правило выхода, а не везение ходока, — поэтому павшего поднимаем, спускаем
+ * заново и ведём снова.
+ */
+async function reachPortal(client: TestClient, attempts = 3): Promise<number> {
+  let best = Infinity;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const distance = await walkRoute(client, dungeonSeed(where(client)), DUNGEON_EXIT, 0.9);
+    best = Math.min(best, distance);
+    if (distance <= 1.6 && client.latestSnapshot?.self.alive !== false) return distance;
+    if (!(await descendAgain(client))) return best;
+    console.log('  ···  по дороге к порталу убили — спустился заново');
+  }
+  return best;
+}
+
+/**
  * Ведёт к люку в обход городской стены.
  *
  * Прямая от точки появления до люка упирается в стену города, и ходок
@@ -348,7 +369,7 @@ async function main(): Promise<void> {
 
   // Портал теперь у самого знака, и отклик у него узкий: подойти надо
   // вплотную, а не «примерно туда».
-  const toPortal = await walkRoute(digger, dungeonSeed(where(digger)), DUNGEON_EXIT, 0.9);
+  const toPortal = await reachPortal(digger);
   check(toPortal <= 1.6, 'дошли до портала', `${toPortal.toFixed(2)} м`);
 
   /**

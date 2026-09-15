@@ -2,6 +2,7 @@ import {
   CORPSE_SECONDS,
   LIT_AGGRO,
   MOBS,
+  WALK_SPEED,
   attributesFor,
   createMoveState,
   fullVitals,
@@ -20,8 +21,11 @@ import type { Combatant } from './combatant.js';
  * Двигается через тот же step(), что и игроки, поэтому коллизии, скорость
  * и работа с чанками у него уже правильные.
  *
- * Навмеша нет: моб идёт к цели напрямую и честно упирается в камни.
- * Это осознанное упрощение — вокруг открытые дикие земли, а не лабиринт.
+ * Навмеша нет. Наверху, в открытых диких землях, моб идёт к цели напрямую;
+ * под землёй дорогу по проходам подсказывает `guide` — комнаты и двери знает
+ * генератор этажа, а не тот, кто идёт. И там и там остаётся обход по факту:
+ * упёрся — пробует в сторону (см. `trackStuck`). Стен моб не «видит»:
+ * он узнаёт о них тем же способом, что живой, — попыткой пройти.
  */
 
 export type MobPhase = 'idle' | 'chase' | 'attack' | 'return' | 'flee' | 'dead';
@@ -62,6 +66,17 @@ export interface Mob extends Combatant {
   windupRemaining: number;
   /** Секунд до воскрешения после смерти. */
   respawnIn: number;
+  /**
+   * Сколько секунд моб упирается: идёт, а с места почти не двигается.
+   *
+   * Из этого рождается обход. Стены моб не «видит» — он узнаёт о них тем же
+   * способом, что и живой: попробовал пройти и не смог.
+   */
+  stuckFor: number;
+  /** Куда обходить: −1 влево, 1 вправо, 0 — прямо. */
+  sidestep: -1 | 0 | 1;
+  /** Сколько секунд ещё идти боком. */
+  sidestepFor: number;
 }
 
 const RESPAWN_SECONDS = 45;
@@ -86,6 +101,24 @@ const HARD_LEASH_SCALE = 3;
 
 /** Сколько секунд отставший моб ни на кого не смотрит. */
 const GIVE_UP_SECONDS = 6;
+
+/**
+ * Обход препятствий: моб узнаёт о стене тем, что упёрся в неё.
+ *
+ * Пути он не ищет — вокруг открытые дикие земли, а в подземелье дорогу
+ * по проходам подсказывает `guide` (см. `decideMob`). Но и подсказанная
+ * дорога упирается в угол перегородки или в валун, и тогда единственное
+ * честное поведение — попробовать в сторону, а не тереться о камень
+ * бесконечно. Так вёл себя и живой: не пролез — обошёл.
+ */
+/** Доля ожидаемого шага, ниже которой моб считается упёршимся. */
+const STUCK_SHARE = 0.35;
+/** Сколько секунд упора нужно, чтобы начать обход. */
+const STUCK_SECONDS = 0.4;
+/** Сколько секунд моб идёт боком, обходя. */
+const SIDESTEP_SECONDS = 1.1;
+/** Насколько при обходе он ещё идёт вперёд: боком, но с напором. */
+const SIDESTEP_FORWARD = 0.35;
 
 /**
  * Шанс бросить погоню на очередном метре.
@@ -216,6 +249,9 @@ export function createMob(id: string, mobId: MobId, home: Vec3, instanceId: stri
     attackCooldown: 0,
     windupRemaining: 0,
     respawnIn: 0,
+    stuckFor: 0,
+    sidestep: 0,
+    sidestepFor: 0,
   };
 }
 
@@ -238,7 +274,18 @@ export interface MobDecision {
  * Один шаг мышления моба. Чистая логика: ничего не мутирует, кроме самого моба,
  * и не знает ни о сети, ни о базе.
  */
-export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDecision {
+export function decideMob(
+  mob: Mob,
+  candidates: MobTarget[],
+  dt: number,
+  /**
+   * Куда идти, чтобы попасть в точку: в подземелье это середина ближайшего
+   * прохода, наверху — сама точка. Подземелье о себе знает само (`routeFor`
+   * в общем коде), а моб — нет, и знать не должен.
+   */
+  guide?: (mob: Mob, to: Vec3) => Vec3,
+): MobDecision {
+  const toward = (destination: Vec3): Vec3 => guide?.(mob, destination) ?? destination;
   const idle: MoveInput = {
     seq: 0,
     forward: 0,
@@ -258,8 +305,10 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
   // Путь меряем по факту, а не по скорости из профиля: моб упирается в камни
   // и заборы, и «пройденный метр» должен быть настоящим — иначе застрявший
   // у стены моб отстал бы от игрока, стоя на месте.
-  mob.chaseMetres += horizontalDistance(mob.pos, mob.lastPos);
+  const moved = horizontalDistance(mob.pos, mob.lastPos);
+  mob.chaseMetres += moved;
   mob.lastPos = { ...mob.pos };
+  trackStuck(mob, moved, dt);
 
   if (!mob.alive) {
     mob.phase = 'dead';
@@ -345,7 +394,7 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
     }
 
     mob.phase = 'chase';
-    return { input: moveToward(mob, target.pos, dt), strike: false };
+    return { input: moveToward(mob, toward(target.pos), dt), strike: false };
   }
 
   /**
@@ -358,7 +407,7 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
   if (!target && mob.rageFor > 0 && mob.hurtFrom) {
     mob.phase = 'chase';
     if (horizontalDistance(mob.pos, mob.hurtFrom) > 1.5) {
-      return { input: moveToward(mob, mob.hurtFrom, dt), strike: false };
+      return { input: moveToward(mob, toward(mob.hurtFrom), dt), strike: false };
     }
     mob.rageFor = 0;
   }
@@ -400,13 +449,13 @@ export function decideMob(mob: Mob, candidates: MobTarget[], dt: number): MobDec
   if (nearest) {
     mob.targetId = nearest.id;
     mob.phase = 'chase';
-    return { input: moveToward(mob, nearest.pos, dt), strike: false };
+    return { input: moveToward(mob, toward(nearest.pos), dt), strike: false };
   }
 
   // Никого рядом: возвращаемся домой или дремлем.
   if (distanceHome > 1.5) {
     mob.phase = 'return';
-    return { input: moveToward(mob, mob.home, dt), strike: false };
+    return { input: moveToward(mob, toward(mob.home), dt), strike: false };
   }
 
   mob.phase = 'idle';
@@ -432,6 +481,9 @@ export function tickRespawn(mob: Mob, dt: number): boolean {
   mob.chaseMetres = 0;
   mob.giveUpFor = 0;
   mob.windupRemaining = 0;
+  mob.stuckFor = 0;
+  mob.sidestep = 0;
+  mob.sidestepFor = 0;
   return true;
 }
 
@@ -455,7 +507,41 @@ export function killMob(mob: Mob): void {
 function moveToward(mob: Mob, destination: Vec3, dt: number): MoveInput {
   const yaw = yawToward(mob.pos, destination);
   mob.yaw = yaw;
-  return { seq: 0, forward: 1, right: 0, yaw, pitch: 0, jump: false, sprint: false, dt };
+  // Обходит — идёт боком, не переставая смотреть на цель: замах и удар
+  // считаются по взгляду, и разворачивать его вбок значило бы бить в стену.
+  const right = mob.sidestepFor > 0 ? mob.sidestep : 0;
+  const forward = right === 0 ? 1 : SIDESTEP_FORWARD;
+  return { seq: 0, forward, right, yaw, pitch: 0, jump: false, sprint: false, dt };
+}
+
+/**
+ * Упёрся ли моб и не пора ли обходить.
+ *
+ * Меряется по **факту**: сколько он прошёл за шаг против того, сколько должен
+ * был. Стена, валун, угол перегородки и другой моб дают одно и то же — и
+ * лечатся одинаково.
+ */
+function trackStuck(mob: Mob, moved: number, dt: number): void {
+  if (mob.sidestepFor > 0) {
+    mob.sidestepFor -= dt;
+    if (mob.sidestepFor <= 0) mob.sidestep = 0;
+    return;
+  }
+
+  const moving = mob.phase === 'chase' || mob.phase === 'return' || mob.phase === 'flee';
+  const expected = WALK_SPEED * mob.profile.speedScale * dt;
+  if (!moving || expected <= 0 || moved >= expected * STUCK_SHARE) {
+    mob.stuckFor = 0;
+    return;
+  }
+
+  mob.stuckFor += dt;
+  if (mob.stuckFor < STUCK_SECONDS) return;
+  mob.stuckFor = 0;
+  // Сторона выбирается случайно: угадать, с какой стороны короче, моб не может,
+  // а всегда одна и та же сторона запирала бы его в одном и том же углу.
+  mob.sidestep = Math.random() < 0.5 ? -1 : 1;
+  mob.sidestepFor = SIDESTEP_SECONDS;
 }
 
 /** При forward = 1 движение идёт в (-sin yaw, -cos yaw) — отсюда обратное преобразование. */
