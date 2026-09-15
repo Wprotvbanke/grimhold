@@ -359,8 +359,9 @@ describe('обитатели зала', () => {
     }
   });
 
-  it('хозяин глубины тяжелее всех и ждёт на дне', () => {
-    expect(BOSS_FLOOR).toBe(DUNGEON_FLOORS - 1);
+  it('хозяин глубины тяжелее всех и ждёт на своём этаже', () => {
+    expect(BOSS_FLOOR).toBeGreaterThanOrEqual(0);
+    expect(BOSS_FLOOR).toBeLessThan(DUNGEON_FLOORS);
     const boss = MOBS[DUNGEON_BOSS];
     for (const id of mobsForDungeon(1, BOSS_FLOOR)) {
       expect(boss.health).toBeGreaterThan(MOBS[id].health);

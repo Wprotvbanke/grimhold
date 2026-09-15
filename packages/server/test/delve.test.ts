@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BOSS_FLOOR,
   DUNGEON_FLOORS,
   dungeonInstance,
   floorArrival,
@@ -82,7 +81,7 @@ describe('этажи', () => {
 
   it('со дна глубже хода нет', () => {
     const { world, instanceId } = delve();
-    const player = spawn(world, instanceId, floorArrival(BOSS_FLOOR));
+    const player = spawn(world, instanceId, floorArrival(DUNGEON_FLOORS - 1));
 
     const events = useStairs(world, player, true);
     expect(events[0]?.type).toBe('itemError');

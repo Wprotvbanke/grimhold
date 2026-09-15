@@ -704,13 +704,17 @@ export class World {
     }
 
     // Хозяин глубины ставится отдельно от раскладки: он один на забег, и от
-    // него зависит не картинка, а порталы. Место у него дальнее — на дне
-    // последнего этажа, подальше от лестницы наверх.
+    // него зависит не картинка, а порталы. Этаж берётся из `BOSS_FLOOR`
+    // (сейчас первый), место — подальше от того угла, куда приходят: и от
+    // лестницы, и от портала, иначе бой начинался бы с порога.
     const lair = floorCenter(BOSS_FLOOR);
     const arrival = floorArrival(BOSS_FLOOR);
     const spot = findFreeSpot(terrain, lair.x, lair.z, random, {
       spread: CHUNK_SIZE - 24,
-      away: { x: arrival.x, z: arrival.z, range: 22 },
+      // Тридцать метров, а не двадцать два: на первом этаже в том же углу
+      // стоит портал наверх, и босс у порога запирал выход собой — сквозная
+      // проверка не могла дойти до портала.
+      away: { x: arrival.x, z: arrival.z, range: 30 },
     }) ?? { x: lair.x, y: 0.1, z: lair.z };
     const boss = createMob(`m${this.nextId++}`, DUNGEON_BOSS, spot, instanceId);
     list.push(boss);
