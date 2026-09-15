@@ -224,7 +224,12 @@ const inventoryUi = new InventoryUi({
   onUnequip: (slot, to) =>
     connection.send({ t: 'unequip', slot, toX: to?.x, toY: to?.y, rotate: to?.rotate }),
   onUse: (x, y) => connection.send({ t: 'useItem', x, y }),
-  onDrop: (x, y) => connection.send({ t: 'dropItem', x, y }),
+  onDrop: (x, y) => {
+    // Звучит сразу, как вещь выпустили из рук, а не по ответу сервера:
+    // иначе звук отстаёт от того, что уже видно на экране.
+    sound.play('dropItem');
+    connection.send({ t: 'dropItem', x, y });
+  },
   onCraft: (recipeId) => connection.send({ t: 'craft', recipeId }),
   onDeposit: (x, y, to) =>
     connection.send({ t: 'bankMove', dir: 'deposit', x, y, toX: to?.x, toY: to?.y, rotate: to?.rotate }),
