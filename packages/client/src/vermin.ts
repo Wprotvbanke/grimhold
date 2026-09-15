@@ -51,13 +51,12 @@ const ROUTES: readonly (readonly { x: number; z: number }[])[] = [
 ];
 
 /** Шерсть и голая кожа хвоста с лапами. */
-const FUR = 0x3a322c;
-const SKIN = 0x6b5a52;
+const FUR = 0x4a4038;
+const SKIN = 0x7d6c62;
 
 interface Runner {
   group: THREE.Group;
-  body: THREE.Object3D;
-  tail: THREE.Object3D;
+  parts: RatParts;
   route: readonly { x: number; z: number }[];
   step: number;
   speed: number;
@@ -76,21 +75,39 @@ function between(range: { min: number; max: number }): number {
   return range.min + Math.random() * (range.max - range.min);
 }
 
+/** Что у крысы шевелится на бегу. */
+interface RatParts {
+  group: THREE.Group;
+  /** Корпус целиком: подпрыгивает и качается. */
+  body: THREE.Group;
+  /** Голова: водит из стороны в сторону, будто принюхивается. */
+  head: THREE.Group;
+  /** Лапы: передние и задние ходят навстречу друг другу. */
+  legs: { mesh: THREE.Object3D; front: number; side: number }[];
+  /** Звенья хвоста от основания к кончику — по ним идёт волна. */
+  tail: THREE.Object3D[];
+}
+
 /**
- * Крыса из примитивов: туловище, морда, уши, четыре лапы и хвост.
+ * Крыса из примитивов: горбатое туловище, острая морда, лапы и хвост звеньями.
  *
  * Морда смотрит в +Z — как у всех наших моделей, чтобы разворот считался
  * той же формулой.
  */
-function buildRat(): { group: THREE.Group; body: THREE.Group; tail: THREE.Object3D } {
-  const fur = new THREE.MeshStandardMaterial({ color: FUR, roughness: 0.95, metalness: 0 });
-  const skin = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.9, metalness: 0 });
+function buildRat(): RatParts {
+  // Шерсть у каждой своя, чуть светлее или темнее: одинаковые звери читаются
+  // как копии одного, даже когда бегут порознь.
+  const shade = 0.85 + Math.random() * 0.35;
+  const fur = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 });
+  fur.color.setHex(FUR).multiplyScalar(shade);
+  const skin = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, side: THREE.DoubleSide });
+  skin.color.setHex(SKIN).multiplyScalar(shade);
 
   const group = new THREE.Group();
 
   /**
    * Корпус — отдельный узел: туловище сжато по осям, и голова, привязанная
-   * к нему напрямую, сплющилась бы вместе с ним. Здесь же и покачивание бега.
+   * к нему напрямую, сплющилась бы вместе с ним. Здесь же покачивание бега.
    */
   const body = new THREE.Group();
   body.position.y = TALL * 0.5;
@@ -101,39 +118,81 @@ function buildRat(): { group: THREE.Group; body: THREE.Group; tail: THREE.Object
   torso.scale.set(TALL * 0.82, TALL * 0.85, BODY * 1.1);
   body.add(torso);
 
-  // Голова с острой мордой: конус вперёд — главное отличие от мультяшной.
-  const head = new THREE.Mesh(new THREE.ConeGeometry(TALL * 0.42, BODY * 0.55, 8), fur);
-  head.rotation.x = Math.PI / 2;
-  head.position.set(0, -TALL * 0.1, BODY * 0.66);
+  /**
+   * Круп выше плеч — тот самый горб.
+   *
+   * У бегущей крысы зад приподнят, а голова опущена к земле: по этой линии
+   * её и узнают со спины. Ровное тело-бочонок читалось хомяком.
+   */
+  const rump = new THREE.Mesh(new THREE.SphereGeometry(0.5, 9, 7), fur);
+  rump.scale.set(TALL * 0.78, TALL * 0.92, BODY * 0.6);
+  rump.position.set(0, TALL * 0.12, -BODY * 0.3);
+  body.add(rump);
+
+  // Голова отдельным узлом: она водит по сторонам, а тело идёт прямо.
+  const head = new THREE.Group();
+  head.position.set(0, -TALL * 0.12, BODY * 0.42);
   body.add(head);
+
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), fur);
+  skull.scale.setScalar(TALL * 0.62);
+  head.add(skull);
+
+  // Морда длинная и острая — главное отличие от мультяшной.
+  const snout = new THREE.Mesh(new THREE.ConeGeometry(TALL * 0.26, BODY * 0.42, 7), fur);
+  snout.rotation.x = Math.PI / 2;
+  snout.position.set(0, -TALL * 0.08, BODY * 0.3);
+  head.add(snout);
 
   // Уши маленькие и прижатые, а не круглые блюдца.
   for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.CircleGeometry(TALL * 0.26, 6), skin);
-    ear.position.set(side * TALL * 0.3, TALL * 0.22, BODY * 0.33);
-    ear.rotation.set(0, side * 0.6, 0);
-    body.add(ear);
+    const ear = new THREE.Mesh(new THREE.CircleGeometry(TALL * 0.22, 6), skin);
+    ear.position.set(side * TALL * 0.26, TALL * 0.2, -TALL * 0.05);
+    ear.rotation.set(0, side * 0.7, 0);
+    head.add(ear);
   }
 
-  // Лапы — короткие столбики; при беге они качаются (см. update).
-  const legs: THREE.Mesh[] = [];
+  // Лапы — короткие столбики; на бегу передние и задние ходят навстречу.
+  const legs: RatParts['legs'] = [];
   for (const side of [-1, 1]) {
     for (const front of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.009, TALL * 0.55, 5), skin);
-      leg.position.set(side * TALL * 0.42, TALL * 0.28, front * BODY * 0.3);
+      const leg = new THREE.Group();
+      leg.position.set(side * TALL * 0.4, TALL * 0.42, front * BODY * 0.34);
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.008, TALL * 0.46, 5), skin);
+      shin.position.y = -TALL * 0.23;
+      leg.add(shin);
       group.add(leg);
-      legs.push(leg);
+      legs.push({ mesh: leg, front, side });
     }
   }
 
-  // Хвост длиннее тела, голый и волочится — по нему крысу и узнают.
-  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.003, BODY * 1.5, 5), skin);
-  tail.rotation.x = Math.PI / 2 - 0.1;
-  tail.position.set(0, TALL * 0.33, -BODY * 1.0);
-  group.add(tail);
+  /**
+   * Хвост из трёх звеньев, а не палкой.
+   *
+   * По звеньям пускается волна, и хвост живёт: одной длинной палкой он выдавал
+   * поделку из кубиков, как бы ни был длинным.
+   */
+  const tail: THREE.Object3D[] = [];
+  let anchor: THREE.Object3D = group;
+  let width = 0.011;
+  for (let link = 0; link < 3; link++) {
+    const joint = new THREE.Group();
+    joint.position.set(0, link === 0 ? TALL * 0.4 : 0, link === 0 ? -BODY * 0.55 : -BODY * 0.42);
+    const piece = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.72, width, BODY * 0.42, 5), skin);
+    piece.rotation.x = Math.PI / 2;
+    piece.position.z = -BODY * 0.21;
+    piece.castShadow = true;
+    joint.add(piece);
+    anchor.add(joint);
+    anchor = joint;
+    tail.push(joint);
+    width *= 0.72;
+  }
+  // Первое звено чуть задрано, дальше хвост опускается к земле.
+  tail[0]!.rotation.x = -0.25;
 
-  for (const part of [torso, head, tail, ...legs]) part.castShadow = true;
-  return { group, body, tail };
+  for (const part of [torso, rump, skull, snout]) part.castShadow = true;
+  return { group, body, head, legs, tail };
 }
 
 export function createVermin(scene: THREE.Scene): Vermin {
@@ -151,8 +210,7 @@ export function createVermin(scene: THREE.Scene): Vermin {
     group.add(rat.group);
     runners.push({
       group: rat.group,
-      body: rat.body,
-      tail: rat.tail,
+      parts: rat,
       route,
       step: 1,
       speed: between(SPEED),
@@ -209,14 +267,25 @@ export function createVermin(scene: THREE.Scene): Vermin {
         runner.group.rotation.y = Math.atan2(dx, dz);
 
         /**
-         * Семенит: тело подпрыгивает вдвое чаще шага, хвост качается следом.
-         * Ног у крысы не разглядеть, а рывками в шаге видно, что она бежит,
-         * а не едет по земле.
+         * Семенит.
+         *
+         * Ног у крысы издали не разглядеть, а рывками в шаге видно, что она
+         * бежит, а не едет по земле. Поэтому качается всё разом: корпус вдвое
+         * чаще шага, голова — вполовину реже, лапы навстречу друг другу,
+         * а по хвосту идёт волна с отставанием от звена к звену.
          */
         const gait = elapsed * runner.speed * 7 + runner.phase;
-        runner.body.position.y = TALL * 0.5 + Math.sin(gait) * 0.012;
-        runner.body.rotation.x = Math.sin(gait) * 0.08;
-        runner.tail.rotation.y = Math.sin(gait * 0.5) * 0.35;
+        const parts = runner.parts;
+        parts.body.position.y = TALL * 0.5 + Math.sin(gait) * 0.012;
+        parts.body.rotation.x = Math.sin(gait) * 0.07;
+        parts.head.rotation.y = Math.sin(gait * 0.37) * 0.3;
+        parts.head.rotation.x = 0.12 + Math.sin(gait * 0.5) * 0.08;
+        for (const leg of parts.legs) {
+          leg.mesh.rotation.x = Math.sin(gait + (leg.front > 0 ? 0 : Math.PI)) * 0.5;
+        }
+        for (const [link, joint] of parts.tail.entries()) {
+          joint.rotation.y = Math.sin(gait * 0.45 - link * 0.9) * 0.28;
+        }
       }
     },
   };
