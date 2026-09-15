@@ -93,6 +93,63 @@ try {
     await wait(3000);
   }
 
+  /**
+   * `GRIMHOLD_TORCH=1` — выдать факел и взять его в левую руку.
+   *
+   * Внизу мгла на пять метров и своего огня нет: без факела кадр подземелья
+   * выходит чёрным, и по нему ничего не докажешь.
+   */
+  if (process.env.GRIMHOLD_TORCH === '1') {
+    await page.keyboard.press('F2');
+    await wait(600);
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
+      buttons.find((button) => button.textContent === 'Факел')?.click();
+    });
+    await wait(800);
+    await page.click('#adminClose');
+    await wait(500);
+    await page.keyboard.press('Tab');
+    await wait(900);
+    await page.evaluate(() => {
+      const torch = [...document.querySelectorAll('.inv-item')].find((node) =>
+        node.textContent?.includes('Факел'),
+      );
+      torch?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    await wait(900);
+    await page.keyboard.press('Tab');
+    await wait(1500);
+  }
+
+  /**
+   * `GRIMHOLD_DIVE=1` — спуститься в подземелье (E у люка), а `GRIMHOLD_TP2` —
+   * перенестись уже внизу. Иначе обитателей дна снять нечем: пешком до них
+   * идти через три этажа.
+   */
+  if (process.env.GRIMHOLD_DIVE === '1') {
+    await page.click('canvas');
+    await wait(500);
+    await page.keyboard.press('KeyE');
+    await wait(3500);
+  }
+
+  const under = process.env.GRIMHOLD_TP2;
+  if (under) {
+    await page.keyboard.press('F2');
+    await wait(600);
+    // Поле чистим прямо в DOM: в нём лежат координаты первого переноса,
+    // а два набора чисел подряд телепорт считает мусором и молчит.
+    await page.evaluate(() => {
+      (document.getElementById('adminTeleport') as HTMLInputElement).value = '';
+    });
+    await page.type('#adminTeleport', under);
+    await page.keyboard.press('Enter');
+    await wait(600);
+    await page.click('#adminClose');
+    await wait(900);
+  }
+
   const walk = Number(process.env.GRIMHOLD_WALK ?? 0);
   if (walk > 0) {
     await page.click('canvas');
@@ -155,6 +212,25 @@ try {
     await wait(80);
     await page.mouse.up({ button: 'left' });
     await wait(Number(process.argv[4] ?? 250));
+  }
+
+  /**
+   * `GRIMHOLD_SPIN=n` — n кадров по кругу вместо одного.
+   *
+   * Мышь в игре захвачена, и повернуться иначе нельзя. Нужно, когда знаешь,
+   * что цель рядом, но не знаешь, с какой стороны: моб успевает отойти,
+   * пока идёт вход в игру.
+   */
+  const spin = Number(process.env.GRIMHOLD_SPIN ?? 0);
+  if (spin > 0) {
+    await page.click('canvas');
+    await wait(400);
+    for (let shot = 0; shot < spin; shot++) {
+      await page.mouse.move(800 + shot * 180, 450);
+      await wait(450);
+      await page.screenshot({ path: OUTPUT.replace(/\.png$/, `_${shot}.png`) });
+    }
+    console.log(`снимков по кругу: ${spin}`);
   }
 
   await page.screenshot({ path: OUTPUT });
