@@ -58,14 +58,23 @@ function yawTowards(from: { x: number; z: number }, to: { x: number; z: number }
 }
 
 /**
- * Что дворф выкрикивает над головой — по кругу, по фразе на `LINE_SECONDS`.
- * Одно облачко, текст в нём сменяется: это один разговор, а не два.
+ * Что дворф выкрикивает над головой: по фразе на `LINE_SECONDS`, потом
+ * молчание на `PAUSE_SECONDS` — и сначала. Одно облачко, текст в нём
+ * сменяется: это один разговор, а не два.
  */
 const LINES = [
   'Эта ведьма сливала что-то в канализацию, я видел!!',
   'Я вииидел это существо! Это мало похоже на крысу...',
 ];
 const LINE_SECONDS = 7;
+/**
+ * Сколько секунд он молчит, проговорив всё.
+ *
+ * Без паузы реплики шли по кругу без конца, и площадь превращалась
+ * в говорящую вывеску: постоянное должно быть редким — то же правило, что
+ * и у звука. Две минуты — это «сказал и занялся своим».
+ */
+const PAUSE_SECONDS = 120;
 /** Дальше — облачко не показываем: над крошечной фигуркой оно заслоняет площадь. */
 const BUBBLE_RANGE = 25;
 /** Над макушкой, в метрах от земли. */
@@ -94,15 +103,19 @@ export function createShowcase(scene: THREE.Scene): Showcase {
   function speak(dt: number, visible: boolean, camera: THREE.Camera): void {
     if (!bubble) return;
     spoken += dt;
-    const now = Math.floor(spoken / LINE_SECONDS) % LINES.length;
+    // Круг разговора: все реплики подряд, потом молчание.
+    const talk = LINES.length * LINE_SECONDS;
+    const phase = spoken % (talk + PAUSE_SECONDS);
+    const silent = phase >= talk;
+    const now = silent ? -1 : Math.floor(phase / LINE_SECONDS);
     if (now !== line) {
       line = now;
-      bubble.textContent = LINES[now]!;
+      if (now >= 0) bubble.textContent = LINES[now]!;
     }
 
     const far = Math.hypot(root.position.x - camera.position.x, root.position.z - camera.position.z) > BUBBLE_RANGE;
     projected.set(root.position.x, root.position.y + BUBBLE_HEIGHT, root.position.z).project(camera);
-    if (!visible || far || projected.z > 1) {
+    if (!visible || silent || far || projected.z > 1) {
       bubble.style.display = 'none';
       return;
     }
