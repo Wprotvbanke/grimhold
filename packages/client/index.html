@@ -216,59 +216,121 @@
       }
       #inventory[hidden] { display: none; }
 
+      /*
+       * Окно рюкзака — каменная плита, как в старых ролевых играх.
+       *
+       * Камень — наша же текстура стен (stone.jpg, Poly Haven, CC0), притушенная
+       * до серого: своё фото камня дешевле любой нарисованной рамки и не спорит
+       * со стенами мира. Буквы — с засечками и в капители: так подписывают
+       * по камню, а моноширинный шрифт интерфейса здесь читался бы терминалом.
+       */
       .inv-panel {
-        /* Колонок до четырёх — на узком экране они переносятся, а не режутся. */
-        display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap;
-        max-width: min(1300px, 96vw);
-        background: var(--panel); border: 1px solid var(--line);
-        border-radius: 6px; padding: 18px;
+        position: relative; width: min(1200px, 96vw);
+        background:
+          linear-gradient(rgba(62, 60, 57, 0.8), rgba(34, 33, 32, 0.9)),
+          url("/textures/stone.jpg") center / 360px;
+        border: 3px solid #161514; border-radius: 4px; padding: 12px 16px 16px;
+        box-shadow:
+          inset 0 0 0 1px #6f6b65, inset 0 0 0 6px #2b2a28, inset 0 0 0 7px #57534d,
+          inset 0 0 60px rgba(0, 0, 0, 0.55), 0 14px 50px rgba(0, 0, 0, 0.75);
+        color: #d8d1c3;
       }
+      .inv-panel, .inv-panel button { font-family: Georgia, "Times New Roman", serif; }
+
+      .inv-top {
+        display: flex; justify-content: space-between; align-items: flex-end; gap: 10px;
+        margin: 2px 0 12px 234px;
+      }
+      .inv-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+      /* Вкладка — каменная плашка: светлый край сверху, тёмный снизу, как грань. */
+      .inv-tab, .inv-close {
+        width: auto; margin: 0; padding: 5px 16px; border-radius: 2px;
+        background: linear-gradient(#5d5b57, #3b3936); color: #e6dece;
+        border: 1px solid #161514; font-size: 12px; font-weight: 600;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        box-shadow: inset 0 1px 0 #8d8880, inset 0 -1px 0 #252321;
+      }
+      .inv-tab:hover, .inv-close:hover { background: linear-gradient(#6b6863, #45423e); color: #fff3d4; }
+      .inv-tab.on {
+        background: linear-gradient(#7a766f, #504d48); color: #fff3d4;
+        box-shadow: inset 0 1px 0 #aca69c, 0 0 0 1px var(--gold);
+      }
+      .inv-close { padding: 3px 9px; font-size: 15px; letter-spacing: 0; }
+
+      .inv-body { display: flex; gap: 14px; align-items: flex-start; }
+      .inv-page { flex: 1; min-width: 0; display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+      .inv-page[hidden] { display: none; }
       .inv-col { display: flex; flex-direction: column; gap: 10px; }
 
-      /**
-       * Ремесло тянется и сжимается, остальные колонки держат свою ширину.
-       *
-       * Перенос в строке flex решается по **желаемой** ширине колонки, а не
-       * по той, до которой она готова сжаться. Ремесло просило ширину по
-       * самому длинному рецепту, четыре колонки переставали влезать — и «Рост»
-       * уезжал на вторую строку, оставляя под собой пустое поле в пол-экрана.
-       * Теперь ремесло просит 240 px, а лишнее место забирает себе.
-       */
-      #craftCol { flex: 1 1 240px; min-width: 240px; max-width: 420px; }
-      /* Рост и снаряжение — своей ширины: их содержимое от неё зависит. */
-      #skillCol { flex: 0 0 210px; }
+      /* Врезанная в камень ниша: тёмное дно, светлая кромка изнутри. */
+      .inv-card, .grid-cells, .slot, .portrait, .card-exp {
+        border: 1px solid #111; box-shadow: inset 0 0 0 1px #57534d, inset 0 3px 10px rgba(0, 0, 0, 0.75);
+      }
 
-      /**
-       * Справка ложится полосой внизу, а не пятой колонкой.
+      .inv-card {
+        flex: 0 0 220px; display: flex; flex-direction: column; gap: 5px;
+        padding: 10px; background: rgba(18, 17, 16, 0.55);
+      }
+      .card-plate {
+        margin-top: 6px; padding: 3px 0; text-align: center;
+        font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+        color: #efe5cc; background: linear-gradient(#57544f, #393734);
+        border: 1px solid #171615; box-shadow: inset 0 1px 0 #8b867e;
+      }
+      .card-plate:first-child { margin-top: 0; }
+      .card-name { font-size: 16px; font-weight: 600; color: #f1e2bd; }
+      .card-line { font-size: 12px; color: #c9c1b1; font-variant: small-caps; letter-spacing: 0.04em; }
+      .card-exp { height: 12px; background: #0c0c0d; overflow: hidden; }
+      .card-exp > i {
+        display: block; height: 100%; width: 100%; transform-origin: left center;
+        background: linear-gradient(90deg, #6b5a2a, #c9b27a); transform: scaleX(0);
+      }
+      .card-exp-text { font-size: 11px; color: #a9a08f; text-align: right; }
+      .card-list {
+        display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; margin: 4px 0 0;
+        font-size: 12px; font-variant-numeric: tabular-nums;
+      }
+      .card-list dt { color: #b9b09e; font-variant: small-caps; letter-spacing: 0.05em; }
+      .card-list dd { margin: 0; color: #efe5cc; text-align: right; }
+      .inv-card .stat-line { font-size: 12px; color: #c9c1b1; line-height: 1.5; }
+
+      .inv-title {
+        font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+        color: #efe5cc; margin-bottom: 2px;
+      }
+      .bag-col { min-width: 0; }
+
+      /*
+       * Содержимое вкладок лежит в тёмной нише, как карточка.
        *
-       * Колонок стало пять, и последняя переносилась на вторую строку узким
-       * столбиком в треть высоты панели: под ней оставалось пустое поле
-       * во весь экран. Поперёк тот же текст занимает три коротких строки.
+       * Прямо на камне серые подписи навыков и подсказки терялись: серое
+       * на сером. Ниша даёт тексту тёмное дно и заодно показывает, где
+       * кончается раздел.
        */
-      #helpCol {
-        flex-basis: 100%;
-        padding-top: 12px;
-        border-top: 1px solid var(--line);
+      .inv-page[data-page="craft"] > .inv-col,
+      .inv-page[data-page="growth"] > .inv-col,
+      .inv-page[data-page="help"] > .inv-col {
+        padding: 12px 14px; background: rgba(18, 17, 16, 0.62);
+        border: 1px solid #111; box-shadow: inset 0 0 0 1px #57534d, inset 0 3px 10px rgba(0, 0, 0, 0.75);
       }
-      #helpCol .inv-hint {
-        max-width: none;
-        columns: 3;
-        column-gap: 28px;
-      }
+      .inv-panel .inv-hint { color: #a39a89; }
+      .inv-panel .skill-row { color: #c9c1b1; }
+      .inv-panel .skill-row.idle { opacity: 0.6; }
+
+      /* Разделы-вкладки шире колонок, какими были: места теперь им одним. */
+      #craftCol { flex: 1 1 360px; max-width: 620px; }
+      #skillCol { flex: 0 1 460px; }
+      #helpCol { flex: 1; }
+      #helpCol .inv-hint { max-width: 720px; columns: 2; column-gap: 32px; font-size: 12px; color: #c9c1b1; }
       /* Абзац не должен рваться между столбцами: половина мысли в одном
          столбце, половина в другом читается как опечатка. */
       #helpCol .inv-hint > p { break-inside: avoid; margin: 0 0 10px; }
-      .inv-title {
-        font-size: 12px; letter-spacing: 0.1em; color: var(--gold);
-        text-transform: uppercase; margin-bottom: 2px;
-      }
 
       .grid-wrap { position: relative; }
       .grid-cells {
-        display: grid; gap: 2px;
-        background: #1a1a1e; padding: 2px; border: 1px solid var(--line); border-radius: 4px;
+        display: grid; gap: 2px; background: #121110; padding: 2px; border-radius: 2px;
       }
-      .cell { width: 42px; height: 42px; background: #101013; border-radius: 2px; }
+      .cell { width: 42px; height: 42px; background: #22211f; border-radius: 1px; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7); }
       .cell.hot { background: #20303c; }
       .cell.bad { background: #3a1d1a; }
 
@@ -376,24 +438,44 @@
       }
       #dragGhost[hidden] { display: none; }
 
-      .slots { display: grid; grid-template-columns: repeat(2, 88px); gap: 6px; }
-      .slot {
-        height: 88px; border: 1px dashed var(--line); border-radius: 4px;
-        background: #101013; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; gap: 2px;
-        font-size: 10px; color: #6f6a60; text-align: center; padding: 4px; cursor: pointer;
+      /*
+       * Кукла: арка с живым портретом посередине, слоты вокруг — голова и торс
+       * слева, руки и ноги справа, оружие и щит внизу, как вешают на человека.
+       */
+      #equipSlots { position: relative; width: 390px; height: 420px; flex: 0 0 390px; }
+      .portrait {
+        position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+        width: 200px; height: 310px; overflow: hidden;
+        border-radius: 100px 100px 3px 3px;
+        background: radial-gradient(ellipse at 50% 38%, #5f5c57 0%, #34322f 55%, #1d1c1a 100%);
+        border: 3px solid #141312;
       }
-      .slot.filled { border-style: solid; border-color: #5b5140; background: #2f2a22; color: #ddd3ba; }
-      .slot.hot { border-color: var(--gold); background: #20303c; }
-      .slot .slot-name { color: #6f6a60; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; }
+      .portrait canvas { display: block; width: 100%; height: 100%; }
+      /* Сундук или обмен рядом с рюкзаком — кукла уступает место второй сетке. */
+      .inv-panel.side-open #equipSlots { display: none; }
+      .slot {
+        position: absolute; width: 80px; height: 80px; border-radius: 2px;
+        background: #1c1b19; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 2px; padding: 4px;
+        font-size: 10px; line-height: 1.15; color: #8a8377; text-align: center; cursor: pointer;
+      }
+      .slot[data-slot="head"] { left: 0; top: 40px; }
+      .slot[data-slot="chest"] { left: 0; top: 150px; }
+      .slot[data-slot="hands"] { right: 0; top: 40px; }
+      .slot[data-slot="legs"] { right: 0; top: 150px; }
+      .slot[data-slot="mainHand"] { left: calc(50% - 86px); bottom: 0; }
+      .slot[data-slot="offHand"] { left: calc(50% + 6px); bottom: 0; }
+      .slot.filled {
+        background: #2d271f; color: #ecdfbf;
+        box-shadow: inset 0 0 0 1px #8a7a55, inset 0 3px 10px rgba(0, 0, 0, 0.6);
+      }
+      .slot.hot { box-shadow: inset 0 0 0 2px var(--gold), inset 0 3px 10px rgba(0, 0, 0, 0.6); }
+      .slot .slot-name { color: #8f887b; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; }
 
       #discard {
-        margin-top: 4px; padding: 10px; text-align: center; font-size: 11px;
-        border: 1px dashed #5a3a33; border-radius: 4px; color: #8a6a62;
-        /* Ширина колонки — по слотам (2 x 88 + отступ). Строка в одну линию
-           растягивала колонку снаряжения вдвое, и «Рост» не влезал в строку:
-           он уезжал вниз, оставляя под собой пустое поле в пол-экрана. */
-        width: 182px;
+        margin-top: 4px; padding: 8px 10px; text-align: center; font-size: 11px;
+        border: 1px dashed #6a4a42; border-radius: 3px; color: #b08d84;
+        background: rgba(20, 12, 10, 0.35);
       }
       #discard.hot { background: #3a1d1a; border-color: #a8554a; color: #d8a89e; }
 
@@ -649,120 +731,168 @@
 
     <div id="inventory" hidden>
       <div class="inv-panel">
-        <div class="inv-col">
-          <div class="inv-title">Снаряжение</div>
-          <div class="slots" id="equipSlots"></div>
-          <div id="discard">Перетащи сюда или за окно — вещь упадёт мешком на землю</div>
-        </div>
-
-        <div class="inv-col">
-          <div class="inv-title">Рюкзак</div>
-          <div class="grid-wrap" id="backpackWrap">
-            <div class="grid-cells" id="backpackCells"></div>
+        <!-- Вкладки сверху: окно одно, а разделов в нём четыре. Колонки
+             рядом друг с другом дважды разъезжались на широком экране. -->
+        <div class="inv-top">
+          <div class="inv-tabs">
+            <button class="inv-tab on" data-page="bag">Рюкзак</button>
+            <button class="inv-tab" data-page="craft">Ремесло</button>
+            <button class="inv-tab" data-page="growth">Рост</button>
+            <button class="inv-tab" data-page="help">Как это работает</button>
           </div>
-          <div class="weight" id="weightText"></div>
-          <div class="weight-bar"><i id="weightFill"></i></div>
-          <div class="stat-line" id="loadoutStats"></div>
-          <p id="itemError"></p>
+          <button id="invClose" class="inv-close" title="Закрыть — Tab или Esc">&#x2715;</button>
         </div>
 
-        <div class="inv-col" id="bankCol" hidden>
-          <!-- Подпись приходит с сервера: тем же окном обыскивают мешок
-               павшего, и игрок обязан видеть, куда именно кладёт. -->
-          <div class="inv-title" id="bankTitle">Казна</div>
-          <div class="grid-wrap" id="bankWrap">
-            <div class="grid-cells" id="bankCells"></div>
-          </div>
-          <p class="inv-hint">
-            Щелчок по вещи кладёт её в хранилище и забирает обратно;
-            перетаскиванием вещь ложится в выбранную клетку, R по дороге
-            поворачивает её. В казне ничего не пропадёт со смертью, и она общая
-            на всех твоих персонажей; мешок павшего лежит недолго.
-          </p>
-        </div>
+        <div class="inv-body">
+          <aside class="inv-card">
+            <div class="card-plate">Персонаж</div>
+            <div class="card-name" id="cardName"></div>
+            <div class="card-line" id="cardRace"></div>
+            <div class="card-line" id="cardClass"></div>
 
-        <div class="inv-col" id="tradeCol" hidden>
-          <div class="inv-title" id="tradeTitle">Обмен</div>
-          <div class="trade-table">
-            <div class="trade-side">
-              <div class="trade-head" id="tradeMineHead">Твоё</div>
-              <div class="trade-list" id="tradeMine"></div>
+            <div class="card-plate">Опыт</div>
+            <div class="card-exp"><i id="cardExpFill"></i></div>
+            <div class="card-exp-text" id="cardExpText"></div>
+
+            <dl class="card-list">
+              <dt>Жизнь</dt><dd id="cardHealth">&#x2014;</dd>
+              <dt>Мана</dt><dd id="cardMana">&#x2014;</dd>
+              <dt>Стамина</dt><dd id="cardStamina">&#x2014;</dd>
+            </dl>
+
+            <div class="card-plate">Характеристики</div>
+            <dl class="card-list" id="cardStats"></dl>
+
+            <div class="card-plate">Снаряжение</div>
+            <div class="stat-line" id="loadoutStats"></div>
+          </aside>
+
+          <section class="inv-page" data-page="bag">
+            <!-- Кукла: живой портрет расы в арке, шесть слотов вокруг. Слоты
+                 добавляет inventoryui.ts; холст портрета лежит здесь заранее. -->
+            <div class="slots" id="equipSlots">
+              <div class="portrait"><canvas id="portraitCanvas"></canvas></div>
             </div>
-            <div class="trade-side">
-              <div class="trade-head" id="tradeTheirsHead">Его</div>
-              <div class="trade-list" id="tradeTheirs"></div>
+
+            <div class="inv-col bag-col">
+              <div class="inv-title">Рюкзак</div>
+              <div class="grid-wrap" id="backpackWrap">
+                <div class="grid-cells" id="backpackCells"></div>
+              </div>
+              <div class="weight" id="weightText"></div>
+              <div class="weight-bar"><i id="weightFill"></i></div>
+              <div id="discard">Перетащи сюда или за окно — вещь упадёт мешком на землю</div>
+              <p id="itemError"></p>
             </div>
-          </div>
-          <div class="trade-buttons">
-            <button id="tradeLock">Подтвердить</button>
-            <button id="tradeCancel">Уйти</button>
-          </div>
-          <p class="inv-hint" id="tradeNote">
-            Правая кнопка по вещи в рюкзаке — положить на стол, щелчок по своей
-            строке — забрать. Любое изменение снимает оба подтверждения.
-          </p>
-        </div>
 
-        <div class="inv-col" id="craftCol">
-          <div class="inv-title">Ремесло</div>
-          <div id="craftBar" hidden>
-            <div class="craft-bar-head">
-              <span id="craftBarName"></span>
-              <span id="craftBarLeft"></span>
+            <div class="inv-col" id="bankCol" hidden>
+              <!-- Подпись приходит с сервера: тем же окном обыскивают мешок
+                   павшего, и игрок обязан видеть, куда именно кладёт. -->
+              <div class="inv-title" id="bankTitle">Казна</div>
+              <div class="grid-wrap" id="bankWrap">
+                <div class="grid-cells" id="bankCells"></div>
+              </div>
+              <p class="inv-hint">
+                Щелчок по вещи кладёт её в хранилище и забирает обратно;
+                перетаскиванием вещь ложится в выбранную клетку, R по дороге
+                поворачивает её. В казне ничего не пропадёт со смертью, и она общая
+                на всех твоих персонажей; мешок павшего лежит недолго.
+              </p>
             </div>
-            <div class="craft-bar"><i id="craftBarFill"></i></div>
-          </div>
-          <div id="craftList"></div>
-          <p class="inv-hint" id="craftHint">
-            Простое делается где угодно и без рецепта. Остальное — по свиткам,
-            и только своей расой.
-          </p>
-        </div>
 
-        <div class="inv-col" id="skillCol">
-          <div class="inv-title">Рост</div>
-
-          <!-- Сперва то, что требует решения: очки. Навыки растут сами,
-               смотреть на них можно и вторым делом. -->
-          <div id="pointBox">
-            <div class="point-head">
-              <span id="pointText">Опыт</span>
-              <span id="pointCount"></span>
+            <div class="inv-col" id="tradeCol" hidden>
+              <div class="inv-title" id="tradeTitle">Обмен</div>
+              <div class="trade-table">
+                <div class="trade-side">
+                  <div class="trade-head" id="tradeMineHead">Твоё</div>
+                  <div class="trade-list" id="tradeMine"></div>
+                </div>
+                <div class="trade-side">
+                  <div class="trade-head" id="tradeTheirsHead">Его</div>
+                  <div class="trade-list" id="tradeTheirs"></div>
+                </div>
+              </div>
+              <div class="trade-buttons">
+                <button id="tradeLock">Подтвердить</button>
+                <button id="tradeCancel">Уйти</button>
+              </div>
+              <p class="inv-hint" id="tradeNote">
+                Правая кнопка по вещи в рюкзаке — положить на стол, щелчок по своей
+                строке — забрать. Любое изменение снимает оба подтверждения.
+              </p>
             </div>
-            <div class="point-bar"><i id="pointFill"></i></div>
-            <div class="point-buttons">
-              <button id="spendHealth">+ Жизнь</button>
-              <button id="spendStamina">+ Стамина</button>
-              <button id="spendMana">+ Мана</button>
+
+          </section>
+
+          <section class="inv-page" data-page="craft" hidden>
+            <div class="inv-col" id="craftCol">
+              <div class="inv-title">Ремесло</div>
+              <div id="craftBar" hidden>
+                <div class="craft-bar-head">
+                  <span id="craftBarName"></span>
+                  <span id="craftBarLeft"></span>
+                </div>
+                <div class="craft-bar"><i id="craftBarFill"></i></div>
+              </div>
+              <div id="craftList"></div>
+              <p class="inv-hint" id="craftHint">
+                Простое делается где угодно и без рецепта. Остальное — по свиткам,
+                и только своей расой.
+              </p>
             </div>
-            <div class="point-spent" id="pointSpent"></div>
-          </div>
 
-          <div id="skillList"></div>
-          <p class="inv-hint">
-            Навыки растут сами от того, чем пользуешься: бьёшь мечом — растёт
-            клинок. Очки роста даются за победы, и куда их вложить — решаешь ты.
-          </p>
-        </div>
+          </section>
 
-        <div class="inv-col" id="helpCol">
-          <div class="inv-title">Как это работает</div>
-          <!-- Каждая мысль — отдельный абзац, а не строка через <br>:
-               в трёх столбцах абзац не рвётся пополам, а строка порвалась бы. -->
-          <div class="inv-hint">
-            <p>Перетаскивай вещи мышью. <b>R</b> во время переноса поворачивает предмет.</p>
-            <p>Двойной щелчок надевает снаряжение или использует расходник.</p>
-            <p>
-              Надетое снимается щелчком по слоту или перетаскиванием в нужную
-              клетку рюкзака.
-            </p>
-            <p>Перегруз замедляет: рюкзак не бездонный, и это выбор.</p>
-            <p>
-              Перетащи вещь на панель внизу, чтобы повесить её на цифру. Пока
-              рюкзак открыт, щелчок по ячейке панели её освобождает.
-            </p>
-            <p><b>Tab</b> или <b>Esc</b> — закрыть.</p>
-          </div>
+          <section class="inv-page" data-page="growth" hidden>
+            <div class="inv-col" id="skillCol">
+              <div class="inv-title">Рост</div>
+
+              <!-- Сперва то, что требует решения: очки. Навыки растут сами,
+                   смотреть на них можно и вторым делом. -->
+              <div id="pointBox">
+                <div class="point-head">
+                  <span id="pointText">Опыт</span>
+                  <span id="pointCount"></span>
+                </div>
+                <div class="point-bar"><i id="pointFill"></i></div>
+                <div class="point-buttons">
+                  <button id="spendHealth">+ Жизнь</button>
+                  <button id="spendStamina">+ Стамина</button>
+                  <button id="spendMana">+ Мана</button>
+                </div>
+                <div class="point-spent" id="pointSpent"></div>
+              </div>
+
+              <div id="skillList"></div>
+              <p class="inv-hint">
+                Навыки растут сами от того, чем пользуешься: бьёшь мечом — растёт
+                клинок. Очки роста даются за победы, и куда их вложить — решаешь ты.
+              </p>
+            </div>
+
+          </section>
+
+          <section class="inv-page" data-page="help" hidden>
+            <div class="inv-col" id="helpCol">
+              <div class="inv-title">Как это работает</div>
+              <!-- Каждая мысль — отдельный абзац, а не строка через <br>:
+                   в трёх столбцах абзац не рвётся пополам, а строка порвалась бы. -->
+              <div class="inv-hint">
+                <p>Перетаскивай вещи мышью. <b>R</b> во время переноса поворачивает предмет.</p>
+                <p>Двойной щелчок надевает снаряжение или использует расходник.</p>
+                <p>
+                  Надетое снимается щелчком по слоту или перетаскиванием в нужную
+                  клетку рюкзака.
+                </p>
+                <p>Перегруз замедляет: рюкзак не бездонный, и это выбор.</p>
+                <p>
+                  Перетащи вещь на панель внизу, чтобы повесить её на цифру. Пока
+                  рюкзак открыт, щелчок по ячейке панели её освобождает.
+                </p>
+                <p><b>Tab</b> или <b>Esc</b> — закрыть.</p>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>

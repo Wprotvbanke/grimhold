@@ -1,5 +1,10 @@
 import {
+  CLASSES,
   DASH_WEIGHT_LIMIT,
+  RACES,
+  attributesFor,
+  type CharacterSummary,
+  type SelfState,
   EQUIP_SLOTS,
   HOTBAR_SIZE,
   SKILLS,
@@ -21,6 +26,7 @@ import {
   type InventoryMessage,
   type PlacedItem,
 } from '@grimhold/shared';
+import { createPortrait } from './portrait.js';
 
 /**
  * Инвентарь-сетка.
@@ -76,6 +82,17 @@ export interface InventoryHandlers {
   onClose(): void;
 }
 
+/** Раздел окна — вкладка сверху. */
+type Page = 'bag' | 'craft' | 'growth' | 'help';
+
+/** Характеристики в карточке — в том порядке, в каком их читают. */
+const STAT_NAMES: [keyof ReturnType<typeof attributesFor>, string][] = [
+  ['strength', 'Сила'],
+  ['endurance', 'Выносливость'],
+  ['agility', 'Ловкость'],
+  ['intellect', 'Интеллект'],
+];
+
 /** Откуда тянут вещь. От этого зависит, что значит «бросил сюда». */
 type GridKind = 'backpack' | 'bank';
 
@@ -117,6 +134,11 @@ export class InventoryUi {
   private readonly skillCol = el<HTMLDivElement>('skillCol');
   private readonly skillList = el<HTMLDivElement>('skillList');
 
+  /** Живая модель расы в арке куклы. Рисуется, только пока окно открыто. */
+  private readonly portrait = createPortrait(el<HTMLCanvasElement>('portraitCanvas'));
+  /** Открытая вкладка. */
+  private page: Page = 'bag';
+
   private state: InventoryMessage | null = null;
   /** Раса персонажа: от неё зависит, какие рецепты вообще показывать. */
   private race: Race | null = null;
@@ -149,6 +171,11 @@ export class InventoryUi {
     this.buildHotbar();
     this.wireDrag();
 
+    for (const tab of document.querySelectorAll<HTMLButtonElement>('.inv-tab')) {
+      tab.addEventListener('click', () => this.showPage(tab.dataset.page as Page));
+    }
+    el<HTMLButtonElement>('invClose').addEventListener('click', () => this.hide());
+
     el<HTMLButtonElement>('tradeLock').addEventListener('click', () => {
       if (this.tradeOpen) this.handlers.onTradeLock(!this.myLock);
       else this.handlers.onTradeRespond(true);
@@ -179,13 +206,85 @@ export class InventoryUi {
     this.root.hidden = false;
     this.errorLine.textContent = '';
     this.refreshHotbarMode();
+    if (this.page === 'bag') this.portrait.start();
+    this.refreshSide();
   }
 
   hide(): void {
     this.root.hidden = true;
+    this.portrait.stop();
     this.cancelDrag();
     this.refreshHotbarMode();
     this.handlers.onClose();
+  }
+
+  /**
+   * Переключает вкладку.
+   *
+   * Портрет рисуется только на вкладке рюкзака: на ремесле его не видно,
+   * а второй рендер за скрытым разделом — работа впустую.
+   */
+  /**
+   * Открыт ли сундук или стол обмена рядом с рюкзаком.
+   *
+   * Тогда кукла прячется: вторая сетка шириной с рюкзак рядом с ней в экран
+   * не влезает, а у сундука человек пришёл разбирать добычу, не одеваться.
+   * Портрет за спрятанной куклой не рисуется.
+   */
+  private refreshSide(): void {
+    const side = this.bankOpen || !this.tradeCol.hidden;
+    this.root.querySelector('.inv-panel')?.classList.toggle('side-open', side);
+    if (side) this.portrait.stop();
+    else if (this.open && this.page === 'bag') this.portrait.start();
+  }
+
+  showPage(page: Page): void {
+    this.page = page;
+    for (const section of this.root.querySelectorAll<HTMLElement>('.inv-page')) {
+      section.hidden = section.dataset.page !== page;
+    }
+    for (const tab of this.root.querySelectorAll<HTMLElement>('.inv-tab')) {
+      tab.classList.toggle('on', tab.dataset.page === page);
+    }
+    if (page === 'bag' && this.open) this.portrait.start();
+    else this.portrait.stop();
+    this.refreshSide();
+  }
+
+  /**
+   * Персонаж: имя, раса, класс и характеристики в карточке слева,
+   * модель расы — в арке куклы.
+   */
+  setCharacter(character: CharacterSummary): void {
+    this.setRace(character.race);
+    el<HTMLDivElement>('cardName').textContent = character.name;
+    el<HTMLDivElement>('cardRace').textContent = RACES[character.race].name;
+    el<HTMLDivElement>('cardClass').textContent = CLASSES[character.characterClass].name;
+
+    const stats = el<HTMLElement>('cardStats');
+    stats.replaceChildren();
+    const attributes = attributesFor(character.race, character.characterClass);
+    for (const [key, name] of STAT_NAMES) {
+      const term = document.createElement('dt');
+      term.textContent = name;
+      const value = document.createElement('dd');
+      value.textContent = String(attributes[key]);
+      stats.append(term, value);
+    }
+    this.portrait.setRace(character.race);
+  }
+
+  /**
+   * Жизнь, мана и стамина в карточке — из свежего снапшота.
+   *
+   * Зовётся двадцать раз в секунду, а видно карточку только при открытом
+   * окне: закрытое в DOM не пишем.
+   */
+  setVitals(self: SelfState): void {
+    if (!this.open) return;
+    el<HTMLElement>('cardHealth').textContent = `${Math.round(self.health)} / ${self.maxHealth}`;
+    el<HTMLElement>('cardMana').textContent = `${Math.round(self.mana)} / ${self.maxMana}`;
+    el<HTMLElement>('cardStamina').textContent = `${Math.round(self.stamina)} / ${self.maxStamina}`;
   }
 
   /**
@@ -239,11 +338,10 @@ export class InventoryUi {
     // Казна или мешок павшего — окно одно, и подпись должна говорить, какое.
     if (message.open) this.bankTitle.textContent = message.title;
     this.bankCol.hidden = !message.open;
-    // Казна велика, и впятером колонки не помещаются даже в широкий экран.
-    // У сундука ремесло, справка и рост не нужны — человек пришёл убрать добычу.
-    this.craftCol.hidden = message.open;
-    this.helpCol.hidden = message.open;
-    this.skillCol.hidden = message.open;
+    // Казна встаёт рядом с рюкзаком: у сундука человек пришёл убрать добычу,
+    // и открыться окно обязано на вкладке рюкзака, где бы его ни оставили.
+    if (message.open) this.showPage('bag');
+    this.refreshSide();
     if (!message.open) {
       this.bankGrid = null;
       this.bankCells.replaceChildren();
@@ -267,9 +365,9 @@ export class InventoryUi {
     this.tradeOpen = message.stage === 'open';
     this.myLock = message.myLock;
     this.tradeCol.hidden = closed;
-    this.craftCol.hidden = !closed;
-    this.helpCol.hidden = !closed;
-    this.skillCol.hidden = !closed;
+    // Стол обмена — рядом с рюкзаком: вещи на него кладут оттуда.
+    if (!closed) this.showPage('bag');
+    this.refreshSide();
 
     if (closed) {
       if (message.note) this.showError(message.note);
@@ -326,6 +424,10 @@ export class InventoryUi {
     el<HTMLSpanElement>('pointCount').textContent =
       message.points > 0 ? `очков: ${message.points}` : '';
     el<HTMLElement>('pointFill').style.transform = `scaleX(${Math.min(1, message.pool / toPoint)})`;
+    // Та же полоса в карточке персонажа: опыт виден с любой вкладки.
+    el<HTMLElement>('cardExpFill').style.transform = `scaleX(${Math.min(1, message.pool / toPoint)})`;
+    el<HTMLElement>('cardExpText').textContent =
+      message.points > 0 ? `${message.pool} / ${toPoint} · очков: ${message.points}` : `${message.pool} / ${toPoint}`;
 
     // Кнопки гаснут, когда вкладывать нечего: отказ после нажатия объясняет
     // хуже, чем видимая невозможность до него.

@@ -170,6 +170,12 @@ try {
   if (open === 'inventory') {
     await page.keyboard.press('Tab');
     await wait(1200);
+    // Третий аргумент — вкладка окна: craft, growth, help. Без него — рюкзак.
+    const tab = process.argv[4];
+    if (tab) {
+      await page.click(`.inv-tab[data-page="${tab}"]`);
+      await wait(800);
+    }
   }
 
   /**

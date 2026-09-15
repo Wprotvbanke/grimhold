@@ -839,8 +839,9 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   const body = { radius: profile.radius, height: profile.height };
 
   // Раса решает, какие рецепты показывать: ремесло привязано к ней, а не
-  // к классу. Рюкзак об этом не знает — он приходит без персонажа.
-  inventoryUi.setRace(character.race);
+  // к классу. Рюкзак об этом не знает — он приходит без персонажа. Заодно
+  // окно рюкзака получает карточку персонажа и модель расы для куклы.
+  inventoryUi.setCharacter(character);
 
   game?.hands.dispose();
 
@@ -1453,6 +1454,8 @@ function consumeSnapshot(): void {
   // Переходы вылазки — гонг, закрытие порталов, отдышка, свой огонь — тоже
   // по свежему снапшоту: звучит смена, а не состояние.
   atmosphere.self(newest.self, offHandItem === 'torch');
+  // Жизнь, мана и стамина в карточке рюкзака; закрытое окно не пишется.
+  inventoryUi.setVitals(newest.self);
 }
 
 /**
