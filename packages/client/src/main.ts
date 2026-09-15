@@ -72,6 +72,7 @@ import { createAtmosphere } from './atmosphere.js';
 import { createLabour, labourForWork, type Worker } from './labour.js';
 import { createShowcase } from './showcase.js';
 import { createVermin } from './vermin.js';
+import { createExhibits } from './exhibits.js';
 import { createMusic } from './music.js';
 import { createPost } from './post.js';
 import { Ui } from './ui.js';
@@ -120,6 +121,8 @@ const scene = world.scene;
 const showcase = createShowcase(scene);
 /** Крысы, бегущие в люк, — картинка города, см. vermin.ts. */
 const vermin = createVermin(scene);
+/** Человек и эльф на площади — модели будущих рас, см. exhibits.ts. */
+const exhibits = createExhibits(scene);
 
 /** Лампы снарядов: пул постоянного размера, см. scene.ts. */
 const projectileLights = createProjectileLights(scene);
@@ -934,6 +937,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     updateAvatars(now, dt);
     showcase.update(dt, !undergroundNow, camera);
     vermin.update(dt, !undergroundNow);
+    exhibits.update(dt, !undergroundNow);
     updateNametags();
     combatUi.updateCooldowns(now);
 
