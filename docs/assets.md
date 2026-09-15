@@ -45,6 +45,7 @@
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
 | `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |
+| `public/models/sword.glb` | от владельца проекта, выгрузка Sketchfab «Moonbrand, early 14th c. arming sword»; музейные подписи и линейка выброшены, 45 → 4.5 тыс. треугольников, 4.84 → 0.27 МБ (`scripts/prepare-weapon.ts`) | со слов владельца |
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
 | `public/models/nature.glb` | от владельца проекта, собран `scripts/prepare-nature.ts` | уточнить |
 | `public/models/lights.glb` | от владельца проекта, собран `scripts/prepare-lights.ts` | уточнить |
@@ -104,6 +105,7 @@ Mixamo. Если понадобятся — качаются заново по �
 npx tsx scripts/prepare-skeleton.ts   # 408 тыс. треугольников и 11.7 МБ → 6.8 тыс. и 1.9 МБ
 npx tsx scripts/prepare-arms.ts       # руки с анимациями: 18.6 МБ → 5.9 МБ
 npx tsx scripts/prepare-bow.ts        # клип натяжения лука в hands.glb — ТОЛЬКО после prepare-arms
+npx tsx scripts/prepare-weapon.ts     # меч в руку: 4.84 МБ → 0.27 МБ
 npx tsx scripts/prepare-nature.ts     # 68 моделей растительности: 85 МБ FBX → 0.56 МБ
 npx tsx scripts/prepare-town.ts       # здания, таверна, дома, повозка, казна, стены: 145 МБ → 12.9 МБ
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
