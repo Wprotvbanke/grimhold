@@ -171,7 +171,22 @@ export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
   }
 
   if (def.restoreHealth) {
-    combat.vitals.health = Math.min(player.maxima.health, combat.vitals.health + def.restoreHealth);
+    if (def.restoreOver) {
+      /**
+       * Зелье вливается тиками, а не разом.
+       *
+       * Недопитое прошлое не пропадает: остаток складывается с новым
+       * и растягивается на срок нового глотка. Иначе выгодно было бы
+       * перебивать одно зелье другим, теряя разницу.
+       */
+      const left = (player.healing?.left ?? 0) + def.restoreHealth;
+      player.healing = { left, seconds: def.restoreOver };
+    } else {
+      combat.vitals.health = Math.min(
+        player.maxima.health,
+        combat.vitals.health + def.restoreHealth,
+      );
+    }
   }
   if (def.restoreStamina) {
     combat.vitals.stamina = Math.min(

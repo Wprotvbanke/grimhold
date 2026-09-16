@@ -39,11 +39,13 @@ describe('откат расходников', () => {
     handleUseItem({ world, actor: player }, { t: 'useItem', x: potion.x, y: potion.y });
     expect(player.sipCooldown).toBeCloseTo(itemDef('health_potion').cooldown!);
 
-    const health = player.combat.vitals.health;
+    // Лечение идёт тиками, поэтому смотрим не на здоровье, а на то,
+    // сколько его ещё предстоит влить: второй глоток не должен добавить.
+    const pending = player.healing?.left ?? 0;
     const second = player.inventory.items[0]!;
     const events = handleUseItem({ world, actor: player }, { t: 'useItem', x: second.x, y: second.y });
 
-    expect(player.combat.vitals.health).toBe(health);
+    expect(player.healing?.left ?? 0).toBe(pending);
     expect(events.some((event) => event.type === 'itemError')).toBe(true);
   });
 
@@ -57,9 +59,10 @@ describe('откат расходников', () => {
     handleUseItem({ world, actor: player }, { t: 'useItem', x: potion.x, y: potion.y });
     player.sipCooldown = 0;
 
-    const health = player.combat.vitals.health;
+    const pending = player.healing?.left ?? 0;
     const second = player.inventory.items[0]!;
     handleUseItem({ world, actor: player }, { t: 'useItem', x: second.x, y: second.y });
-    expect(player.combat.vitals.health).toBeGreaterThan(health);
+    // Второй глоток лёг поверх первого: лить стало больше, чем было.
+    expect(player.healing?.left ?? 0).toBeGreaterThan(pending);
   });
 });

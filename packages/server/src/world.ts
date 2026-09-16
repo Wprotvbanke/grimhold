@@ -263,6 +263,13 @@ export interface Player {
    * Один на все зелья и бинты: раздельные откаты обходятся чередованием.
    */
   sipCooldown: number;
+  /**
+   * Лечение, которое ещё вливается: сколько осталось и за какое время.
+   *
+   * Зелье поднимает здоровье не разом, а тиками — см. `restoreOver`
+   * у предмета. Живёт у игрока, а не у бойца: зелья пьют только игроки.
+   */
+  healing: { left: number; seconds: number } | null;
   /** Когда каждое заклинание снова готово, в секундах игрового времени. */
   spellCooldowns: Partial<Record<SpellId, number>>;
   /** Рюкзак: раскладку хранит и проверяет сервер, клиент только рисует. */
@@ -479,6 +486,7 @@ export class World {
       deadFor: 0,
       torchLeft: 0,
       sipCooldown: 0,
+      healing: null,
       spellCooldowns: {},
       inventory: character.inventory ?? createBackpack(),
       bank: character.bank ?? createBank(),

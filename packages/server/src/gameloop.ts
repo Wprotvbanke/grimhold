@@ -184,6 +184,34 @@ function expireBags(world: World, outbox: Outbox, dt: number): void {
 }
 
 /**
+ * Зелье вливается тиками.
+ *
+ * Здоровье поднимается ровно на то, что обещано, но за время — выпил в бою,
+ * значит эти секунды ещё надо прожить. Мёртвому не льётся: смерть обрывает
+ * лечение, иначе труп потихоньку «выздоравливал» бы до подъёма.
+ */
+function healOverTime(player: Player, dt: number): void {
+  const healing = player.healing;
+  if (!healing) return;
+
+  const combat = player.combat;
+  if (!combat.alive) {
+    player.healing = null;
+    return;
+  }
+
+  // На последнем тике вливаем остаток целиком: иначе на дне остаётся крошка,
+  // и обещанные шестьдесят превращаются в пятьдесят девять с хвостиком.
+  const step = healing.seconds <= dt ? healing.left : (healing.left / healing.seconds) * dt;
+  combat.vitals.health = Math.min(player.maxima.health, combat.vitals.health + step);
+
+  healing.left -= step;
+  healing.seconds = Math.max(0, healing.seconds - dt);
+  // Время вышло или лить больше нечего.
+  if (healing.seconds <= 0 || healing.left <= 0.01) player.healing = null;
+}
+
+/**
  * Факел прогорает.
  *
  * Кончился — берётся следующий из связки в той же руке, а связка кончилась —
@@ -230,6 +258,7 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     if (player.torchLeft > 0) burnTorch(player, dt, outbox);
     // Откат зелий идёт всегда: и в бою, и в покое, и стоя у сундука.
     player.sipCooldown = Math.max(0, player.sipCooldown - dt);
+    healOverTime(player, dt);
 
     // Работа идёт, пока игрок стоит у цели: отошёл — брошена. Это и есть
     // способ передумать, отдельной кнопки отмены не нужно. Одинаково для
