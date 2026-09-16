@@ -92,6 +92,54 @@ const ONCE: HandsClip[] = [
 
 const MODEL_URL = '/models/hands.glb';
 
+/** Топор в правом кулаке — модель от владельца, собрана prepare-weapon.ts. */
+const AXE_URL = '/models/axe.glb';
+
+const AXE = {
+  /** К какой кости крепится. Имя без номера: номер меняется от сборки. */
+  bone: /^DEF-palm02R/i,
+  /** Длина модели в метрах — по ней считается масштаб в кадре. */
+  model: 1.15,
+  /**
+   * Длина топора — **в предплечьях**, а не в метрах.
+   *
+   * Сцена видмодели не метрична: руки в ней ужаты и придвинуты к камере,
+   * чтобы занять нужную долю кадра (см. anchor). Топор длиной «0.7 метра»
+   * выходил в ней поперёк всего экрана. Единственная честная мерка здесь —
+   * сами руки.
+   *
+   * Честная длина — два с половиной предплечья, но предплечье занимает
+   * 0.7 высоты кадра, и такой топор не помещается на экране полтора раза.
+   * Берём короче жизни: в руке он должен читаться целиком.
+   */
+  forearms: 0.95,
+  /**
+   * Где кулак держит топорище — вдоль оси модели, от её начала координат.
+   *
+   * У модели ось рукояти — Z: головка наверху (z от 0.44 до 0.80), торец
+   * топорища внизу (z = −0.35). Кулак сжимает рукоять чуть выше торца.
+   */
+  grip: -0.17,
+  /** Предмет, с которым топор виден в руке. */
+  item: 'crude_axe',
+};
+
+/**
+ * Доворот лезвием вперёд, от игрока.
+ *
+ * Внутри GLB узел уже повёрнут на −90° вокруг X (перевод Z-up в Y-up), так
+ * что рукоять и без нас стоит по +Y, головка вверх, а лезвие смотрит вправо.
+ * Ставить ещё один такой поворот сверху не нужно — топор от этого ложился
+ * набок поперёк всего кадра. Остаётся развернуть лезвие с боку вперёд.
+ */
+const AXE_FACING = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(0, 1, 0),
+  Math.PI / 2,
+);
+
+/** Точка хвата в координатах модели: ось рукояти после того же поворота — +Y. */
+const AXE_GRIP = new THREE.Vector3(0, -0.17, 0);
+
 /**
  * Наш «вперёд» — это -Z, а модель выгружена лицом в +Z: без разворота кулак
  * при ударе летит в камеру, а не от неё.
@@ -135,6 +183,9 @@ const HANDS_SCREEN_HEIGHT = 0.7;
  * как две трети прежней яркости, а не как треть.
  */
 const HANDS_TINT = 0.35;
+
+/** Насколько притушен топор в руке — см. загрузку модели. */
+const AXE_TINT = 0.8;
 
 /**
  * На сколько развести руки в стороны, в единицах модели.
@@ -196,6 +247,21 @@ export class ViewModel {
   private evasion = 0;
   /** Лук в руке: с ним выстрел отыгрывается своим клипом, а не ударом. */
   private bow = false;
+  /** Кость ладони правой руки: к ней крепится топор. */
+  private palm: THREE.Object3D | null = null;
+  /** Модель топора. Грузится один раз, дальше только показывается и прячется. */
+  private axe: THREE.Object3D | null = null;
+  private axeLoading = false;
+  /** Рабочий поворот: чтобы не заводить новый объект каждый кадр. */
+  private readonly spin = new THREE.Quaternion();
+
+  /** Длина предплечья в сцене после посадки — мерка размера для того, что в руке. */
+  private forearm = 0;
+
+  /** Черновики под пересчёт посадки топора — чтобы не сорить мусором в кадре. */
+  private readonly size = new THREE.Vector3();
+
+  private readonly reach = new THREE.Vector3();
 
   /** Был ли игрок на земле в прошлом кадре — по смене ловим прыжок. */
   private grounded = true;
@@ -310,9 +376,89 @@ export class ViewModel {
     this.evasion = level;
   }
 
-  /** Что в основной руке. Пока важен только лук: у него своё движение. */
+  /** Что в основной руке: лук отыгрывается своим клипом, топор виден в кулаке. */
   setWeapon(defId: string | null): void {
     this.bow = defId === 'hunting_bow';
+
+    const axe = defId === AXE.item;
+    if (this.axe) this.axe.visible = axe;
+    if (axe && !this.axe && !this.axeLoading) void this.loadAxe();
+  }
+
+  /** Подвешивает топор к ладони. Кости ещё нет — дождёмся рига, он придёт. */
+  private async loadAxe(): Promise<void> {
+    if (typeof document === 'undefined') return;
+    this.axeLoading = true;
+    try {
+      const loader = new GLTFLoader();
+      const draco = new DRACOLoader();
+      draco.setDecoderPath('/draco/');
+      loader.setDRACOLoader(draco);
+      const gltf = await loader.loadAsync(AXE_URL);
+      const model = gltf.scene;
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.frustumCulled = false;
+        /**
+         * Притушено слабее, чем руки.
+         *
+         * Кожа в модели почти белая, и её гасят до трети, иначе ладони в кадре
+         * светятся. У топора текстура своя, тёмная: та же треть превращала его
+         * в чёрный силуэт, неотличимый от столба за спиной.
+         */
+        for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          const standard = material as THREE.MeshStandardMaterial;
+          if (standard.color) standard.color.multiplyScalar(AXE_TINT);
+        }
+      });
+      this.axe = model;
+      this.attachAxe();
+    } catch (error) {
+      console.warn('[руки] топор не загрузился:', error);
+    } finally {
+      this.axeLoading = false;
+    }
+  }
+
+  /** Вешает топор на кость ладони. Размер и посадку считает holdAxe в кадре. */
+  private attachAxe(): void {
+    const palm = this.palm;
+    const axe = this.axe;
+    if (!palm || !axe) return;
+    palm.add(axe);
+  }
+
+  /**
+   * Держит топор в кулаке и прямо **относительно мира**, а не кисти.
+   *
+   * Три вещи разом, и все — каждый кадр:
+   *
+   * - **размер** — от длины предплечья, поделённой на масштаб кости.
+   *   Считать его один раз при подвеске нельзя: риг подгоняется под ширину
+   *   кадра уже после того, как модель повисла на кости, и топор выходил
+   *   вдесятеро больше кулака.
+   * - **поворот**: гасим поворот кисти и ставим рукоять по вертикали —
+   *   владелец просил, чтобы топор стоял прямо.
+   * - **сдвиг**: кость — это середина хвата, а не начало координат модели.
+   *   Без сдвига топор висит серединой топорища в кулаке и уезжает из кадра.
+   *
+   * После микшера: он переписывает позы костей каждый кадр.
+   */
+  private holdAxe(): void {
+    const axe = this.axe;
+    const palm = this.palm;
+    if (!axe || !palm || !axe.visible) return;
+
+    if (this.forearm <= 0) return;
+    const world = palm.getWorldScale(this.size).x || 1;
+    const scale = (AXE.forearms * this.forearm) / (AXE.model * world);
+    axe.scale.setScalar(scale);
+
+    palm.getWorldQuaternion(this.spin).invert();
+    axe.quaternion.copy(this.spin).multiply(AXE_FACING);
+
+    axe.position.copy(AXE_GRIP).multiplyScalar(-scale).applyQuaternion(axe.quaternion);
   }
 
   /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */
@@ -342,6 +488,9 @@ export class ViewModel {
     this.unspreadArms();
     this.mixer.update(dt);
     this.spreadArms();
+    // Топор садится в кулак после микшера: микшер только что переписал
+    // позы костей, в том числе кисть, к которой он подвешен.
+    this.holdAxe();
   }
 
   /**
@@ -680,6 +829,14 @@ export class ViewModel {
       this.shoulders.push({ bone: found, axis });
     }
 
+    // Кость ладони правой руки — точка подвеса топора. Имя без номера:
+    // экспортёр дописывает номер, и он меняется от сборки к сборке.
+    this.palm = null;
+    rig.traverse((node) => {
+      if (!this.palm && AXE.bone.test(node.name)) this.palm = node;
+    });
+    if (this.axe) this.attachAxe();
+
     this.anchor(rig, this.race);
     this.needsAnchor = true;
 
@@ -765,6 +922,8 @@ export class ViewModel {
     );
 
     const after = measure();
+    // Той же меркой меряется всё, что кладётся в руку: сцена не метрична.
+    this.forearm = after.forearm;
     rig.position.add(new THREE.Vector3(0, -HANDS_DROP, -HANDS_DISTANCE).sub(after.centre));
     rig.updateMatrixWorld(true);
 

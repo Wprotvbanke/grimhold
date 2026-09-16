@@ -32,7 +32,7 @@ try {
   await page.setViewport({ width: 1600, height: 900 });
   page.on('console', (message) => {
     const text = message.text();
-    if (/ошибк|error/i.test(text)) console.log('  [браузер]', text.slice(0, 160));
+    if (/ошибк|error/i.test(text)) console.log('  [браузер]', text.slice(0, 200));
   });
 
   /**
@@ -56,9 +56,17 @@ try {
   await page.click('#loginBtn');
   await wait(4000);
 
-  // Перебираем персонажей: часть может быть занята прошлой сессией.
+  /**
+   * Перебираем персонажей: часть может быть занята прошлой сессией.
+   *
+   * `GRIMHOLD_CHAR=номер` — начать с этого персонажа. Нужно, когда снимку
+   * важен не мир, а рюкзак: у первого он забит вещами прошлых проверок,
+   * и выданная вещь в него просто не влезает.
+   */
+  const first = Number(process.env.GRIMHOLD_CHAR ?? 0);
   let entered = false;
-  for (let index = 0; index < 3 && !entered; index++) {
+  for (let step = 0; step < 3 && !entered; step++) {
+    const index = (first + step) % 3;
     await page.evaluate((i) => {
       const buttons = [...document.querySelectorAll('#charList button')];
       (buttons[i] as HTMLButtonElement | undefined)?.click();
@@ -187,6 +195,75 @@ try {
    * и свитком, а снимок нужен сейчас. Идёт через служебное меню, то есть
    * теми же командами, что и у живого ведущего.
    */
+  /**
+   * `axe` — выдать грубый топор и взять его в руку.
+   *
+   * Ждём **факта**, а не пауз: то F2 не доходит до игры, то рюкзак ещё
+   * уезжает — и кадр выходит то со служебным меню, то вовсе без рук
+   * (docs/checks.md, то же правило, что у сквозных проверок).
+   */
+  if (open === 'axe') {
+    const shown = (id: string) =>
+      page.waitForFunction(
+        (node: string) => document.getElementById(node)?.hasAttribute('hidden') === false,
+        { timeout: 10000 },
+        id,
+      );
+    const hidden = (id: string) =>
+      page.waitForFunction(
+        (node: string) => document.getElementById(node)?.hasAttribute('hidden') === true,
+        { timeout: 10000 },
+        id,
+      );
+
+    await page.keyboard.press('F2');
+    await shown('admin');
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
+      buttons.find((button) => button.textContent === 'Грубый топор')?.click();
+    });
+    await wait(600);
+    // Закрываем кнопкой: открытое меню ставит курсор в поле поиска,
+    // и второго F2 игра не видит вовсе.
+    await page.click('#adminClose');
+    await hidden('admin');
+
+    await page.keyboard.press('Tab');
+    await shown('inventory');
+    await page.evaluate(() => {
+      const axe = [...document.querySelectorAll('.inv-item')].find((node) =>
+        node.textContent?.includes('Грубый топор'),
+      );
+      axe?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    /**
+     * Топор в слоте — значит надет. Не дождались — снимаем **как есть**,
+     * с открытым рюкзаком: на кадре будет видно, что пошло не так, а падение
+     * скрипта не показало бы ничего.
+     */
+    let worn = true;
+    try {
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('.slot.filled')].some((node) =>
+            node.textContent?.includes('Грубый топор'),
+          ),
+        { timeout: 8000 },
+      );
+    } catch {
+      worn = false;
+      console.log('  ···  топор в слот не попал — снимаю рюкзак как есть');
+    }
+
+    if (worn) {
+      await page.keyboard.press('Tab');
+      await hidden('inventory');
+      // Захват мыши: без него игра показывает подсказку и руки в кадр не идут.
+      await page.mouse.click(800, 450);
+      await wait(2500);
+    }
+  }
+
   if (open === 'bow') {
     await page.keyboard.press('F2');
     await wait(600);

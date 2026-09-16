@@ -104,6 +104,7 @@ Mixamo. Если понадобятся — качаются заново по �
 npx tsx scripts/prepare-skeleton.ts   # 408 тыс. треугольников и 11.7 МБ → 6.8 тыс. и 1.9 МБ
 npx tsx scripts/prepare-arms.ts       # руки с анимациями: 18.6 МБ → 5.9 МБ
 npx tsx scripts/prepare-bow.ts        # клип натяжения лука в hands.glb — ТОЛЬКО после prepare-arms
+npx tsx scripts/prepare-weapon.ts     # топор в руке: FBX владельца → axe.glb
 npx tsx scripts/prepare-nature.ts     # 68 моделей растительности: 85 МБ FBX → 0.56 МБ
 npx tsx scripts/prepare-town.ts       # здания, таверна, дома, повозка, казна, стены: 145 МБ → 12.9 МБ
 npx tsx scripts/prepare-lights.ts     # фонарь и костёр: 2.6 МБ → 0.12 МБ
