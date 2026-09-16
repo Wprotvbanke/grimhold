@@ -1,5 +1,6 @@
 import {
   ATTACK_COOLDOWN,
+  scaleTiming,
   ACTIONS,
   BACKSTAB_MULTIPLIER,
   BLOCK_REDUCTION,
@@ -71,7 +72,11 @@ export function canAct(combatant: Combatant): boolean {
   return true;
 }
 
-export function startAttack(attacker: Combatant, kind: 'attack' | 'heavy' | 'dodge'): boolean {
+export function startAttack(
+  attacker: Combatant,
+  kind: 'attack' | 'heavy' | 'dodge',
+  swingScale = 1,
+): boolean {
   if (!canAct(attacker)) return false;
 
   // Рывок на перезарядке: без паузы им спамят, и уклонение перестаёт быть выбором.
@@ -92,14 +97,15 @@ export function startAttack(attacker: Combatant, kind: 'attack' | 'heavy' | 'dod
           timing: dodgeTiming(attacker.evasionSkill),
           staminaCost: dodgeCost(attacker.evasionSkill),
         }
-      : base;
+      : // Тяжёлое оружие бьёт реже: фазы растягиваются под него целиком.
+        { ...base, timing: scaleTiming(base.timing, swingScale) };
 
   if (!spendStamina(attacker, profile.staminaCost)) return false;
 
   if (kind === 'dodge') attacker.dodgeCooldown = dodgeCooldown(attacker.evasionSkill);
   else attacker.swingCooldown = ATTACK_COOLDOWN + profile.timing.windup + profile.timing.active;
 
-  attacker.action = beginAction(profile);
+  attacker.action = beginAction(profile, undefined, kind === 'dodge' ? 1 : swingScale);
   // Блок и удар несовместимы: щит опускается.
   attacker.blocking = false;
   return true;

@@ -4,6 +4,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   ACTIONS,
   ATTACK_COOLDOWN,
+  scaleTiming,
+  isItemId,
+  itemDef,
   DODGE_COOLDOWN,
   dodgeCooldown,
   dodgeCost,
@@ -212,15 +215,6 @@ const AXE_ALONG = new THREE.Vector3(0, 1, 0);
 /** Куда смотрит лезвие: вперёд от игрока, то есть в −Z сцены видмодели. */
 const AXE_EDGE = new THREE.Vector3(0, 0, -1);
 
-/**
- * Замах топором идёт **целиком и вдвое медленнее** обычного удара.
- *
- * Сперва начало клипа пропускалось, а вынос руки приглушался — чтобы кисть
- * не уходила за край экрана. Владелец забраковал: у топора инерция, он обязан
- * уходить вверх на замахе и вниз на ударе, пусть и за кадр.
- */
-const SWING_SLOW = 0.5;
-
 /** В какой доле замаха топор внизу — там и заминка удара. */
 const SWING_HIT = 0.72;
 
@@ -324,6 +318,9 @@ export class ViewModel {
    * траты стамины — картинка обещала бой, которого нет.
    */
   private swingCooldown = 0;
+
+  /** Во сколько раз удар в руке длиннее удара кулаком: топор тяжёл. */
+  private swingScale = 1;
   private dodgeCooldown = 0;
   /** Уровень уклонения — приходит с прокачкой, см. `setEvasion`. */
   private evasion = 0;
@@ -423,7 +420,7 @@ export class ViewModel {
 
     if (kind === 'attack' || kind === 'heavy') {
       this.swing++;
-      const timing = ACTIONS[kind].timing;
+      const timing = scaleTiming(ACTIONS[kind].timing, this.swingScale);
       this.swingCooldown = ATTACK_COOLDOWN + timing.windup + timing.active;
     }
     if (kind === 'dodge') this.dodgeCooldown = dodgeCooldown(this.evasion);
@@ -497,6 +494,8 @@ export class ViewModel {
   /** Что в основной руке: лук отыгрывается своим клипом, топор виден в кулаке. */
   setWeapon(defId: string | null): void {
     this.bow = defId === 'hunting_bow';
+    // Темп удара задаёт оружие — тот же множитель, что у сервера.
+    this.swingScale = defId && isItemId(defId) ? (itemDef(defId).swing ?? 1) : 1;
 
     const axe = defId === AXE.item;
     if (this.axe) this.axe.visible = axe;
@@ -804,7 +803,7 @@ export class ViewModel {
 
     if (this.localAction) {
       this.localAction.elapsed += dt;
-      if (this.localAction.elapsed > totalDuration(this.localAction.kind)) {
+      if (this.localAction.elapsed > totalDuration(this.localAction.kind, this.swingScale)) {
         this.localAction = null;
       }
     }
@@ -940,10 +939,11 @@ export class ViewModel {
      */
     if (quick) {
       const kind = this.localAction?.kind === 'heavy' ? 'heavy' : 'attack';
-      const timing = ACTIONS[kind].timing;
+      // Замах растягивается ровно на фазы удара — те же, что считает сервер.
+      // Темп задаёт оружие: у топора фазы вдвое длиннее, и клип идёт медленнее
+      // сам собой, без отдельного множителя.
+      const timing = scaleTiming(ACTIONS[kind].timing, this.swingScale);
       next.timeScale = next.getClip().duration / (timing.windup + timing.active);
-      // Топор тяжёл: замах идёт вдвое медленнее маха кулаком.
-      if (clip === 'axeSwing') next.timeScale *= SWING_SLOW;
     }
 
     next.reset().fadeIn(fade).play();
@@ -1268,8 +1268,8 @@ function findClip(clips: THREE.AnimationClip[], name: string): THREE.AnimationCl
   );
 }
 
-function totalDuration(kind: ActionKind): number {
-  const timing = timingFor(kind);
+function totalDuration(kind: ActionKind, scale = 1): number {
+  const timing = scaleTiming(timingFor(kind), scale);
   return timing.windup + timing.active + timing.recovery;
 }
 

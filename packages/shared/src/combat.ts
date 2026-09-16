@@ -185,6 +185,22 @@ export function dodgeTiming(level: number): ActionTiming {
  */
 export const ATTACK_COOLDOWN = 0.3;
 
+/**
+ * Растягивает фазы удара под оружие.
+ *
+ * Одна и та же мерка нужна серверу (он считает попадание) и клиенту (он
+ * растягивает под неё замах): разойдись они — топор попадал бы раньше, чем
+ * дойдёт в кадре. Правило 7 в чистом виде.
+ */
+export function scaleTiming(timing: ActionTiming, scale: number): ActionTiming {
+  if (scale === 1) return timing;
+  return {
+    windup: timing.windup * scale,
+    active: timing.active * scale,
+    recovery: timing.recovery * scale,
+  };
+}
+
 /** Стамина в секунду, пока бежишь. */
 export const SPRINT_DRAIN = 16;
 
@@ -279,15 +295,24 @@ export interface ActionState {
   resolved: boolean;
   /** Для заклинаний. */
   spellId?: string;
+  /**
+   * Во сколько раз фазы длиннее обычных — темп оружия в руке.
+   *
+   * Едет вместе с действием, а не берётся из профиля на каждом тике: фазы
+   * переключаются уже после начала удара, и без этого растягивался бы только
+   * замах, а сам удар оставался кулачным.
+   */
+  scale?: number;
 }
 
-export function beginAction(profile: ActionProfile, spellId?: string): ActionState {
+export function beginAction(profile: ActionProfile, spellId?: string, scale?: number): ActionState {
   return {
     kind: profile.kind,
     phase: 'windup',
     remaining: profile.timing.windup,
     resolved: false,
     spellId,
+    scale: scale === 1 ? undefined : scale,
   };
 }
 

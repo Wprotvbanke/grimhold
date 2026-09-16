@@ -333,6 +333,17 @@ export function weaponDamageOf(equipment: Equipment): number {
   return weapon ? (itemDef(weapon.defId).damage ?? 0) : 0;
 }
 
+/**
+ * Во сколько раз удар надетым оружием длиннее удара кулаком.
+ *
+ * Считают по нему обе стороны: сервер растягивает фазы, клиент — замах
+ * в кадре. Кулак и лёгкие вещи — единица.
+ */
+export function swingScaleOf(equipment: Equipment): number {
+  const weapon = equipment.mainHand;
+  return weapon ? (itemDef(weapon.defId).swing ?? 1) : 1;
+}
+
 /** Инструмент в руке: по нему решается, поддастся ли нода. */
 export function toolOf(equipment: Equipment): { kind: string; tier: number } | null {
   const weapon = equipment.mainHand;
