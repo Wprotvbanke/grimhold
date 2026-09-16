@@ -93,7 +93,22 @@ export const SOUNDS = {
     detune: 0.1,
   },
   death: { files: five('impactSoft_heavy'), volume: 0.9, positional: true, near: 3, far: 30, detune: 0.05 },
-  heal: { files: ['confirmation_002.ogg'], volume: 0.45, positional: true, near: 2, far: 15 },
+  /**
+   * Лечение — человеческий вздох облегчения.
+   *
+   * Был интерфейсный «щелчок подтверждения», и владелец назвал его противным:
+   * бип в мрачном средневековье слышен как чужой. Теперь выдох — тот самый
+   * звук, который издаёт человек, когда отпустило. Слышен недалеко: это
+   * не объявление на весь этаж, а то, что различает стоящий рядом.
+   */
+  heal: {
+    files: ['sigh_relief.wav'],
+    volume: 0.5,
+    positional: true,
+    near: 2,
+    far: 14,
+    detune: 0.07,
+  },
   /** Тетива. Звучит, когда стрела появилась, — у своего выстрела тоже. */
   bow: {
     files: ['pluck_001.ogg', 'pluck_002.ogg'],

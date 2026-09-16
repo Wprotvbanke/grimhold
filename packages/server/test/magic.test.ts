@@ -8,8 +8,9 @@ import {
   movementSpeedFactor,
 } from '@grimhold/shared';
 import { resolveBlessing } from '../src/combat.js';
-import type { Combatant } from '../src/combatant.js';
+import { tickCombatant, type Combatant } from '../src/combatant.js';
 import { beginCast } from '../src/commands/action.js';
+import { handleUseItem } from '../src/commands/items.js';
 import { handleScrollMove } from '../src/commands/scroll.js';
 import { handleSetHotbar } from '../src/commands/hotbar.js';
 import { emptyOutbox, handlePlayerDeath } from '../src/gameloop.js';
@@ -100,6 +101,54 @@ describe('клетки умений', () => {
     // Ячейка, обещающая заклинание, которого уже нет, — худший вид вранья:
     // на неё смотрят краем глаза в бою.
     expect(player.hotbar[3]).toBeNull();
+  });
+});
+
+describe('свиток света', () => {
+  it('гаснет повторным нажатием', () => {
+    const world = new World();
+    const player = spawnMage(world);
+    player.scrolls = addItem(createScrolls(), 'spell_light', 1).grid;
+
+    expect(beginCast(world, player, 'light', 0)).toBeNull();
+    // Каст дошёл до конца — свет зажёгся (это делает игровой цикл).
+    player.combat.lightRemaining = 120;
+    player.combat.action = null;
+
+    // Видеть самому или не быть увиденным — выбор, и отменять его можно
+    // сразу: ни откат, ни мана тут ни при чём.
+    expect(beginCast(world, player, 'light', 0)).toMatch(/погас/i);
+    expect(player.combat.lightRemaining).toBe(0);
+  });
+});
+
+describe('мана не возвращается сама', () => {
+  it('стоящий без дела её не накопит', () => {
+    const world = new World();
+    const player = spawnMage(world);
+    player.combat.vitals.mana = 10;
+
+    // Минута покоя: раньше этого хватало, чтобы набрать полный запас.
+    tickCombatant(player.combat, 60, player.maxima);
+
+    expect(player.combat.vitals.mana).toBe(10);
+    // Стамина при этом отходит: она про дыхание, а мана — про запас.
+    expect(player.combat.vitals.stamina).toBe(player.maxima.stamina);
+  });
+});
+
+describe('настой разума', () => {
+  it('возвращает ману — иначе её вернуть нечем', () => {
+    const world = new World();
+    const player = spawnMage(world);
+    player.combat.vitals.mana = 10;
+    player.inventory = addItem(player.inventory, 'mana_draught', 1).grid;
+
+    const draught = player.inventory.items[0]!;
+    handleUseItem({ world, actor: player }, { t: 'useItem', x: draught.x, y: draught.y });
+
+    expect(player.combat.vitals.mana).toBeGreaterThan(10);
+    expect(player.inventory.items).toHaveLength(0);
   });
 });
 

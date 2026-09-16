@@ -154,7 +154,7 @@ export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
   if (def.kind === 'scroll') return readScroll(player, item, def);
 
   if (def.kind !== 'consumable') return refuse(`${def.name} так не используется`);
-  if (!def.restoreHealth && !def.restoreStamina) {
+  if (!def.restoreHealth && !def.restoreStamina && !def.restoreMana) {
     return refuse(`${def.name} сейчас бесполезен`);
   }
 
@@ -193,6 +193,9 @@ export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
       player.maxima.stamina,
       combat.vitals.stamina + def.restoreStamina,
     );
+  }
+  if (def.restoreMana) {
+    combat.vitals.mana = Math.min(player.maxima.mana, combat.vitals.mana + def.restoreMana);
   }
 
   if (def.cooldown) player.sipCooldown = def.cooldown;

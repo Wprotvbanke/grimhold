@@ -121,7 +121,7 @@ export const handleUseHotbar: CommandHandler<UseHotbarMessage> = (ctx, payload) 
   const item = findByDefId(player.inventory, defId);
   if (!item) return refuse(`${def.name}: нет в рюкзаке`);
 
-  if (def.kind === 'consumable' && (def.restoreHealth || def.restoreStamina)) {
+  if (def.kind === 'consumable' && (def.restoreHealth || def.restoreStamina || def.restoreMana)) {
     return handleUseItem(ctx, { t: 'useItem', x: item.x, y: item.y });
   }
 

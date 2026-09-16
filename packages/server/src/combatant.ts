@@ -216,6 +216,9 @@ export function tickCombatant(
     );
   }
 
+  // Мана сама не прибывает: её возвращают зельем или медитацией
+  // (docs/magic.md). `manaRegen` сейчас ноль и остаётся единственным местом,
+  // где эта прибавка вообще может появиться.
   combatant.vitals.mana = Math.min(
     maxima.mana,
     combatant.vitals.mana + manaRegen(combatant.attributes) * dt,

@@ -104,6 +104,13 @@ export interface ItemDef {
   restoreOver?: number;
   restoreStamina?: number;
   /**
+   * Сколько маны возвращает.
+   *
+   * Мана сама не восстанавливается вовсе, поэтому зелье маны — не удобство,
+   * а один из двух путей её вернуть; второй — медитация (docs/magic.md).
+   */
+  restoreMana?: number;
+  /**
    * Какое заклинание читает предмет. Магия лежит в рюкзаке вещами и занимает
    * место наравне с зельями: маг тоже решает, что взять с собой.
    */
@@ -181,6 +188,7 @@ export type ItemId =
   | 'leather_jerkin'
   // ---- рецептурный ярус: эльф, зелья ----
   | 'stamina_draught'
+  | 'mana_draught'
   | 'stone_elixir'
   // ---- магия: заклинания лежат в рюкзаке как вещи ----
   | 'spell_fireball'
@@ -433,6 +441,19 @@ const ITEM_LIST: ItemDef[] = [
     tier: 2,
     restoreStamina: 70,
     description: 'Возвращает дыхание посреди боя.',
+  },
+  {
+    id: 'mana_draught',
+    name: 'Настой разума',
+    kind: 'consumable',
+    width: 1,
+    height: 2,
+    weight: 0.4,
+    stack: 5,
+    tier: 2,
+    cooldown: 5,
+    restoreMana: 45,
+    description: 'Возвращает ману. Сама она не прибывает — только это и медитация.',
   },
   {
     id: 'stone_elixir',

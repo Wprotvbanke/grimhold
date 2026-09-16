@@ -46,6 +46,7 @@ export type RecipeId =
   // ---- рецептурный: эльф ----
   | 'health_potion'
   | 'stamina_draught'
+  | 'mana_draught'
   | 'stone_elixir';
 
 export interface Ingredient {
@@ -270,6 +271,17 @@ const RECIPE_LIST: Recipe[] = [
     inputs: [
       { itemId: 'herb', count: 3 },
       { itemId: 'plant_fiber', count: 2 },
+    ],
+    duration: 4,
+  },
+  {
+    id: 'mana_draught',
+    name: 'Настой разума',
+    race: 'elf',
+    output: { itemId: 'mana_draught', count: 2 },
+    inputs: [
+      { itemId: 'herb', count: 4 },
+      { itemId: 'bone_dust', count: 1 },
     ],
     duration: 4,
   },
