@@ -200,6 +200,24 @@ describe('медитация', () => {
     expect(beginCast(world, player, 'meditation', 0)).toMatch(/прервана/i);
     expect(player.meditating).toBe(false);
   });
+
+  it('встал — семь секунд обратно не сесть', () => {
+    const world = new World();
+    const player = spawnMage(world);
+    player.scrolls = addItem(createScrolls(), 'spell_meditation', 1).grid;
+    player.meditating = true;
+
+    beginCast(world, player, 'meditation', 0);
+    player.combat.action = null;
+
+    /**
+     * Откат идёт **от конца**, а не от начала: иначе, посидев полминуты,
+     * можно было бы вскакивать и садиться обратно без потерь, и выбирать
+     * место для медитации было бы незачем.
+     */
+    expect(beginCast(world, player, 'meditation', 0)).toMatch(/не готово/i);
+    expect(player.meditating).toBe(false);
+  });
 });
 
 /** Боец на ровном месте: всё остальное правилам кольца безразлично. */

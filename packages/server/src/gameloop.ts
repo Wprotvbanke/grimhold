@@ -223,12 +223,12 @@ function healOverTime(player: Player, dt: number): void {
  * Полный запас обрывает её сам: стоять дальше незачем, а человек, глядящий
  * на полную полосу, ждал бы подсказки.
  */
-function meditate(player: Player, dt: number, outbox: Outbox): void {
+function meditate(world: World, player: Player, dt: number, outbox: Outbox): void {
   if (!player.meditating) return;
 
   const combat = player.combat;
   if (!combat.alive) {
-    player.meditating = false;
+    world.stopMeditation(player);
     return;
   }
 
@@ -236,7 +236,7 @@ function meditate(player: Player, dt: number, outbox: Outbox): void {
   combat.vitals.mana = Math.min(player.maxima.mana, combat.vitals.mana + gain * dt);
 
   if (combat.vitals.mana >= player.maxima.mana) {
-    player.meditating = false;
+    world.stopMeditation(player);
     outbox.itemErrors.push({ playerId: player.id, message: 'Мана полна — медитация окончена' });
   }
 }
@@ -289,7 +289,7 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     // Откат зелий идёт всегда: и в бою, и в покое, и стоя у сундука.
     player.sipCooldown = Math.max(0, player.sipCooldown - dt);
     healOverTime(player, dt);
-    meditate(player, dt, outbox);
+    meditate(world, player, dt, outbox);
 
     // Работа идёт, пока игрок стоит у цели: отошёл — брошена. Это и есть
     // способ передумать, отдельной кнопки отмены не нужно. Одинаково для
@@ -566,11 +566,8 @@ function castSpell(world: World, caster: Player, spellId: SpellId, outbox: Outbo
    * выключат. Поэтому здесь не исход боя, а переключатель.
    */
   if (spell.shape === 'channel') {
-    caster.meditating = !caster.meditating;
-    outbox.itemErrors.push({
-      playerId: caster.id,
-      message: caster.meditating ? 'Ты садишься медитировать' : 'Медитация прервана',
-    });
+    caster.meditating = true;
+    outbox.itemErrors.push({ playerId: caster.id, message: 'Ты садишься медитировать' });
     return;
   }
 

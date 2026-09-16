@@ -100,8 +100,9 @@ export function beginCast(
    * вынутый из клеток свиток не обязан оставлять человека сидеть.
    */
   if (actor.meditating && SPELLS[spellId].shape === 'channel') {
-    actor.meditating = false;
-    return 'Медитация прервана';
+    // Встал — и семь секунд обратно не сесть: откат идёт от конца медитации.
+    world.stopMeditation(actor);
+    return `Медитация прервана: снова сесть через ${SPELLS[spellId].cooldown} с`;
   }
 
   /**

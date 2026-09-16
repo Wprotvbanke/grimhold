@@ -70,6 +70,7 @@ import {
   createBackpack,
   createBank,
   createScrolls,
+  SPELLS,
   starterHotbar,
   createSack,
   createHotbar,
@@ -1141,6 +1142,22 @@ export class World {
 
     viewer.introduced = seen;
     return entities;
+  }
+
+  /**
+   * Прервать медитацию и отсчитать от этого мига откат.
+   *
+   * Откат считается **от конца**, а не от начала: семь секунд после того, как
+   * встал, и есть цена места. Сесть в проходе и вскакивать на каждый шорох
+   * не выйдет — придётся выбирать, где садиться.
+   *
+   * Одна дверь на все выходы: повторное нажатие, полный запас маны, смерть.
+   * Разведи их по трём местам, и один из выходов однажды окажется бесплатным.
+   */
+  stopMeditation(player: Player): void {
+    if (!player.meditating) return;
+    player.meditating = false;
+    player.spellCooldowns.meditation = this.elapsed + SPELLS.meditation.cooldown;
   }
 
   /**
