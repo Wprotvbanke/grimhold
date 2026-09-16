@@ -208,15 +208,22 @@ const AXE_ALONG = new THREE.Vector3(0, 1, 0);
 /** Куда смотрит лезвие: вперёд от игрока, то есть в −Z сцены видмодели. */
 const AXE_EDGE = new THREE.Vector3(0, 0, -1);
 
+/** Доворот вокруг рукояти: лезвие смотрит вперёд и немного влево. */
+const AXE_YAW = Math.PI / 7;
+
 /**
- * Как топор стоит в кадре: рукоять по вертикали, лезвие вперёд.
+ * Как топор стоит в кадре: рукоять по вертикали, лезвие вперёд и чуть влево.
  *
  * У модели ось рукояти — +Y, лезвие — +X (внутри GLB узел уже повёрнут
  * на −90° по X, см. ниже), поэтому базис строится из трёх постоянных осей.
  */
-const AXE_STAND = new THREE.Quaternion().setFromRotationMatrix(
-  new THREE.Matrix4().makeBasis(AXE_EDGE, AXE_ALONG, new THREE.Vector3(1, 0, 0)),
-);
+const AXE_STAND = new THREE.Quaternion()
+  .setFromAxisAngle(AXE_ALONG, AXE_YAW)
+  .multiply(
+    new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(AXE_EDGE, AXE_ALONG, new THREE.Vector3(1, 0, 0)),
+    ),
+  );
 
 /**
  * Насколько сдвинуть топор внутрь кадра, в предплечьях.
