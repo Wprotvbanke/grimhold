@@ -38,6 +38,30 @@ const MODEL = resolve(ROOT, 'packages/client/public/models/hands.glb');
 /** Какие клипы берём. Приставка rig| — как у остальных: так их пишет экспортёр. */
 const WANTED = ['Sword_Idle', 'Sword_Slash'];
 
+/**
+ * Какие кости берём: **только ветка руки от плеча вниз**.
+ *
+ * Клип сделан на человеке целиком, и в нём поворачивается корпус. У нас
+ * корпус спрятан, а руки поставлены в кадр посадкой по позе покоя (anchor):
+ * возьми повороты груди и плеч — и руки уедут из кадра совсем. Так и вышло
+ * с первого раза: в замахе кадр оставался пустым.
+ */
+const ARM_BONES = /^DEF-(upper_arm|forearm|hand|palm|f_|thumb)/i;
+
+/**
+ * Насколько приглушается вынос кости, долей от позы покоя.
+ *
+ * Руки от первого лица нарочно крупные и придвинуты к камере (см.
+ * docs/hands.md, «Посадка в кадре»), поэтому размах, снятый с человека
+ * в полный рост, выносит кисть далеко за край экрана: в начале замаха кадр
+ * оставался пустым. Приглушаем плечо сильнее, предплечье слабее, кисть
+ * и пальцы не трогаем — работа кистью и есть то, ради чего клип берут.
+ */
+const TAME: { bones: RegExp; keep: number }[] = [
+  { bones: /^DEF-upper_arm/i, keep: 0.4 },
+  { bones: /^DEF-forearm/i, keep: 0.7 },
+];
+
 const bytes = readFileSync(SOURCE);
 const group = new FBXLoader().parse(
   bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
@@ -81,6 +105,7 @@ for (const wanted of WANTED) {
     if (!track.name.endsWith('.quaternion')) continue;
 
     const boneName = track.name.slice(0, -'.quaternion'.length);
+    if (!ARM_BONES.test(boneName)) continue;
     const node = byName.get(boneName);
     if (!node) {
       missing.push(boneName);
@@ -88,7 +113,19 @@ for (const wanted of WANTED) {
     }
 
     const times = (track as QuaternionKeyframeTrack).times;
-    const values = (track as QuaternionKeyframeTrack).values;
+    const values = new Float32Array((track as QuaternionKeyframeTrack).values);
+
+    // Приглушение: тянем поворот обратно к позе покоя этой же кости.
+    const keep = TAME.find((rule) => rule.bones.test(boneName))?.keep;
+    if (keep !== undefined) {
+      const [x, y, z, w] = node.getRotation();
+      const rest = new THREE.Quaternion(x, y, z, w);
+      const frame = new THREE.Quaternion();
+      for (let at = 0; at < values.length; at += 4) {
+        frame.set(values[at]!, values[at + 1]!, values[at + 2]!, values[at + 3]!);
+        rest.clone().slerp(frame, keep).toArray(values, at);
+      }
+    }
 
     const input = document
       .createAccessor(`${name}-${boneName}-time`)
@@ -97,7 +134,7 @@ for (const wanted of WANTED) {
       .setBuffer(buffer);
     const output = document
       .createAccessor(`${name}-${boneName}`)
-      .setArray(new Float32Array(values))
+      .setArray(values)
       .setType('VEC4')
       .setBuffer(buffer);
 

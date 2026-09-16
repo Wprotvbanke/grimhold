@@ -241,6 +241,12 @@ try {
      * с открытым рюкзаком: на кадре будет видно, что пошло не так, а падение
      * скрипта не показало бы ничего.
      */
+    /**
+     * `GRIMHOLD_SWING=мс` — ударить и снять кадр посреди замаха.
+     *
+     * Иначе клип удара не проверить: он длится полторы секунды и играет
+     * один раз. Первый щелчок захватывает мышь, второй бьёт.
+     */
     let worn = true;
     try {
       await page.waitForFunction(
@@ -316,6 +322,15 @@ try {
       await page.screenshot({ path: OUTPUT.replace(/\.png$/, `_${shot}.png`) });
     }
     console.log(`снимков по кругу: ${spin}`);
+  }
+
+  const swing = Number(process.env.GRIMHOLD_SWING ?? 0);
+  if (swing > 0) {
+    await page.mouse.click(800, 450);
+    await wait(600);
+    await page.mouse.down();
+    await page.mouse.up();
+    await wait(swing);
   }
 
   await page.screenshot({ path: OUTPUT });
