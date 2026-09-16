@@ -143,7 +143,7 @@ export const SpendPointSchema = z.object({
 
 export const AdminSchema = z.object({
   t: z.literal('admin'),
-  do: z.enum(['give', 'time', 'portals', 'teleport']),
+  do: z.enum(['give', 'time', 'portals', 'teleport', 'hurt']),
   itemId: z.string().max(64).optional(),
   count: z.number().int().min(1).max(999).optional(),
   /** Время суток: 0 — полночь, 0.25 — рассвет, 0.5 — полдень, 0.75 — закат. */

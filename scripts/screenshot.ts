@@ -435,7 +435,29 @@ try {
     // Пьём и снимаем кадр, пока идёт откат.
     await page.mouse.click(800, 450);
     await wait(400);
-    await page.keyboard.press('Digit1');
+    // Сперва ранимся: на полном здоровье лечение не покажет себя ничем.
+    if (process.env.GRIMHOLD_HURT === '1') {
+      await page.keyboard.press('F2');
+      await shown('admin');
+      await page.evaluate(() => {
+        const buttons = [...document.querySelectorAll('#adminHours button')] as HTMLButtonElement[];
+        buttons.find((button) => button.textContent === 'Ранить')?.click();
+      });
+      await wait(500);
+      await page.click('#adminClose');
+      await wait(500);
+      await page.mouse.click(800, 450);
+      await wait(400);
+    }
+
+    // Жмём ту ячейку, где зелье: у разных персонажей панель своя.
+    const slot = await page.evaluate(() => {
+      const cells = [...document.querySelectorAll('#hotbar .hot')];
+      const at = cells.findIndex((cell) => (cell as HTMLElement).title.includes('Зелье'));
+      return at >= 0 ? at + 1 : 1;
+    });
+    const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'] as const;
+    await page.keyboard.press(keys[slot - 1] ?? 'Digit1');
     await wait(Number(process.env.GRIMHOLD_AFTER ?? 1200));
 
     // `GRIMHOLD_BAG=1` — заодно открыть рюкзак: на одном кадре и сетка

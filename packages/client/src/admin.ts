@@ -80,6 +80,16 @@ export function createAdmin(
   hours.append(portals);
 
   /**
+   * Ранить себя — рядом с часами по той же причине: это способ увидеть
+   * то, что иначе приходится добывать боем. Полосу жизни, свечение лечения
+   * и смерть проверяют именно так.
+   */
+  const hurt = document.createElement('button');
+  hurt.textContent = 'Ранить';
+  hurt.addEventListener('click', () => send({ t: 'admin', do: 'hurt' }));
+  hours.append(hurt);
+
+  /**
    * Телепорт в точку — выбраться, если застрял.
    *
    * Одна строка, а не три поля: координаты владелец пишет так, как их

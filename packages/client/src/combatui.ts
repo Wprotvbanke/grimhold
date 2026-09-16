@@ -18,8 +18,23 @@ const el = <T extends HTMLElement>(id: string): T => document.getElementById(id)
 /** Сколько всплывающих чисел держать на экране одновременно. */
 const MAX_DAMAGE_LABELS = 24;
 
+/**
+ * Сколько держится зелёное свечение после прибавки здоровья, мс.
+ *
+ * Зелье вливает доли каждый тик, и снапшоты приходят не идеально ровно:
+ * без запаса полоса мигала бы. Столько же хватает, чтобы разовое лечение
+ * бинтом успело мигнуть заметно.
+ */
+const HEAL_GLOW = 700;
+
 export class CombatUi {
   private readonly vitals = el<HTMLDivElement>('vitals');
+
+  /** Здоровье с прошлого снапшота: по нему видно, что оно прибывает. */
+  private lastHealth = 0;
+
+  /** До какого мгновения держать зелёное свечение. */
+  private healingUntil = 0;
   private readonly damageLayer = el<HTMLDivElement>('damage');
   private readonly hurt = el<HTMLDivElement>('hurt');
   private readonly deathScreen = el<HTMLDivElement>('deathScreen');
@@ -56,6 +71,21 @@ export class CombatUi {
 
   /** Обновляет полоски. Числа приходят от сервера как есть. */
   updateVitals(self: SelfState): void {
+    /**
+     * Полоса жизни зеленеет, пока здоровье прибывает.
+     *
+     * Выводится из самих чисел, а не из отдельного признака: само оно
+     * не восстанавливается (`HEALTH_REGEN` = 0), значит любой рост — это
+     * лечение. Держим свечение чуть дольше отдельного тика: зелье вливает
+     * доли, и без запаса полоса мигала бы на каждом кадре.
+     */
+    if (self.health > this.lastHealth) this.healingUntil = performance.now() + HEAL_GLOW;
+    this.lastHealth = self.health;
+    el<HTMLDivElement>('barHealth').classList.toggle(
+      'healing',
+      self.alive && performance.now() < this.healingUntil,
+    );
+
     setBar('barHealth', self.health, self.maxHealth);
     setBar('barStamina', self.stamina, self.maxStamina);
     setBar('barMana', self.mana, self.maxMana);

@@ -168,6 +168,16 @@
       #barHealth > i { background: linear-gradient(90deg, #8d2f2a, #c14b3f); }
       #barStamina > i { background: linear-gradient(90deg, #6f6321, #b6a244); }
       #barMana > i { background: linear-gradient(90deg, #29497f, #4a7ec0); }
+      /* Идёт лечение: полоса жизни отзывается зелёным.
+         Свечение снаружи и лёгкая зелень внутри — чтобы было видно
+         и в бою, и когда полоса почти полна. */
+      #barHealth.healing {
+        border-color: #3f7a45;
+        box-shadow: 0 0 10px rgba(86, 196, 108, 0.55);
+      }
+      #barHealth.healing > i {
+        background: linear-gradient(90deg, #4f7a34, #7fc061);
+      }
 
       /* Панель горячих клавиш висит поверх рюкзака: в неё кладут вещи
          перетаскиванием, и она обязана оставаться видимой. */
