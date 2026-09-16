@@ -39,9 +39,27 @@ import { createPortrait } from './portrait.js';
  */
 
 const CELL = 44; // размер клетки вместе с зазором, синхронно с CSS
+/**
+ * Клетка умений — мельче обычной.
+ *
+ * Их двенадцать, а лечь они должны **в ту же длину, что рюкзак** (десять
+ * клеток): ряд шире сетки развалил бы строку окна, и кукла с рюкзаком
+ * перестали бы стоять рядом. Число синхронно с CSS.
+ */
+const SCROLL_CELL = 36;
 // Отступ сетки от угла обёртки: рамка 1 px плюс внутреннее поле 2 px.
 // Без него предметы стоят на пиксель левее и выше своих клеток.
 const GRID_INSET = 3;
+
+/** Шаг клетки у этой сетки: у клеток умений он свой. */
+function sizeOfCell(grid: GridKind): number {
+  return grid === 'scrolls' ? SCROLL_CELL : CELL;
+}
+
+/** Какая клавиша будит ячейку: 1…9, а десятую — 0. */
+export function hotbarKey(index: number): string {
+  return String((index + 1) % 10);
+}
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -67,6 +85,19 @@ export interface InventoryHandlers {
   onWithdraw(x: number, y: number, to?: DropTarget): void;
   /** Переложить вещь внутри казны — с точностью до клетки и с поворотом. */
   onBankArrange(fromX: number, fromY: number, toX: number, toY: number, rotate: boolean): void;
+  /**
+   * Перенести свиток между рюкзаком и клетками умений либо внутри них.
+   *
+   * Один обработчик на все четыре случая: для игрока это одно движение мышью,
+   * а что именно дозволено, решает сервер.
+   */
+  onScrollMove(
+    from: 'backpack' | 'scrolls',
+    to: 'backpack' | 'scrolls',
+    x: number,
+    y: number,
+    target?: { x: number; y: number },
+  ): void;
   /** Положить вещь на стол обмена. */
   onTradeOffer(x: number, y: number): void;
   /** Снять со стола своё предложение под номером. */
@@ -95,7 +126,7 @@ const STAT_NAMES: [keyof ReturnType<typeof attributesFor>, string][] = [
 ];
 
 /** Откуда тянут вещь. От этого зависит, что значит «бросил сюда». */
-type GridKind = 'backpack' | 'bank';
+type GridKind = 'backpack' | 'bank' | 'scrolls';
 
 /** Куда именно вещь положили мышью. */
 export interface DropTarget {
@@ -125,6 +156,8 @@ export class InventoryUi {
   private readonly discard = el<HTMLDivElement>('discard');
   private readonly ghost = el<HTMLDivElement>('dragGhost');
   private readonly errorLine = el<HTMLParagraphElement>('itemError');
+  private readonly scrollCells = el<HTMLDivElement>('scrollCells');
+  private readonly scrollWrap = el<HTMLDivElement>('scrollWrap');
   private readonly bankCol = el<HTMLDivElement>('bankCol');
   private readonly bankTitle = el<HTMLDivElement>('bankTitle');
   private readonly bankCells = el<HTMLDivElement>('bankCells');
@@ -144,6 +177,8 @@ export class InventoryUi {
 
   /** Сколько ещё нельзя пить, секунды. Приходит в снапшоте, считает сервер. */
   private sip = 0;
+  /** Сколько ещё ждать каждому свитку. Тоже из снапшота: откат держит сервер. */
+  private spellWaits: Record<string, number> = {};
   /** Раса персонажа: от неё зависит, какие рецепты вообще показывать. */
   private race: Race | null = null;
   private drag: DragState | null = null;
@@ -154,6 +189,8 @@ export class InventoryUi {
   private myLock = false;
   /** Раскладка казны: нужна подсветке, чтобы знать её размеры. */
   private bankGrid: Grid | null = null;
+  /** Раскладка клеток умений: нужна подсветке по той же причине. */
+  private scrollGrid: Grid | null = null;
   /**
    * Последний щелчок был концом переноса, а не щелчком.
    *
@@ -319,16 +356,19 @@ export class InventoryUi {
    * кончился: снапшот приходит двадцать раз в секунду, и дёргать DOM на
    * каждый было бы расточительно.
    */
-  setSip(seconds: number): void {
-    const was = this.sip;
+  setSip(seconds: number, spells: Record<string, number> = {}): void {
+    const was = this.sip || Object.keys(this.spellWaits).length;
     this.sip = seconds;
-    if (this.state && (seconds > 0 || was > 0)) this.renderHotbar(this.state);
+    this.spellWaits = spells;
+    const now = seconds > 0 || Object.keys(spells).length > 0;
+    if (this.state && (now || was)) this.renderHotbar(this.state);
   }
 
   update(state: InventoryMessage): void {
     this.state = state;
     this.cancelDrag();
     this.renderGrid(state.backpack);
+    this.renderScrolls(state.scrolls);
     this.renderSlots(state.equipment);
     this.renderHotbar(state);
     this.renderWeight(state);
@@ -686,7 +726,8 @@ export class InventoryUi {
 
       const key = document.createElement('span');
       key.className = 'key';
-      key.textContent = String(index + 1);
+      // Десятая ячейка — клавиша 0: после девятки на ряду цифр идёт она.
+      key.textContent = hotbarKey(index);
       node.append(key);
 
       if (!defId) {
@@ -707,13 +748,19 @@ export class InventoryUi {
         node.append(document.createTextNode(def.name));
       }
 
-      // Сколько такого осталось. Ноль означает, что нажатие ничего не даст,
-      // и это видно заранее, а не по сообщению об ошибке.
-      const available = countOf(state.backpack, defId);
+      /**
+       * Сколько такого осталось. Ноль означает, что нажатие ничего не даст,
+       * и это видно заранее, а не по сообщению об ошибке.
+       *
+       * У свитка «есть» значит «вставлен в клетки умений»: в рюкзаке он
+       * просто вещь, и читать его оттуда нельзя (docs/magic.md).
+       */
+      const available =
+        def.kind === 'spell' ? countOf(state.scrolls, defId) : countOf(state.backpack, defId);
       const equipped = Object.values(state.equipment).some((item) => item?.defId === defId);
 
       if (available === 0 && !equipped) node.classList.add('missing');
-      if (available > 1) {
+      if (def.kind !== 'spell' && available > 1) {
         const qty = document.createElement('span');
         qty.className = 'qty';
         qty.textContent = String(available);
@@ -726,16 +773,17 @@ export class InventoryUi {
        * Игрок должен видеть, когда зелье снова готово, а не жать вслепую
        * и получать отказ. Считает откат сервер, здесь только отсчёт.
        */
-      if (def.cooldown && this.sip > 0) {
+      const left = def.spellId ? (this.spellWaits[def.spellId] ?? 0) : def.cooldown ? this.sip : 0;
+      if (left > 0) {
         const wait = document.createElement('div');
         wait.className = 'wait';
-        wait.textContent = this.sip >= 1 ? String(Math.ceil(this.sip)) : this.sip.toFixed(1);
+        wait.textContent = left >= 1 ? String(Math.ceil(left)) : left.toFixed(1);
         node.append(wait);
       }
 
       const hint = this.open
         ? 'Щелчок — убрать с панели'
-        : 'Щелчок или клавиша ' + (index + 1) + ' — применить';
+        : `Щелчок или клавиша ${hotbarKey(index)} — применить`;
       node.title = [def.name, def.description, hint].filter(Boolean).join(' · ');
     }
   }
@@ -762,17 +810,46 @@ export class InventoryUi {
     for (const item of grid.items) this.wrap.append(this.buildItemNode(item, 'backpack'));
   }
 
+  /**
+   * Клетки умений: ряд свитков под рюкзаком.
+   *
+   * Рисуются той же дверью, что рюкзак и казна: свиток тянут, кладут и
+   * вынимают ровно теми же движениями, и разводить это по второму месту
+   * значило бы однажды забыть про одно из них.
+   */
+  private renderScrolls(grid: Grid): void {
+    this.scrollGrid = grid;
+    this.scrollCells.style.gridTemplateColumns = `repeat(${grid.width}, ${SCROLL_CELL - 2}px)`;
+    this.scrollCells.replaceChildren();
+
+    for (let x = 0; x < grid.width; x++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.grid = 'scrolls';
+      cell.dataset.x = String(x);
+      cell.dataset.y = '0';
+      this.scrollCells.append(cell);
+    }
+
+    for (const node of this.scrollWrap.querySelectorAll('.inv-item')) node.remove();
+    for (const item of grid.items) {
+      const node = this.buildItemNode(item, 'scrolls');
+      node.title += '\nЩелчок — обратно в рюкзак, перетаскивание — в клетку';
+      this.scrollWrap.append(node);
+    }
+  }
+
   /** Вид предмета без поведения: одинаков и в рюкзаке, и в казне. */
-  private buildStaticItem(item: PlacedItem): HTMLElement {
+  private buildStaticItem(item: PlacedItem, cell = CELL): HTMLElement {
     const def = itemDef(item.defId);
     const size = sizeOf(item.defId, item.rotated);
 
     const node = document.createElement('div');
     node.className = `inv-item kind-${def.kind}`;
-    node.style.left = `${GRID_INSET + item.x * CELL}px`;
-    node.style.top = `${GRID_INSET + item.y * CELL}px`;
-    node.style.width = `${size.width * CELL - 2}px`;
-    node.style.height = `${size.height * CELL - 2}px`;
+    node.style.left = `${GRID_INSET + item.x * cell}px`;
+    node.style.top = `${GRID_INSET + item.y * cell}px`;
+    node.style.width = `${size.width * cell - 2}px`;
+    node.style.height = `${size.height * cell - 2}px`;
     node.title = `${def.name}\n${def.weight} кг${def.description ? `\n\n${def.description}` : ''}`;
 
     // Картинка вместо названия — там, где она есть. Имя не теряется:
@@ -804,7 +881,7 @@ export class InventoryUi {
    */
   private buildItemNode(item: PlacedItem, from: GridKind): HTMLElement {
     const def = itemDef(item.defId);
-    const node = this.buildStaticItem(item);
+    const node = this.buildStaticItem(item, sizeOfCell(from));
 
     node.addEventListener('mousedown', (event) => {
       event.preventDefault();
@@ -821,7 +898,8 @@ export class InventoryUi {
      */
     node.addEventListener('click', () => {
       if (!this.takeClick()) return;
-      if (from === 'bank') this.handlers.onWithdraw(item.x, item.y);
+      if (from === 'scrolls') this.handlers.onScrollMove('scrolls', 'backpack', item.x, item.y);
+      else if (from === 'bank') this.handlers.onWithdraw(item.x, item.y);
       else if (this.bankOpen) this.handlers.onDeposit(item.x, item.y);
     });
 
@@ -837,8 +915,10 @@ export class InventoryUi {
         // с отправкой её в казну — не то, чего ждёшь.
         if (this.bankOpen) return;
         // Надеваемое надевается, съедобное используется — угадывать не надо,
-        // это видно по определению предмета.
-        if (def.slot) this.handlers.onEquip(item.x, item.y);
+        // это видно по определению предмета. Свиток вставляется в клетки
+        // умений: это единственное, что с ним вообще делают.
+        if (def.kind === 'spell') this.handlers.onScrollMove('backpack', 'scrolls', item.x, item.y);
+        else if (def.slot) this.handlers.onEquip(item.x, item.y);
         else if (def.kind === 'consumable') this.handlers.onUse(item.x, item.y);
       });
     }
@@ -1033,6 +1113,17 @@ export class InventoryUi {
       return;
     }
 
+    // Клетки умений: любое движение с их участием — один и тот же перенос.
+    // Из казны туда не тянут: вещь сперва вынимают в рюкзак.
+    if (drag.from === 'scrolls' || target.grid === 'scrolls') {
+      if (drag.from === 'bank' || target.grid === 'bank') return;
+      this.handlers.onScrollMove(drag.from, target.grid, drag.item.x, drag.item.y, {
+        x: target.x,
+        y: target.y,
+      });
+      return;
+    }
+
     if (drag.from === 'backpack' && target.grid === 'backpack') {
       this.handlers.onMove(drag.item.x, drag.item.y, target.x, target.y, rotate);
       return;
@@ -1065,7 +1156,12 @@ export class InventoryUi {
     const target = this.cellUnder(event);
     if (!target || !this.drag || !this.state) return;
 
-    const grid = target.grid === 'bank' ? this.bankGrid : this.state.backpack;
+    const grid =
+      target.grid === 'bank'
+        ? this.bankGrid
+        : target.grid === 'scrolls'
+          ? this.scrollGrid
+          : this.state.backpack;
     if (!grid) return;
 
     const size = sizeOf(this.drag.item.defId, this.drag.rotated);
@@ -1095,13 +1191,13 @@ export class InventoryUi {
   }
 
   private clearCells(): void {
-    for (const box of [this.cells, this.bankCells]) {
+    for (const box of [this.cells, this.bankCells, this.scrollCells]) {
       for (const cell of box.querySelectorAll('.cell')) cell.classList.remove('hot', 'bad');
     }
   }
 
   private cellAt(grid: GridKind, x: number, y: number): HTMLElement | null {
-    const box = grid === 'bank' ? this.bankCells : this.cells;
+    const box = grid === 'bank' ? this.bankCells : grid === 'scrolls' ? this.scrollCells : this.cells;
     return box.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
   }
 
@@ -1152,11 +1248,15 @@ export class InventoryUi {
     if (!wrap || !cells) return null;
 
     const box = cells.getBoundingClientRect();
-    const x = Math.floor((event.clientX - box.left - GRID_INSET) / CELL);
-    const y = Math.floor((event.clientY - box.top - GRID_INSET) / CELL);
+    const grid: GridKind =
+      wrap.id === 'bankWrap' ? 'bank' : wrap.id === 'scrollWrap' ? 'scrolls' : 'backpack';
+    const step = sizeOfCell(grid);
+
+    const x = Math.floor((event.clientX - box.left - GRID_INSET) / step);
+    const y = Math.floor((event.clientY - box.top - GRID_INSET) / step);
     if (x < 0 || y < 0) return null;
 
-    return { grid: wrap.id === 'bankWrap' ? 'bank' : 'backpack', x, y };
+    return { grid, x, y };
   }
 
   private cancelDrag(): void {

@@ -1,6 +1,4 @@
 import {
-  SPELLS,
-  beginAction,
   countOf,
   findByDefId,
   isItemId,
@@ -9,8 +7,8 @@ import {
   type SetHotbarMessage,
   type UseHotbarMessage,
 } from '@grimhold/shared';
-import { canAct, payForSpell } from '../combat.js';
 import type { Player } from '../world.js';
+import { beginCast } from './action.js';
 import { handleEquip, handleUnequip, handleUseItem } from './items.js';
 import type { CommandHandler, GameEvent } from './types.js';
 
@@ -38,9 +36,24 @@ function refuse(reason: string): GameEvent[] {
  * новых бинтов — и ячейка снова заработает. Клиент такую приглушает.
  */
 export function forgetMissing(player: Player, defId: ItemId): void {
+  /**
+   * У свитка «есть» значит «вставлен в клетки умений».
+   *
+   * Свиток в рюкзаке — не умение, а вещь на продажу: ячейка, показывающая
+   * его, обещала бы заклинание, которого при нажатии не будет.
+   */
+  if (itemDef(defId).kind === 'spell') {
+    if (countOf(player.scrolls, defId) === 0) clearHotbar(player, defId);
+    return;
+  }
+
   if (countOf(player.inventory, defId) > 0) return;
   if (Object.values(player.equipment).some((item) => item?.defId === defId)) return;
+  clearHotbar(player, defId);
+}
 
+/** Снимает вид предмета со всех ячеек панели. */
+function clearHotbar(player: Player, defId: ItemId): void {
   let cleared = false;
   for (let index = 0; index < player.hotbar.length; index++) {
     if (player.hotbar[index] !== defId) continue;
@@ -93,13 +106,20 @@ export const handleUseHotbar: CommandHandler<UseHotbarMessage> = (ctx, payload) 
     return handleUnequip(ctx, { t: 'unequip', slot: def.slot });
   }
 
+  /**
+   * Свиток читается там, где лежит, — в клетках умений.
+   *
+   * Искать его в рюкзаке нельзя: свиток умения в рюкзаке не лежит вовсе,
+   * а лежащий там — просто вещь на продажу. Проверку «вставлен ли» держит
+   * `beginCast`, одна на все пути.
+   */
+  if (def.kind === 'spell' && def.spellId) {
+    const refusal = beginCast(ctx.world, player, def.spellId, payload.viewTick);
+    return refusal ? refuse(refusal) : [];
+  }
+
   const item = findByDefId(player.inventory, defId);
   if (!item) return refuse(`${def.name}: нет в рюкзаке`);
-
-  // Заклинание читается, а не тратится: свиток остаётся в рюкзаке.
-  if (def.kind === 'spell' && def.spellId) {
-    return castFromItem(ctx, payload, def.spellId);
-  }
 
   if (def.kind === 'consumable' && (def.restoreHealth || def.restoreStamina)) {
     return handleUseItem(ctx, { t: 'useItem', x: item.x, y: item.y });
@@ -112,38 +132,3 @@ export const handleUseHotbar: CommandHandler<UseHotbarMessage> = (ctx, payload) 
 
   return refuse(`${def.name} так не используется`);
 };
-
-/** Чтение заклинания из панели. Проверки те же, что и при обычном касте. */
-function castFromItem(
-  ctx: Parameters<CommandHandler<UseHotbarMessage>>[0],
-  payload: UseHotbarMessage,
-  spellId: keyof typeof SPELLS,
-): GameEvent[] {
-  const { world, actor } = ctx;
-  const combat = actor.combat;
-
-  if (!combat.alive || !canAct(combat)) return [];
-
-  const readyAt = actor.spellCooldowns[spellId] ?? 0;
-  if (world.elapsed < readyAt) return refuse(`${SPELLS[spellId].name}: ещё не готово`);
-
-  if (!payForSpell(combat, spellId)) return refuse('Не хватает маны');
-
-  actor.pendingViewTick = payload.viewTick;
-
-  const spell = SPELLS[spellId];
-  combat.action = beginAction(
-    {
-      kind: 'cast',
-      name: spell.name,
-      timing: { windup: spell.castTime, active: 0.05, recovery: 0.3 },
-      staminaCost: 0,
-      damageScale: 1,
-      range: spell.range,
-      arc: spell.arc ?? 0,
-    },
-    spellId,
-  );
-
-  return [];
-}

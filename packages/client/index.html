@@ -288,8 +288,11 @@
        * со стенами мира. Буквы — с засечками и в капители: так подписывают
        * по камню, а моноширинный шрифт интерфейса здесь читался бы терминалом.
        */
+      /* Окно не выше экрана: разделов в нём прибыло, и на невысоком мониторе
+         нижний край иначе уезжает за кадр вместе с клетками умений. */
       .inv-panel {
         position: relative; width: min(1200px, 96vw);
+        max-height: 94vh; overflow-y: auto;
         background:
           linear-gradient(rgba(62, 60, 57, 0.8), rgba(34, 33, 32, 0.9)),
           url("/textures/stone.jpg") center / 360px;
@@ -367,7 +370,9 @@
         font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
         color: #efe5cc; margin-bottom: 2px;
       }
-      .bag-col { min-width: 0; }
+      /* Ширина колонки задана сеткой рюкзака: иначе её растягивают подписи,
+         и кукла с рюкзаком перестают помещаться в одну строку. */
+      .bag-col { min-width: 0; width: 446px; }
 
       /*
        * Содержимое вкладок лежит в тёмной нише, как карточка.
@@ -420,6 +425,16 @@
       .inv-item.kind-armor { background: #252c33; border-color: #47535e; }
       .inv-item.kind-consumable { background: #2b3326; border-color: #4c5a44; }
       .inv-item.kind-scroll { background: #35302a; border-color: #6a5c42; }
+      .inv-item.kind-spell { background: #2a2636; border-color: #4f4770; }
+
+      /* Клетки умений: несгораемые, и это видно по тёплой рамке. Тот же
+         золотой, которым в игре помечено всё, что переживает смерть. */
+      /* Двенадцать клеток ложатся в ту же длину, что десять клеток рюкзака:
+         ряд шире сетки развалил бы строку окна. Размер синхронен с SCROLL_CELL. */
+      #scrollCells .cell {
+        width: 34px; height: 34px;
+        box-shadow: inset 0 0 0 1px #5a4a2c, inset 0 1px 3px rgba(0, 0, 0, 0.7);
+      }
       /**
        * Вещь с картинкой: она и есть содержимое ячейки, название — в подсказке.
        *
@@ -868,6 +883,14 @@
               <div class="weight" id="weightText"></div>
               <div class="weight-bar"><i id="weightFill"></i></div>
               <div id="discard">Перетащи сюда или за окно — вещь упадёт мешком на землю</div>
+
+              <!-- Клетки умений: ряд свитков под рюкзаком. Вставленное сюда
+                   не пропадает со смертью и решает, что персонаж умеет. -->
+              <div class="inv-title">Умения</div>
+              <div class="grid-wrap" id="scrollWrap">
+                <div class="grid-cells" id="scrollCells"></div>
+              </div>
+              <p class="inv-hint">Только свитки. Что вставлено — то и умеешь; со смертью не пропадает.</p>
               <p id="itemError"></p>
             </div>
 
@@ -1000,7 +1023,7 @@
 
     <div id="resumeHint" hidden>
       <b>Щёлкни, чтобы управлять</b><br />
-      ЛКМ — удар · СКМ — тяжёлый · ПКМ — блок · Shift — бег · Ctrl — рывок в сторону · 1…6 — панель · Tab — рюкзак<br />
+      ЛКМ — удар · СКМ — тяжёлый · ПКМ — блок · Shift — бег · Ctrl — рывок в сторону · 1…0 — панель · Tab — рюкзак<br />
       F11 — во весь экран: тогда игре достаются и горячие клавиши браузера
     </div>
 

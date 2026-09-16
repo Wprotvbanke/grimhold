@@ -69,6 +69,8 @@ import {
   carryCapacity,
   createBackpack,
   createBank,
+  createScrolls,
+  starterHotbar,
   createSack,
   createHotbar,
   createMoveState,
@@ -275,6 +277,20 @@ export interface Player {
   /** Рюкзак: раскладку хранит и проверяет сервер, клиент только рисует. */
   inventory: Grid;
   /**
+   * Клетки умений: ряд свитков под рюкзаком.
+   *
+   * Лежащее здесь **не теряется со смертью** — ни наверху, ни внизу — и
+   * не весит. Это выбор класса, а не поклажа: см. docs/magic.md.
+   */
+  scrolls: Grid;
+  /**
+   * Идёт ли медитация и сколько маны ещё не долито.
+   *
+   * Живёт у игрока, а не у бойца: медитируют только игроки, и держит она
+   * не боем, а собственным решением — отпускает повторное нажатие.
+   */
+  meditating: boolean;
+  /**
    * Городская казна — общая на аккаунт, а не на персонажа.
    *
    * Грузится один раз при входе в мир: строчка в базе, зато не нужен поход
@@ -434,6 +450,7 @@ export class World {
     instanceId: string;
     playtimeSeconds: number;
     inventory?: Grid;
+    scrolls?: Grid;
     bank?: Grid;
     equipment?: Equipment;
     knownRecipes?: RecipeId[];
@@ -489,12 +506,14 @@ export class World {
       healing: null,
       spellCooldowns: {},
       inventory: character.inventory ?? createBackpack(),
+      scrolls: character.scrolls ?? createScrolls(),
+      meditating: false,
       bank: character.bank ?? createBank(),
       container: null,
       trade: null,
       equipment: character.equipment ?? {},
       knownRecipes: character.knownRecipes ?? [],
-      hotbar: character.hotbar ?? defaultHotbar(character.characterClass),
+      hotbar: character.hotbar ?? starterHotbar(character.characterClass),
       carriedWeight: 0,
       pitch: 0,
       pendingViewTick: null,
@@ -1020,6 +1039,10 @@ export class World {
       // было бы враньём.
       light: round(Math.max(combat.lightRemaining, player.torchLeft)),
       sip: round(player.sipCooldown),
+      ...(this.spellWaits(player) ?? {}),
+      // Медитацию клиент обязан знать: он предсказывает движение сам, а она
+      // держит на месте. Поле едет только когда она идёт — молчание дешевле.
+      ...(player.meditating ? { meditating: true } : {}),
       flag: flagFor(combat),
       karma: Math.round(combat.karma),
       // Подземельное едет только под землёй: наверху этих полей нет вовсе,
@@ -1120,11 +1143,31 @@ export class World {
     return entities;
   }
 
+  /**
+   * Свитки, которым ещё не время, — с остатком в секундах.
+   *
+   * Пусто, когда готовы все: молчание дешевле нулей двадцать раз в секунду,
+   * а готовность и есть обычное состояние.
+   */
+  private spellWaits(player: Player): { spells: Record<string, number> } | null {
+    let waits: Record<string, number> | null = null;
+
+    for (const [id, readyAt] of Object.entries(player.spellCooldowns)) {
+      const left = (readyAt ?? 0) - this.elapsed;
+      if (left <= 0) continue;
+      waits ??= {};
+      waits[id] = round(left);
+    }
+
+    return waits ? { spells: waits } : null;
+  }
+
   /** Состояние вещей игрока — уходит ему при каждом изменении. */
   inventoryMessage(player: Player): InventoryMessage {
     return {
       t: 'inventory',
       backpack: player.inventory,
+      scrolls: player.scrolls,
       equipment: player.equipment,
       knownRecipes: player.knownRecipes,
       hotbar: player.hotbar,
@@ -1380,22 +1423,6 @@ export class World {
 /** Насколько далеко игроку сообщают про истощённые ноды. */
 const NODE_VIEW_RANGE = CHUNK_SIZE * 1.5;
 
-/**
- * Что лежит в панели у новичка. Панель — про быстрый доступ, поэтому туда
- * сразу попадает то, чем он реально будет пользоваться с первой минуты.
- */
-function defaultHotbar(characterClass: CharacterClass): Hotbar {
-  const hotbar = createHotbar();
-  hotbar[0] = 'crude_axe';
-  hotbar[1] = 'bandage';
-  hotbar[2] = 'torch';
-
-  if (characterClass === 'mage') {
-    hotbar[3] = 'spell_ember';
-    hotbar[4] = 'spell_mend';
-  }
-  return hotbar;
-}
 
 /**
  * Пересчитывает всё, что выводится из вещей: броню и переносимый вес.

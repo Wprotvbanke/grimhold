@@ -419,6 +419,101 @@ try {
     console.log('  [stack] после:', JSON.stringify(after));
   }
 
+  /**
+   * `magic` — выдать свитки, вставить один в клетки умений и повесить
+   * на панель. Проверяется то, что видно только глазами: цвет свитка
+   * в ряду умений и та же картинка в ячейке панели.
+   */
+  if (open === 'magic') {
+    const shown = (id: string) =>
+      page.waitForFunction(
+        (node: string) => document.getElementById(node)?.hasAttribute('hidden') === false,
+        { timeout: 10000 },
+        id,
+      );
+
+    await page.keyboard.press('F2');
+    await shown('admin');
+    // Все три разряда сразу: смысл ряда умений в том, что цвета разные.
+    await page.evaluate(() => {
+      const wanted = ['Огненный шар', 'Заморозка', 'Заживление ран'];
+      const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
+      for (const name of wanted) buttons.find((button) => button.textContent === name)?.click();
+    });
+    await wait(800);
+    await page.click('#adminClose');
+    await wait(500);
+
+    await page.keyboard.press('Tab');
+    await shown('inventory');
+
+    // Тащим свитки в клетки умений мышью — тем же путём, что и игрок.
+    for (let slot = 0; slot < 3; slot++) {
+      const spot = await page.evaluate((index: number) => {
+        const item = [...document.querySelectorAll('#backpackWrap .inv-item')].find((node) =>
+          (node as HTMLElement).title.startsWith('Свиток') ||
+          (node as HTMLElement).classList.contains('kind-spell'),
+        ) as HTMLElement | undefined;
+        const cell = document.querySelectorAll('#scrollCells .cell')[index];
+        if (!item || !cell) return null;
+        const from = item.getBoundingClientRect();
+        const to = cell.getBoundingClientRect();
+        return {
+          fromX: from.left + from.width / 2,
+          fromY: from.top + from.height / 2,
+          toX: to.left + to.width / 2,
+          toY: to.top + to.height / 2,
+        };
+      }, slot);
+      if (!spot) continue;
+
+      await page.mouse.move(spot.fromX, spot.fromY);
+      await page.mouse.down();
+      await page.mouse.move(spot.toX, spot.toY, { steps: 12 });
+      await page.mouse.up();
+      await wait(400);
+    }
+
+    // И один — на панель быстрого доступа, в седьмую ячейку.
+    const onBar = await page.evaluate(() => {
+      const item = document.querySelector('#scrollWrap .inv-item') as HTMLElement | null;
+      const cell = document.querySelectorAll('#hotbar .hot')[6];
+      if (!item || !cell) return null;
+      const from = item.getBoundingClientRect();
+      const to = cell.getBoundingClientRect();
+      return {
+        fromX: from.left + from.width / 2,
+        fromY: from.top + from.height / 2,
+        toX: to.left + to.width / 2,
+        toY: to.top + to.height / 2,
+      };
+    });
+    if (onBar) {
+      await page.mouse.move(onBar.fromX, onBar.fromY);
+      await page.mouse.down();
+      await page.mouse.move(onBar.toX, onBar.toY, { steps: 12 });
+      await page.mouse.up();
+      await wait(500);
+    }
+
+    /**
+     * `GRIMHOLD_CAST=1` — закрыть рюкзак и прочесть свиток с панели.
+     *
+     * Иначе не увидеть ни снаряда, ни отсчёта отката на ячейке: и то и другое
+     * живёт ровно секунду после нажатия.
+     */
+    if (process.env.GRIMHOLD_CAST === '1') {
+      await page.keyboard.press('Tab');
+      await wait(600);
+      await page.mouse.click(800, 450);
+      await wait(400);
+      await page.keyboard.press('Digit7');
+      await wait(Number(process.env.GRIMHOLD_AFTER ?? 900));
+    } else {
+      await wait(Number(process.env.GRIMHOLD_AFTER ?? 600));
+    }
+  }
+
   if (open === 'potion') {
     const shown = (id: string) =>
       page.waitForFunction(

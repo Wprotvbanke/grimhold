@@ -183,12 +183,12 @@ export type ItemId =
   | 'stamina_draught'
   | 'stone_elixir'
   // ---- магия: заклинания лежат в рюкзаке как вещи ----
-  | 'spell_ember'
-  | 'spell_frostbite'
-  | 'spell_lightning'
+  | 'spell_fireball'
+  | 'spell_frost'
   | 'spell_mend'
   | 'spell_wardskin'
-  | 'spell_lantern';
+  | 'spell_light'
+  | 'spell_meditation';
 
 const ITEM_LIST: ItemDef[] = [
   // ---------- добыча с мобов ----------
@@ -447,36 +447,42 @@ const ITEM_LIST: ItemDef[] = [
   },
 
   // ---------- магия ----------
-  // Заклинания занимают место в рюкзаке: это тоже груз, и маг выбирает,
-  // что взять с собой, наравне с воином.
-  spellItem('spell_ember', 'ember', 'Свиток уголька', 1, 1, 0.2),
-  spellItem('spell_frostbite', 'frostbite', 'Свиток стужи', 1, 2, 0.3),
-  spellItem('spell_lightning', 'lightning', 'Свиток разряда', 1, 2, 0.4),
-  spellItem('spell_mend', 'mend', 'Свиток заживления', 1, 2, 0.3),
-  spellItem('spell_wardskin', 'wardskin', 'Свиток каменной кожи', 1, 2, 0.35),
-  spellItem('spell_lantern', 'lantern', 'Свиток светоча', 1, 1, 0.2),
+  // Свиток занимает **одну клетку** и живёт не в рюкзаке, а в клетках
+  // умений под ним: набор вставленных свитков и есть класс персонажа.
+  // См. docs/magic.md.
+  spellItem('spell_fireball', 'fireball'),
+  spellItem('spell_frost', 'frost'),
+  spellItem('spell_mend', 'mend'),
+  spellItem('spell_wardskin', 'wardskin'),
+  spellItem('spell_light', 'light'),
+  spellItem('spell_meditation', 'meditation'),
 ];
 
-/** Свиток заклинания: не тратится при чтении, но занимает место и весит. */
-function spellItem(
-  id: ItemId,
-  spellId: SpellId,
-  name: string,
-  width: number,
-  height: number,
-  weight: number,
-): ItemDef {
+/**
+ * Свиток заклинания.
+ *
+ * Всё, кроме имени в списке предметов, берётся из самого заклинания: название,
+ * описание и картинка по разряду. Два источника правды про одно и то же —
+ * верный способ однажды показать голубую картинку у красного свитка.
+ *
+ * Одна клетка у всех и нулевой вес: свитки лежат в своих клетках умений,
+ * а не в рюкзаке, и грузом быть не должны. Не тратится при чтении — свиток
+ * и есть умение, а не расходник.
+ */
+function spellItem(id: ItemId, spellId: SpellId): ItemDef {
+  const spell = SPELLS[spellId];
   return {
     id,
-    name,
+    name: spell.name,
     kind: 'spell',
-    width,
-    height,
-    weight,
+    width: 1,
+    height: 1,
+    weight: 0,
     stack: 1,
     tier: 2,
     spellId,
-    description: SPELLS[spellId].description,
+    icon: `/icons/scroll_${spell.category}.webp`,
+    description: spell.description,
   };
 }
 

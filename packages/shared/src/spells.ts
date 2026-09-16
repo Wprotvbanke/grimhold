@@ -1,123 +1,161 @@
 import type { SkillId } from './skills.js';
 
 /**
- * Заклинания. Шесть штук — по замыслу магия редкая и опасная, поэтому
- * набор узкий, зато каждое заклинание делает что-то, чего иначе не сделать.
+ * Заклинания.
  *
- * Урон и лечение считает сервер; клиент только просит применить.
+ * Магия у нас — это **свитки в отдельных клетках**, а не выученные умения:
+ * игрок собирает себе набор из шести свитков, и этот набор и есть его класс.
+ * Подробности замысла — docs/magic.md.
+ *
+ * Свитков шесть, и разнесены они по трём разрядам. Разряд — не украшение:
+ * он задаёт цвет свитка, а по цвету человек узнаёт ячейку панели в бою,
+ * не читая названия. Красный бьёт, голубой держит, зелёный помогает.
+ *
+ * Урон, лечение и радиусы считает сервер; клиент только просит применить.
  */
 
-export type SpellId =
-  | 'ember'
-  | 'frostbite'
-  | 'lightning'
-  | 'mend'
-  | 'wardskin'
-  | 'lantern';
+export type SpellId = 'fireball' | 'frost' | 'mend' | 'wardskin' | 'light' | 'meditation';
 
-export type SpellShape = 'projectile' | 'cone' | 'self';
+/** Разряд свитка. По нему берётся картинка и цвет ячейки. */
+export type SpellCategory = 'damage' | 'control' | 'support';
+
+export const CATEGORY_NAMES: Record<SpellCategory, string> = {
+  damage: 'Разрушение',
+  control: 'Контроль',
+  support: 'Поддержка',
+};
+
+/**
+ * Как заклинание достаёт цель.
+ *
+ * - `projectile` — летит телом, от него можно отойти;
+ * - `burst` — вспышка кольцом вокруг чтеца, бьёт всех, кого дозволено бить;
+ * - `blessing` — то же кольцо, но помогает: себе и тем, кого бить нельзя;
+ * - `self` — только на себя;
+ * - `channel` — держится, пока не отменят, и держит на месте самого чтеца.
+ */
+export type SpellShape = 'projectile' | 'burst' | 'blessing' | 'self' | 'channel';
 
 export interface SpellProfile {
   id: SpellId;
   name: string;
   description: string;
+  category: SpellCategory;
   skill: SkillId;
   shape: SpellShape;
   manaCost: number;
   /** Время произнесения в секундах. */
   castTime: number;
   cooldown: number;
-  /** Базовый урон либо лечение. */
+  /** Базовый урон, лечение или прибавка к броне. */
   power: number;
+  /** Дальность снаряда либо радиус кольца, метры. */
   range: number;
-  /** Раствор конуса для площадных, радианы. */
-  arc?: number;
   /** Длительность эффекта в секундах. */
   duration?: number;
   /** Скорость снаряда, м/с. */
   projectileSpeed?: number;
+  /** Сколько маны возвращает за секунду — только у медитации. */
+  manaPerSecond?: number;
 }
 
 export const SPELLS: Record<SpellId, SpellProfile> = {
-  ember: {
-    id: 'ember',
-    name: 'Уголёк',
-    description: 'Дешёвый огненный сгусток. Основной урон мага.',
+  fireball: {
+    id: 'fireball',
+    name: 'Огненный шар',
+    description:
+      'Сгусток пламени летит вперёд и бьёт первого, кого достанет. ' +
+      'Бьёт дальше всего, но летит телом — от него уходят шагом в сторону.',
+    category: 'damage',
     skill: 'evocation',
     shape: 'projectile',
-    manaCost: 8,
-    castTime: 0.5,
-    cooldown: 0.6,
-    power: 14,
-    range: 28,
-    projectileSpeed: 24,
+    manaCost: 14,
+    castTime: 0.6,
+    cooldown: 1.2,
+    power: 28,
+    range: 40,
+    projectileSpeed: 28,
   },
-  frostbite: {
-    id: 'frostbite',
-    name: 'Стужа',
-    description: 'Конус холода: слабый урон, но замедляет — удобно рвать дистанцию.',
+  frost: {
+    id: 'frost',
+    name: 'Заморозка',
+    description:
+      'Стужа расходится кольцом на десять метров: бьёт и замедляет на пять секунд ' +
+      'всех вокруг, кого дозволено бить. Не про урон, а про то, чтобы не ушли.',
+    category: 'control',
     skill: 'evocation',
-    shape: 'cone',
-    manaCost: 16,
-    castTime: 0.7,
-    cooldown: 4,
-    power: 9,
-    range: 7,
-    arc: Math.PI / 3,
-    duration: 3,
-  },
-  lightning: {
-    id: 'lightning',
-    name: 'Разряд',
-    description: 'Долгий каст, тяжёлый урон. Наказание за чужую ошибку.',
-    skill: 'evocation',
-    shape: 'projectile',
-    manaCost: 30,
-    castTime: 1.4,
-    cooldown: 7,
-    power: 46,
-    range: 32,
-    projectileSpeed: 42,
+    shape: 'burst',
+    manaCost: 24,
+    castTime: 0.9,
+    cooldown: 8,
+    power: 12,
+    range: 10,
+    duration: 5,
   },
   mend: {
     id: 'mend',
-    name: 'Заживление',
-    description: 'Лечит себя. В бою дорого: каст долгий и его видно.',
+    name: 'Заживление ран',
+    description:
+      'Возвращает шестьдесят жизней разом — себе и всем своим в восьми метрах. ' +
+      'Лечит именно своих: врага этим не поднять.',
+    category: 'support',
     skill: 'restoration',
-    shape: 'self',
-    manaCost: 22,
-    castTime: 1.6,
-    cooldown: 6,
-    power: 38,
-    range: 0,
+    shape: 'blessing',
+    manaCost: 28,
+    castTime: 1.2,
+    cooldown: 10,
+    power: 60,
+    range: 8,
   },
   wardskin: {
     id: 'wardskin',
     name: 'Каменная кожа',
-    description: 'Временно добавляет броню.',
+    description:
+      'Броня себе и своим в восьми метрах на двадцать секунд. ' +
+      'Читается до драки, а не посреди неё.',
+    category: 'support',
     skill: 'restoration',
-    shape: 'self',
-    manaCost: 18,
+    shape: 'blessing',
+    manaCost: 22,
     castTime: 1,
-    cooldown: 14,
+    cooldown: 16,
     power: 35,
-    range: 0,
+    range: 8,
     duration: 20,
   },
-  lantern: {
-    id: 'lantern',
-    name: 'Светоч',
-    description: 'Свет без факела. В подземелье это выбор: видеть или быть незаметным.',
+  light: {
+    id: 'light',
+    name: 'Свиток света',
+    description:
+      'Белый свет вокруг, шире факела и без огня в руке. ' +
+      'В подземелье это выбор: видеть самому или не быть увиденным.',
+    category: 'support',
     skill: 'restoration',
     shape: 'self',
-    manaCost: 10,
+    manaCost: 12,
     castTime: 0.6,
     cooldown: 2,
     power: 0,
     range: 0,
     duration: 120,
   },
+  meditation: {
+    id: 'meditation',
+    name: 'Медитация',
+    description:
+      'Возвращает свою ману, пока стоишь. С места не сойти — отпускает только ' +
+      'повторное нажатие. Мана только себе: делиться ею нельзя.',
+    category: 'support',
+    skill: 'restoration',
+    shape: 'channel',
+    manaCost: 0,
+    castTime: 0.5,
+    cooldown: 3,
+    power: 0,
+    range: 0,
+    manaPerSecond: 6,
+  },
 };
 
-/** Порядок в панели заклинаний — клавиши 1..6. */
-export const SPELL_BAR: SpellId[] = ['ember', 'frostbite', 'lightning', 'mend', 'wardskin', 'lantern'];
+/** Все свитки разом — для перебора в интерфейсе и в проверках. */
+export const SPELL_IDS = Object.keys(SPELLS) as SpellId[];

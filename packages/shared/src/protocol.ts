@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 30;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -114,7 +114,7 @@ export const BlockSchema = z.object({
 
 export const CastSchema = z.object({
   t: z.literal('cast'),
-  spellId: z.enum(['ember', 'frostbite', 'lightning', 'mend', 'wardskin', 'lantern']),
+  spellId: z.enum(['fireball', 'frost', 'mend', 'wardskin', 'light', 'meditation']),
   viewTick: z.number().int().nonnegative(),
 });
 
@@ -209,14 +209,14 @@ export const DropItemSchema = z.object({
  */
 export const SetHotbarSchema = z.object({
   t: z.literal('setHotbar'),
-  index: z.number().int().min(0).max(5),
+  index: z.number().int().min(0).max(9),
   /** Пустая строка очищает ячейку. */
   itemId: z.string().max(48),
 });
 
 export const UseHotbarSchema = z.object({
   t: z.literal('useHotbar'),
-  index: z.number().int().min(0).max(5),
+  index: z.number().int().min(0).max(9),
   viewTick: z.number().int().nonnegative(),
 });
 
@@ -288,6 +288,27 @@ export const CloseBankSchema = z.object({
  * с поворотом. Казна раскладывается по тем же правилам, что и рюкзак:
  * хранилище, в котором нельзя навести порядок, быстро превращается в свалку.
  */
+/**
+ * Перенос свитка между рюкзаком и клетками умений.
+ *
+ * Одно сообщение на все четыре случая — из рюкзака в клетки, обратно, и
+ * перестановка внутри каждого — потому что для игрока это одно движение
+ * мышью, а разводить его по четырём командам значит однажды забыть одну.
+ *
+ * Что именно можно положить в клетки умений, решает сервер: клиент
+ * присылает только откуда и куда.
+ */
+export const ScrollMoveSchema = z.object({
+  t: z.literal('scrollMove'),
+  from: z.enum(['backpack', 'scrolls']),
+  to: z.enum(['backpack', 'scrolls']),
+  x: z.number().int().min(0).max(15),
+  y: z.number().int().min(0).max(15),
+  /** Клетка назначения. Пусто — место ищет сервер. */
+  toX: z.number().int().min(0).max(15).optional(),
+  toY: z.number().int().min(0).max(15).optional(),
+});
+
 export const BankMoveSchema = z.object({
   t: z.literal('bankMove'),
   dir: z.enum(['deposit', 'withdraw', 'arrange']),
@@ -429,6 +450,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   OpenBankSchema,
   CloseBankSchema,
   BankMoveSchema,
+  ScrollMoveSchema,
   EnterDungeonSchema,
   LeaveDungeonSchema,
   StairsSchema,
@@ -464,6 +486,7 @@ export type CraftMessage = z.infer<typeof CraftSchema>;
 export type OpenBankMessage = z.infer<typeof OpenBankSchema>;
 export type CloseBankMessage = z.infer<typeof CloseBankSchema>;
 export type BankMoveMessage = z.infer<typeof BankMoveSchema>;
+export type ScrollMoveMessage = z.infer<typeof ScrollMoveSchema>;
 export type EnterDungeonMessage = z.infer<typeof EnterDungeonSchema>;
 export type LeaveDungeonMessage = z.infer<typeof LeaveDungeonSchema>;
 export type StairsMessage = z.infer<typeof StairsSchema>;
@@ -634,6 +657,14 @@ export interface LootMessage {
 export interface InventoryMessage {
   t: 'inventory';
   backpack: Grid;
+  /**
+   * Клетки умений: ряд свитков под рюкзаком.
+   *
+   * Едет вместе с рюкзаком, а не отдельным сообщением: свиток переносят
+   * между ними одним движением, и разошедшиеся половинки показали бы его
+   * сразу в двух местах.
+   */
+  scrolls: Grid;
   equipment: Equipment;
   knownRecipes: RecipeId[];
   hotbar: Hotbar;
@@ -826,6 +857,23 @@ export interface SelfState {
    * между бегом и ходьбой.
    */
   exhausted: number;
+  /**
+   * Сколько ещё ждать каждому неготовому свитку, секунды.
+   *
+   * Едут только те, что на откате: готовых шесть из шести — обычное дело,
+   * и слать нули двадцать раз в секунду незачем. Клиент рисует этим отсчёт
+   * на ячейке панели, как у зелий: жать вслепую и получать отказ — худший
+   * способ узнать, что заклинание ещё не готово.
+   */
+  spells?: Record<string, number>;
+  /**
+   * Идёт ли медитация.
+   *
+   * Клиенту это нужно **до** того, как он нарисует шаг: медитация держит
+   * на месте, и предсказывать движение, которого сервер не даст, — верный
+   * способ увидеть, как персонажа отматывает назад.
+   */
+  meditating?: boolean;
   /**
    * Сколько ещё светит то, что светит, — секунды.
    *

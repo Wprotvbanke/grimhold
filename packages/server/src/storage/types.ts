@@ -45,6 +45,8 @@ export interface CharacterRecord {
    * предметы по миру — то есть под аукцион.
    */
   inventory: Grid;
+  /** Клетки умений: свитки, которые не теряются со смертью. */
+  scrolls: Grid;
   equipment: Equipment;
   knownRecipes: RecipeId[];
   /**
@@ -72,6 +74,8 @@ export interface CharacterSave {
   lastSeenAt: number;
   playtimeSeconds: number;
   inventory: Grid;
+  /** Клетки умений: свитки, которые не теряются со смертью. */
+  scrolls: Grid;
   equipment: Equipment;
   knownRecipes: RecipeId[];
   skills: Record<SkillId, SkillProgress>;

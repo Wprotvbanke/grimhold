@@ -233,9 +233,9 @@ async function main(): Promise<void> {
   mage.onSnapshot = (snapshot) => {
     if (snapshot.projectiles.length > 0) sawProjectile = true;
   };
-  mage.send({ t: 'cast', spellId: 'ember', viewTick: mage.latestSnapshot?.tick ?? 0 });
+  mage.send({ t: 'cast', spellId: 'fireball', viewTick: mage.latestSnapshot?.tick ?? 0 });
   await sleep(1200);
-  check(sawProjectile, 'снаряд «Уголька» летит через мир');
+  check(sawProjectile, 'снаряд «Огненного шара» летит через мир');
 
   console.log('\n6. Смерть и воскрешение');
   // Подходим к живому мобу вплотную и перестаём защищаться.

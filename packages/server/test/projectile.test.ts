@@ -77,8 +77,8 @@ describe('урон снаряда', () => {
     const smart = scenario('mage', 6);
     const dull = scenario('warrior', 6);
 
-    const smartBolt = createProjectile('x1', smart.caster, 'ember', 0, 0);
-    const dullBolt = createProjectile('x2', dull.caster, 'ember', 0, 0);
+    const smartBolt = createProjectile('x1', smart.caster, 'fireball', 0, 0);
+    const dullBolt = createProjectile('x2', dull.caster, 'fireball', 0, 0);
 
     const smartHit = fly(smartBolt, [smart.caster, smart.target]);
     const dullHit = fly(dullBolt, [dull.caster, dull.target]);
@@ -91,23 +91,23 @@ describe('урон снаряда', () => {
 
   it('сила заклинания фиксируется на вылете', () => {
     const { caster, target } = scenario('mage', 6);
-    const bolt = createProjectile('x1', caster, 'ember', 0, 0);
+    const bolt = createProjectile('x1', caster, 'fireball', 0, 0);
 
     // Заклинатель гибнет, пока снаряд летит — урон не должен обнулиться.
     caster.alive = false;
     const hit = fly(bolt, [caster, target]);
 
     expect(hit?.event.kind).toBe('hit');
-    const expected = spellDamage(caster.attributes, SPELLS.ember.power, 0);
+    const expected = spellDamage(caster.attributes, SPELLS.fireball.power, 0);
     expect(hit!.event.amount).toBeCloseTo(Math.round(expected), 0);
   });
 });
 
 describe('пробитие цели насквозь', () => {
-  it('«Разряд» не проскакивает сквозь человека за один тик', () => {
-    // 42 м/с при тике 20 Гц — это 2.1 метра за шаг, вдвое шире цели.
+  it('«Огненный шар» не проскакивает сквозь человека за один тик', () => {
+    // 28 м/с при тике 20 Гц — это 1.4 метра за шаг, вдвое шире цели.
     const { caster, target } = scenario('mage', 5);
-    const bolt = createProjectile('x1', caster, 'lightning', 0, 0);
+    const bolt = createProjectile('x1', caster, 'fireball', 0, 0);
 
     const hit = fly(bolt, [caster, target], 1 / 20);
 
@@ -115,17 +115,11 @@ describe('пробитие цели насквозь', () => {
     expect(hit!.event.targetId).toBe('target');
   });
 
-  it('«Уголёк» тоже попадает', () => {
-    const { caster, target } = scenario('mage', 5);
-    const bolt = createProjectile('x1', caster, 'ember', 0, 0);
-    expect(fly(bolt, [caster, target], 1 / 20)?.event.targetId).toBe('target');
-  });
-
   it('пролетает мимо, если цели нет на пути', () => {
     const { caster, target } = scenario('mage', 5);
     target.pos = { x: 20, y: 0, z: DUEL_Z - 5 };
 
-    const bolt = createProjectile('x1', caster, 'ember', 0, 0);
+    const bolt = createProjectile('x1', caster, 'fireball', 0, 0);
     expect(fly(bolt, [caster, target], 1 / 20)).toBeNull();
   });
 
@@ -133,7 +127,7 @@ describe('пробитие цели насквозь', () => {
     const { caster, target } = scenario('mage', 8);
     const wall = { minX: -5, maxX: 5, minY: 0, maxY: 4, minZ: DUEL_Z - 4.5, maxZ: DUEL_Z - 3.5 };
 
-    const bolt = createProjectile('x1', caster, 'lightning', 0, 0);
+    const bolt = createProjectile('x1', caster, 'fireball', 0, 0);
     const hit = fly(bolt, [caster, target], 1 / 20, [wall]);
 
     expect(hit?.event.kind).toBe('miss');

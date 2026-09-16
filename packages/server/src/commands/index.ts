@@ -19,6 +19,7 @@ import {
   handleUseItem,
 } from './items.js';
 import { handleInput } from './input.js';
+import { handleScrollMove } from './scroll.js';
 import {
   handleTradeCancel,
   handleTradeInvite,
@@ -64,6 +65,8 @@ export function dispatch(ctx: CommandContext, message: ClientMessage): GameEvent
       return handleUseItem(ctx, message);
     case 'dropItem':
       return handleDropItem(ctx, message);
+    case 'scrollMove':
+      return handleScrollMove(ctx, message);
     case 'setHotbar':
       return handleSetHotbar(ctx, message);
     case 'useHotbar':

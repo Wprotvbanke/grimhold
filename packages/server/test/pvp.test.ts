@@ -10,7 +10,7 @@ import {
   fullVitals,
 } from '@grimhold/shared';
 import { flagFor, forgiveForMob, markAggressor, mayAttack, punishKill } from '../src/pvp.js';
-import { resolveCone, resolveMelee } from '../src/combat.js';
+import { resolveBurst, resolveMelee } from '../src/combat.js';
 import { createProjectile, stepProjectile } from '../src/projectile.js';
 import { PositionHistory } from '../src/history.js';
 import type { Combatant } from '../src/combatant.js';
@@ -240,7 +240,7 @@ describe('заклинания слушаются тех же правил', () 
     // и в городе нельзя было ударить мечом, но можно было заморозить.
     const { caster, target } = duel(0, -2);
 
-    const outcome = resolveCone(caster, 'frostbite', [caster, target], 1);
+    const outcome = resolveBurst(caster, 'frost', [caster, target], 1);
     expect(target.vitals.health).toBe(fullVitals(target.attributes).health);
     expect(outcome.refusals[0]?.reason).toMatch(/город/i);
   });
@@ -248,13 +248,13 @@ describe('заклинания слушаются тех же правил', () 
   it('за воротами стужа работает', () => {
     const { caster, target } = duel(OUTSIDE, OUTSIDE - 2);
 
-    resolveCone(caster, 'frostbite', [caster, target], 1);
+    resolveBurst(caster, 'frost', [caster, target], 1);
     expect(target.vitals.health).toBeLessThan(fullVitals(target.attributes).health);
   });
 
   it('снаряд в городе не долетает', () => {
     const { caster, target } = duel(0, -3);
-    const bolt = createProjectile('p1', caster, 'ember', 0, 1);
+    const bolt = createProjectile('p1', caster, 'fireball', 0, 1);
 
     // Даём снаряду дойти: он не должен ни попасть, ни ранить.
     for (let i = 0; i < 20; i++) stepProjectile(bolt, 1 / 20, [caster, target], []);
@@ -263,7 +263,7 @@ describe('заклинания слушаются тех же правил', () 
 
   it('за воротами снаряд попадает', () => {
     const { caster, target } = duel(OUTSIDE, OUTSIDE - 3);
-    const bolt = createProjectile('p1', caster, 'ember', 0, 1);
+    const bolt = createProjectile('p1', caster, 'fireball', 0, 1);
 
     let hit = false;
     for (let i = 0; i < 20 && !hit; i++) {

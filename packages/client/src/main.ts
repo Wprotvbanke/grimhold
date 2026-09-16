@@ -248,6 +248,8 @@ const inventoryUi = new InventoryUi({
   onSpendPoint: (into) => connection.send({ t: 'spendPoint', into }),
   onBankArrange: (x, y, toX, toY, rotate) =>
     connection.send({ t: 'bankMove', dir: 'arrange', x, y, toX, toY, rotate }),
+  onScrollMove: (from, to, x, y, target) =>
+    connection.send({ t: 'scrollMove', from, to, x, y, toX: target?.x, toY: target?.y }),
   onTradeOffer: (x, y) => connection.send({ t: 'tradeOffer', x, y }),
   onTradeWithdraw: (index) => connection.send({ t: 'tradeWithdraw', index }),
   onTradeLock: (locked) => connection.send({ t: 'tradeLock', locked }),
@@ -882,7 +884,7 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   combatUi.hideDeath();
   ui.system(`Добро пожаловать, ${character.name}.`);
   ui.system('ЛКМ — удар, СКМ — тяжёлый, ПКМ — блок, Shift — бег, Ctrl — рывок в сторону.');
-  ui.system('1…6 — панель, Tab — рюкзак. Вещи на панель кладутся перетаскиванием.');
+  ui.system('1…0 — панель, Tab — рюкзак. Вещи и свитки кладутся на панель перетаскиванием.');
   ui.setResumeHint(true);
 }
 
@@ -923,6 +925,10 @@ renderer.setAnimationLoop((frameTime: number) => {
       // Выдохшийся не бежит. Клиент обязан знать это сам: иначе он предсказывает
       // бег, которого сервер уже не даёт, и картинка дёргается.
       exhausted: (authoritative?.exhausted ?? 0) > 0,
+      // Медитация держит на месте. Клиент обязан знать это сам: иначе он
+      // предсказывает шаг, которого сервер не даёт, и человека отматывает
+      // назад при каждом снапшоте.
+      rooted: authoritative?.meditating === true,
     });
     game.predictor.setStamina(authoritative?.stamina ?? 1);
 
@@ -974,7 +980,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     const self = connection.latestSnapshot?.self;
 
     // Откат зелий на панели: считает его сервер, мы только показываем.
-    inventoryUi.setSip(self?.sip ?? 0);
+    inventoryUi.setSip(self?.sip ?? 0, self?.spells ?? {});
 
     /**
      * Свой огонь: факел в руке или «Светоч».
@@ -989,13 +995,20 @@ renderer.setAnimationLoop((frameTime: number) => {
      */
     const torch = offHandItem === 'torch';
     const burning = (self?.light ?? 0) > 0;
-    const wantLight = burning ? (torch ? TORCH_LIGHT.base * flicker(now / 1000, 0) : 34) : 0;
+    const wantLight = burning ? (torch ? TORCH_LIGHT.base * flicker(now / 1000, 0) : 26) : 0;
 
     // Мгла отступает перед своим огнём — сцене об этом надо сказать.
     world.setTorch(burning);
-    lanternLight.color.setHex(torch ? TORCH_LIGHT.color : 0xffd9a0);
-    lanternLight.distance = torch ? TORCH_LIGHT.range : 16;
-    lanternLight.decay = torch ? TORCH_LIGHT.decay : 2;
+    /**
+     * «Свиток света» — белый и **шире факела**.
+     *
+     * Так и обещано игроку: свет без огня в руке, и видно с ним дальше.
+     * Дальность берётся от факела с запасом, а не своим числом: разойдись
+     * они, и однажды магический свет оказался бы тусклее смолы.
+     */
+    lanternLight.color.setHex(torch ? TORCH_LIGHT.color : 0xf2f6ff);
+    lanternLight.distance = torch ? TORCH_LIGHT.range : TORCH_LIGHT.range * 1.5;
+    lanternLight.decay = torch ? TORCH_LIGHT.decay : 0.8;
     // Разгорание плавное, мерцание — нет: иначе оно бы сглаживалось в ровный
     // свет. За плавность отвечает только появление и угасание.
     lanternLight.intensity += (wantLight - lanternLight.intensity) * Math.min(1, dt * (burning ? 12 : 4));

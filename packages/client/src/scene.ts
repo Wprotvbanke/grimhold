@@ -863,12 +863,15 @@ export function mobTagHeight(mobId: MobId): number {
 }
 
 const SPELL_COLORS: Record<SpellId, number> = {
-  ember: 0xff7a30,
-  frostbite: 0x7fd4ff,
-  lightning: 0xc8b6ff,
+  // Цвета те же, что у разрядов свитков: красный бьёт, голубой держит,
+  // зелёный помогает. Летит из них только огненный шар — остальные
+  // расходятся кольцом и снаряда не порождают.
+  fireball: 0xff3b2a,
+  frost: 0x7fd4ff,
   mend: 0x86c98a,
   wardskin: 0xb9a97e,
-  lantern: 0xffe9a8,
+  light: 0xffe9a8,
+  meditation: 0x9fd8c8,
 };
 
 /**

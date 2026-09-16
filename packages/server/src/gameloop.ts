@@ -52,7 +52,8 @@ import { finishHarvest, workMessage, outOfReach } from './commands/harvest.js';
 import { finishChest } from './commands/chest.js';
 import {
   applyDodgeImpulse,
-  resolveCone,
+  resolveBurst,
+  resolveBlessing,
   resolveMelee,
   resolveSelfSpell,
   FIST_DAMAGE,
@@ -212,6 +213,35 @@ function healOverTime(player: Player, dt: number): void {
 }
 
 /**
+ * Медитация возвращает ману, пока игрок стоит.
+ *
+ * Держится сама, без отсчёта: отпускает её только повторное нажатие свитка —
+ * либо смерть, либо чужой удар. Цена честная и видимая: пока льётся мана,
+ * ноги не идут, и уйти от подошедшего нельзя (см. `rooted` в общей формуле
+ * скорости). Поэтому медитируют после боя, а не посреди него.
+ *
+ * Полный запас обрывает её сам: стоять дальше незачем, а человек, глядящий
+ * на полную полосу, ждал бы подсказки.
+ */
+function meditate(player: Player, dt: number, outbox: Outbox): void {
+  if (!player.meditating) return;
+
+  const combat = player.combat;
+  if (!combat.alive) {
+    player.meditating = false;
+    return;
+  }
+
+  const gain = SPELLS.meditation.manaPerSecond ?? 0;
+  combat.vitals.mana = Math.min(player.maxima.mana, combat.vitals.mana + gain * dt);
+
+  if (combat.vitals.mana >= player.maxima.mana) {
+    player.meditating = false;
+    outbox.itemErrors.push({ playerId: player.id, message: 'Мана полна — медитация окончена' });
+  }
+}
+
+/**
  * Факел прогорает.
  *
  * Кончился — берётся следующий из связки в той же руке, а связка кончилась —
@@ -259,6 +289,7 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
     // Откат зелий идёт всегда: и в бою, и в покое, и стоя у сундука.
     player.sipCooldown = Math.max(0, player.sipCooldown - dt);
     healOverTime(player, dt);
+    meditate(player, dt, outbox);
 
     // Работа идёт, пока игрок стоит у цели: отошёл — брошена. Это и есть
     // способ передумать, отдельной кнопки отмены не нужно. Одинаково для
@@ -485,6 +516,8 @@ function applyMovement(world: World, player: Player, dt: number): void {
       exhausted,
       slowFactor: speedMultiplier(combat),
       weightFactor: weightSpeedFactor(player.attributes, player.carriedWeight),
+      // Медитация держит на месте: это её цена, и платит её движение.
+      rooted: player.meditating,
     });
 
     const colliders = world.collidersAt(player.instanceId, player.state.pos.x, player.state.pos.z);
@@ -528,10 +561,28 @@ function castSpell(world: World, caster: Player, spellId: SpellId, outbox: Outbo
     return;
   }
 
+  /**
+   * Медитация не разрешается, а **включается**: она длится, пока её не
+   * выключат. Поэтому здесь не исход боя, а переключатель.
+   */
+  if (spell.shape === 'channel') {
+    caster.meditating = !caster.meditating;
+    outbox.itemErrors.push({
+      playerId: caster.id,
+      message: caster.meditating ? 'Ты садишься медитировать' : 'Медитация прервана',
+    });
+    return;
+  }
+
+  const others = world.combatantsIn(caster.instanceId);
   const outcome =
-    spell.shape === 'cone'
-      ? resolveCone(caster.combat, spellId, world.combatantsIn(caster.instanceId), skillLevel)
-      : resolveSelfSpell(caster.combat, spellId, skillLevel, caster.maxima.health);
+    spell.shape === 'burst'
+      ? resolveBurst(caster.combat, spellId, others, skillLevel)
+      : spell.shape === 'blessing'
+        ? resolveBlessing(caster.combat, spellId, others, skillLevel, (combatant) =>
+            world.playerByCombatantId(combatant.id)?.maxima.health ?? combatant.vitals.health,
+          )
+        : resolveSelfSpell(caster.combat, spellId);
 
   collectOutcome(world, outcome, outbox);
 }

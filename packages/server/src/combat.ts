@@ -253,8 +253,21 @@ export function resolveMelee(
   return outcome;
 }
 
-/** Урон в конусе — стужа и подобное. Отматывания не требует: конус широкий. */
-export function resolveCone(
+/** Достаёт ли кольцо этого бойца: радиус меряется до его бока, а не до оси. */
+function withinRing(caster: Combatant, target: Combatant, range: number): boolean {
+  const dx = target.pos.x - caster.pos.x;
+  const dz = target.pos.z - caster.pos.z;
+  return Math.hypot(dx, dz) <= range + target.radius;
+}
+
+/**
+ * Вспышка кольцом вокруг чтеца — «Заморозка».
+ *
+ * Кольцо, а не конус: свиток читают, когда обступили со всех сторон, и
+ * заставлять при этом ещё и целиться значило бы отобрать у него весь смысл.
+ * Отматывания времени не требует по той же причине — попасть тут нельзя мимо.
+ */
+export function resolveBurst(
   caster: Combatant,
   spellId: SpellId,
   targets: Combatant[],
@@ -262,19 +275,18 @@ export function resolveCone(
 ): CombatOutcome {
   const outcome = emptyOutcome();
   const spell = SPELLS[spellId];
-  const arc = spell.arc ?? Math.PI / 4;
 
   for (const target of targets) {
+    if (target.id === caster.id) continue;
+    if (!withinRing(caster, target, spell.range)) continue;
+
     // Стужа подчиняется тем же правилам, что меч и снаряд: иначе в городе
     // нельзя было бы ударить, но можно было бы заморозить.
     const verdict = mayAttack(caster, target);
     if (!verdict.ok) {
-      if (verdict.reason && inAttackCone(caster.pos, caster.yaw, target.pos, spell.range, arc, target.radius)) {
-        outcome.refusals.push({ attackerId: caster.id, reason: verdict.reason });
-      }
+      if (verdict.reason) outcome.refusals.push({ attackerId: caster.id, reason: verdict.reason });
       continue;
     }
-    if (!inAttackCone(caster.pos, caster.yaw, target.pos, spell.range, arc, target.radius)) continue;
 
     markAggressor(caster, target);
 
@@ -284,8 +296,13 @@ export function resolveCone(
       staminaOnBlock: BLOCK_STAMINA_HIT * 0.5,
     });
 
-    // Стужа замедляет — это её смысл, а не урон.
-    if (spell.duration && result.applied > 0) {
+    /**
+     * Замедляет **даже когда урон не прошёл**.
+     *
+     * Свиток контроля тем и отличается от свитка разрушения: он про то,
+     * чтобы не ушли. Щит от стужи спасает по здоровью, но не по ногам.
+     */
+    if (spell.duration && !result.dodged) {
       target.slowFactor = 0.55;
       target.slowRemaining = spell.duration;
     }
@@ -316,44 +333,76 @@ export function resolveCone(
   return outcome;
 }
 
-/** Заклинания на себя: лечение, броня, свет. */
-export function resolveSelfSpell(
+/**
+ * Кольцо помощи — «Заживление ран» и «Каменная кожа».
+ *
+ * Помогает себе и **тем, кого бить нельзя**: союзнику, отряду, соседу
+ * в мирной зоне. Свой определяется теми же правилами PvP, что и враг, и это
+ * не хитрость, а единственный способ не завести вторую таблицу «кто чей»:
+ * разойдись они, и лечение доставалось бы тому, кого ты только что ударил.
+ *
+ * Мобы под кольцо не попадают никогда: лечить волка незачем, а правила
+ * дозволяют бить его всегда — значит «своим» он не станет.
+ */
+export function resolveBlessing(
   caster: Combatant,
   spellId: SpellId,
+  targets: Combatant[],
   skillLevel: number,
-  maxHealth: number,
+  maxHealthOf: (combatant: Combatant) => number,
 ): CombatOutcome {
   const outcome = emptyOutcome();
   const spell = SPELLS[spellId];
+  const power = spellDamage(caster.attributes, spell.power, skillLevel);
 
-  if (spellId === 'mend') {
-    const healed = Math.round(spellDamage(caster.attributes, spell.power, skillLevel));
-    const before = caster.vitals.health;
-    caster.vitals.health = Math.min(maxHealth, caster.vitals.health + healed);
-
-    outcome.events.push({
-      t: 'combat',
-      kind: 'heal',
-      attackerId: caster.id,
-      attackerName: caster.name,
-      targetId: caster.id,
-      targetName: caster.name,
-      amount: caster.vitals.health - before,
-      backstab: false,
-      x: caster.pos.x,
-      y: caster.pos.y + caster.height * 0.7,
-      z: caster.pos.z,
-    });
+  const blessed: Combatant[] = [caster];
+  for (const target of targets) {
+    if (target.id === caster.id || !target.alive) continue;
+    if (target.kind !== 'player') continue;
+    if (!withinRing(caster, target, spell.range)) continue;
+    // Кого дозволено бить — тот не свой, и помощь ему не полагается.
+    if (mayAttack(caster, target).ok) continue;
+    blessed.push(target);
   }
 
-  if (spellId === 'wardskin') {
-    caster.wardArmor = spell.power;
-    caster.wardRemaining = spell.duration ?? 20;
+  for (const target of blessed) {
+    if (spellId === 'mend') {
+      const before = target.vitals.health;
+      target.vitals.health = Math.min(maxHealthOf(target), target.vitals.health + Math.round(power));
+      const healed = target.vitals.health - before;
+      if (healed <= 0) continue;
+
+      outcome.events.push({
+        t: 'combat',
+        kind: 'heal',
+        attackerId: caster.id,
+        attackerName: caster.name,
+        targetId: target.id,
+        targetName: target.name,
+        amount: healed,
+        backstab: false,
+        x: target.pos.x,
+        y: target.pos.y + target.height * 0.7,
+        z: target.pos.z,
+      });
+    }
+
+    if (spellId === 'wardskin') {
+      target.wardArmor = spell.power;
+      target.wardRemaining = spell.duration ?? 20;
+    }
   }
 
-  if (spellId === 'lantern') {
-    caster.lightRemaining = spell.duration ?? 120;
-  }
+  outcome.experience.push({ combatantId: caster.id, skill: spell.skill, amount: EXPERIENCE_PER_HIT });
+  return outcome;
+}
+
+/** Заклинания, которые действуют только на самого чтеца: свет и медитация. */
+export function resolveSelfSpell(caster: Combatant, spellId: SpellId): CombatOutcome {
+  const outcome = emptyOutcome();
+  const spell = SPELLS[spellId];
+
+  if (spellId === 'light') caster.lightRemaining = spell.duration ?? 120;
 
   outcome.experience.push({ combatantId: caster.id, skill: spell.skill, amount: EXPERIENCE_PER_HIT });
   return outcome;

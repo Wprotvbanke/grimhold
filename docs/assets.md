@@ -45,6 +45,7 @@
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
 | `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |
+| `public/icons/scroll_damage.webp` · `scroll_control.webp` · `scroll_support.webp` | от владельца проекта, собраны `scripts/prepare-scrolls.ts`; по рисунку на разряд свитка, 128×128, 24 КБ на все три | уточнить |
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
 | `public/models/nature.glb` | от владельца проекта, собран `scripts/prepare-nature.ts` | уточнить |
 | `public/models/lights.glb` | от владельца проекта, собран `scripts/prepare-lights.ts` | уточнить |
@@ -102,6 +103,7 @@ npx tsx scripts/prepare-gnome.ts      # житель площади: 2 МБ FBX 
 npx tsx scripts/prepare-dwarf-test.ts # пробный дворф, три клипа: 11 МБ FBX → 0.26 МБ
 npx tsx scripts/prepare-bag.ts        # мешочек с добычей: 0.64 МБ → 0.04 МБ
 npx tsx scripts/prepare-symbol.ts     # знак выхода: 98 КБ → 50 КБ
+npx tsx scripts/prepare-scrolls.ts    # три иконки свитков: 1.3 МБ png → 24 КБ webp
 npx tsx scripts/prepare-sky.ts        # панорама неба: 12 КБ
 npx tsx scripts/prepare-surfaces.ts   # рельеф и шероховатость камня, мостовой, земли, скалы, досок: 6.5 МБ jpg → 3 МБ webp
 ```

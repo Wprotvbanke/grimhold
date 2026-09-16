@@ -8,7 +8,8 @@ import {
   addItem,
   createBackpack,
   createBank,
-  createHotbar,
+  createScrolls,
+  starterHotbar,
   isItemId,
   isRecipeId,
   MAX_SKILL_LEVEL,
@@ -17,6 +18,7 @@ import {
   itemDef,
   sanitizeGrid,
   sanitizeHotbar,
+  SCROLL_SLOTS,
   type CharacterClass,
   type Equipment,
   type Grid,
@@ -66,6 +68,7 @@ const SCHEMA = `
     last_seen_at     INTEGER NOT NULL,
     playtime_seconds INTEGER NOT NULL DEFAULT 0,
     inventory        TEXT NOT NULL DEFAULT '',
+    scrolls          TEXT NOT NULL DEFAULT '',
     equipment        TEXT NOT NULL DEFAULT '',
     known_recipes    TEXT NOT NULL DEFAULT '',
     skills           TEXT NOT NULL DEFAULT '',
@@ -93,6 +96,9 @@ const SCHEMA = `
  */
 const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: 'characters', column: 'inventory', definition: "TEXT NOT NULL DEFAULT ''" },
+  // Клетки умений. Появились вместе с новой магией: у персонажей вчерашнего
+  // дня столбца нет, и без этой строки они перестали бы открываться.
+  { table: 'characters', column: 'scrolls', definition: "TEXT NOT NULL DEFAULT ''" },
   { table: 'characters', column: 'equipment', definition: "TEXT NOT NULL DEFAULT ''" },
   { table: 'characters', column: 'known_recipes', definition: "TEXT NOT NULL DEFAULT ''" },
   // Карма и фиолетовый переживают перезаход: иначе выйти и зайти означало бы
@@ -122,6 +128,23 @@ const STARTER_KIT: { itemId: ItemId; count: number }[] = [
   { itemId: 'torch', count: 2 },
 ];
 
+/**
+ * Свитки, вставленные новичку в клетки умений.
+ *
+ * Пока это **все шесть**: другого источника свитков в игре ещё нет, а
+ * система, которую нельзя потрогать, не система. Когда свитки начнут
+ * добываться в подземелье, здесь останется один-два — и выбор набора
+ * снова станет выбором. См. docs/magic.md.
+ */
+const STARTER_SCROLLS: ItemId[] = [
+  'spell_fireball',
+  'spell_frost',
+  'spell_mend',
+  'spell_wardskin',
+  'spell_light',
+  'spell_meditation',
+];
+
 interface AccountRow {
   id: string;
   username: string;
@@ -145,6 +168,7 @@ interface CharacterRow {
   last_seen_at: number;
   playtime_seconds: number;
   inventory: string;
+  scrolls: string;
   equipment: string;
   known_recipes: string;
   skills: string;
@@ -236,6 +260,11 @@ export class SqliteStorage implements Storage {
       inventory = addItem(inventory, entry.itemId, entry.count).grid;
     }
 
+    let scrolls = createScrolls();
+    for (const id of STARTER_SCROLLS) {
+      scrolls = addItem(scrolls, id, 1).grid;
+    }
+
     const record: CharacterRecord = {
       id: randomUUID(),
       accountId,
@@ -251,11 +280,12 @@ export class SqliteStorage implements Storage {
       lastSeenAt: now,
       playtimeSeconds: 0,
       inventory,
+      scrolls,
       equipment: {},
       knownRecipes: [],
       skills: emptySkillBook(),
       progress: emptyProgress(),
-      hotbar: createHotbar(),
+      hotbar: starterHotbar(characterClass),
       karma: 0,
       purpleFor: 0,
     };
@@ -264,9 +294,9 @@ export class SqliteStorage implements Storage {
       .prepare(
         `INSERT INTO characters
            (id, account_id, name, race, class, x, y, z, yaw, instance_id,
-            created_at, last_seen_at, playtime_seconds, inventory, equipment, known_recipes,
-            skills, progress, hotbar)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            created_at, last_seen_at, playtime_seconds, inventory, scrolls, equipment,
+            known_recipes, skills, progress, hotbar)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.id,
@@ -283,6 +313,7 @@ export class SqliteStorage implements Storage {
         record.lastSeenAt,
         record.playtimeSeconds,
         JSON.stringify(record.inventory),
+        JSON.stringify(record.scrolls),
         JSON.stringify(record.equipment),
         JSON.stringify(record.knownRecipes),
         JSON.stringify(record.skills),
@@ -304,7 +335,7 @@ export class SqliteStorage implements Storage {
     const statement = this.db.prepare(
       `UPDATE characters
           SET x = ?, y = ?, z = ?, yaw = ?, last_seen_at = ?, playtime_seconds = ?,
-              inventory = ?, equipment = ?, known_recipes = ?, skills = ?, progress = ?,
+              inventory = ?, scrolls = ?, equipment = ?, known_recipes = ?, skills = ?, progress = ?,
               hotbar = ?,
               karma = ?, purple_for = ?, instance_id = ?
         WHERE id = ?`,
@@ -321,6 +352,7 @@ export class SqliteStorage implements Storage {
           save.lastSeenAt,
           save.playtimeSeconds,
           JSON.stringify(save.inventory),
+          JSON.stringify(save.scrolls),
           JSON.stringify(save.equipment),
           JSON.stringify(save.knownRecipes),
           JSON.stringify(save.skills),
@@ -389,6 +421,7 @@ function toCharacter(row: CharacterRow): CharacterRecord {
     // Данные из базы никогда не принимаются на веру: предмет мог исчезнуть
     // из игры между версиями, а раскладка — разъехаться.
     inventory: sanitizeGrid(parseJson(row.inventory), BACKPACK_WIDTH, BACKPACK_HEIGHT),
+    scrolls: sanitizeGrid(parseJson(row.scrolls), SCROLL_SLOTS, 1),
     equipment: sanitizeEquipment(parseJson(row.equipment)),
     skills: sanitizeSkills(parseJson(row.skills)),
     progress: sanitizeProgress(parseJson(row.progress)),

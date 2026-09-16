@@ -200,10 +200,13 @@ export class Controls {
         return;
       }
 
-      const digit = /^Digit([1-6])$/.exec(event.code);
+      // Панель на десять ячеек: 1…9 и следом 0 — так же, как они лежат
+      // на клавиатуре. Порядок ячеек тот же, что рисует панель.
+      const digit = /^Digit([0-9])$/.exec(event.code);
       if (digit) {
         event.preventDefault();
-        this.hooks.onHotbar(Number(digit[1]) - 1);
+        const typed = Number(digit[1]);
+        this.hooks.onHotbar(typed === 0 ? 9 : typed - 1);
       }
     });
   }

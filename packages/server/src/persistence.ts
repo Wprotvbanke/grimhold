@@ -86,6 +86,7 @@ export class Persistence {
       lastSeenAt: now,
       playtimeSeconds: player.playtimeSeconds,
       inventory: player.inventory,
+      scrolls: player.scrolls,
       equipment: player.equipment,
       knownRecipes: player.knownRecipes,
       skills: player.skills,

@@ -1,3 +1,4 @@
+import type { CharacterClass } from './classes.js';
 import { FIST_STAMINA_SCALE } from './combat.js';
 import { ITEMS, itemDef, type EquipSlot, type ItemId } from './items.js';
 
@@ -46,8 +47,27 @@ export interface Grid {
 
 export type Equipment = Partial<Record<EquipSlot, PlacedItem>>;
 
-/** Сколько ячеек в панели горячих клавиш: клавиши 1…6. */
-export const HOTBAR_SIZE = 6;
+/**
+ * Клетки умений: двенадцать штук в один ряд под рюкзаком.
+ *
+ * Сюда кладут **только свитки**, и лежащее в них **не пропадает со смертью** —
+ * ни наверху, ни внизу. Это и есть выбор класса: набор вставленных свитков
+ * решает, что персонаж умеет, и терять его при каждой вылазке нельзя, иначе
+ * спуск вниз означал бы заново собирать себя. См. docs/magic.md.
+ *
+ * Ряд один и длиной в рюкзак: двенадцать клеток под десятью колонками сетки
+ * читаются как продолжение того же окна, а не как второе хранилище.
+ */
+export const SCROLL_SLOTS = 12;
+
+/**
+ * Сколько ячеек в панели горячих клавиш: клавиши 1…9 и 0.
+ *
+ * Было шесть. Десять понадобились, когда к зельям и оружию добавились свитки
+ * умений: шести ячеек на то и другое сразу не хватает, а выбирать между
+ * факелом и заклинанием игрок должен в бою, а не в меню.
+ */
+export const HOTBAR_SIZE = 10;
 
 /**
  * Панель горячих клавиш.
@@ -60,6 +80,35 @@ export type Hotbar = (ItemId | null)[];
 
 export function createHotbar(): Hotbar {
   return Array.from({ length: HOTBAR_SIZE }, () => null);
+}
+
+/**
+ * Панель новичка.
+ *
+ * Живёт в общем коде, потому что заполняется при создании персонажа — то есть
+ * в хранилище, — а читается миром. Пока она жила в `world.ts`, её просто
+ * никогда не звали: в базу ложилась пустая панель, а `?? defaultHotbar()`
+ * до неё не доходил. Новичок начинал с пустыми ячейками.
+ *
+ * Свитки на панели у всех, а не только у мага: умения теперь не про класс,
+ * а про то, что вставлено в клетки умений (docs/magic.md), и панель обязана
+ * показывать это с первой минуты. Класс задаёт уклон, а не запрет.
+ */
+export function starterHotbar(characterClass: CharacterClass): Hotbar {
+  const hotbar = createHotbar();
+  hotbar[0] = 'crude_axe';
+  hotbar[1] = 'bandage';
+  hotbar[2] = 'torch';
+
+  if (characterClass === 'mage') {
+    hotbar[3] = 'spell_fireball';
+    hotbar[4] = 'spell_frost';
+    hotbar[5] = 'spell_mend';
+  } else {
+    hotbar[3] = 'spell_mend';
+    hotbar[4] = 'spell_light';
+  }
+  return hotbar;
 }
 
 /** Проверяет панель из базы: вид предмета мог исчезнуть между версиями. */
@@ -93,6 +142,11 @@ export function createBank(): Grid {
 
 export function createSack(): Grid {
   return createGrid(SACK_WIDTH, SACK_HEIGHT);
+}
+
+/** Ряд клеток умений. Один в высоту: это полка, а не сетка. */
+export function createScrolls(): Grid {
+  return createGrid(SCROLL_SLOTS, 1);
 }
 
 /** Занимаемый размер с учётом поворота. */

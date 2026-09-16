@@ -236,6 +236,13 @@ export interface SpeedModifiers {
   weightFactor: number;
   /** Выдохся: стамина кончилась на бегу, и ноги ещё не отошли. */
   exhausted: boolean;
+  /**
+   * Держит на месте: идёт медитация.
+   *
+   * Перебивает всё остальное. Это не замедление, а цена свитка: ману
+   * возвращают, пока стоишь, и уйти от удара во время этого нельзя.
+   */
+  rooted?: boolean;
 }
 
 /**
@@ -256,6 +263,9 @@ export const EXHAUSTED_SPEED_SCALE = 0.6;
 
 export function movementSpeedFactor(modifiers: SpeedModifiers): number {
   let scale = modifiers.slowFactor * modifiers.weightFactor;
+
+  // Медитация держит на месте — и никакой рывок из неё не выносит.
+  if (modifiers.rooted) return 0;
 
   // Рывок перебивает всё: это короткий бросок, а не способ ходить.
   if (modifiers.dashing) return scale * DODGE_SPEED_SCALE;

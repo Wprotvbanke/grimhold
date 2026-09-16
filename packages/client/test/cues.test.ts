@@ -55,7 +55,7 @@ describe('звуки боя', () => {
 
   it('сгусток заклинания тетивой не звенит', () => {
     const { cues, played } = listen();
-    cues.projectiles([arrow('s1', 'ember')]);
+    cues.projectiles([arrow('s1', 'fireball')]);
     expect(played).toEqual([]);
   });
 });
