@@ -110,9 +110,10 @@ const AXE = {
    *
    * Честная длина — два с половиной предплечья, но предплечье занимает
    * 0.7 высоты кадра, и такой топор не помещается на экране полтора раза.
-   * Берём короче жизни: в руке он должен читаться целиком.
+   * Берём короче жизни, но не настолько, чтобы он смотрелся игрушкой:
+   * размер подобран владельцем на кадре.
    */
-  forearms: 0.95,
+  forearms: 1.9,
   /**
    * Где кулак держит топорище — вдоль оси модели, от её начала координат.
    *
@@ -184,6 +185,18 @@ const HANDS_SCREEN_HEIGHT = 0.7;
  */
 const HANDS_TINT = 0.35;
 
+/**
+ * Кости правой кисти, которым ставится поза хвата: фаланги и сама кисть.
+ * Кончики (`_end_`) ничего не двигают — их не трогаем.
+ */
+const FIST_BONES = /^DEF-(f_(index|middle|ring|pinky)0[123]R|thumb0[123]R)(?!_end)/i;
+
+/** Куда смотрит ось трубки из сжатых пальцев, когда топор стоит прямо. */
+const AXE_ALONG = new THREE.Vector3(0, 1, 0);
+
+/** В какой доле клипа удара кулак сжат плотнее всего. */
+const FIST_MOMENT = 0.35;
+
 /** Насколько притушен топор в руке — см. загрузку модели. */
 const AXE_TINT = 0.8;
 
@@ -215,6 +228,16 @@ export class ViewModel {
   private mixer: THREE.AnimationMixer | null = null;
   /** Риг держим отдельно: посадку приходится пересчитывать при смене кадра. */
   private rig: THREE.Object3D | null = null;
+  /**
+   * Поза кулака для правой руки: поворот каждой фаланги.
+   *
+   * Снимается **из клипа удара**, а не подбирается углами: в ударе кисть
+   * уже сжата так, как её задумал автор модели, и своя поза из двух десятков
+   * суставов рядом с ней выглядит сломанной — на этом уже обожглись
+   * (см. docs/hands.md, «Тупики»).
+   */
+  private readonly fist = new Map<THREE.Bone, THREE.Quaternion>();
+
   /** Кости плеч: ими руки разводятся в стороны поверх анимации. */
   private shoulders: { bone: THREE.Bone; axis: THREE.Vector3 }[] = [];
   /** Лежит ли сейчас на плечах наша добавка. Снимается перед каждым микшером. */
@@ -262,6 +285,14 @@ export class ViewModel {
   private readonly size = new THREE.Vector3();
 
   private readonly reach = new THREE.Vector3();
+
+  private readonly turn = new THREE.Quaternion();
+
+  /** Кисть целиком: её доворачиваем под рукоять. */
+  private hand: THREE.Bone | null = null;
+
+  /** Основания указательного и мизинца — по ним считается трубка кулака. */
+  private knuckles: { index: THREE.Bone; pinky: THREE.Bone } | null = null;
 
   /** Был ли игрок на земле в прошлом кадре — по смене ловим прыжок. */
   private grounded = true;
@@ -448,9 +479,36 @@ export class ViewModel {
   private holdAxe(): void {
     const axe = this.axe;
     const palm = this.palm;
-    if (!axe || !palm || !axe.visible) return;
+    const hand = this.hand;
+    const knuckles = this.knuckles;
+    if (!axe || !palm || !axe.visible || this.forearm <= 0) return;
 
-    if (this.forearm <= 0) return;
+    // Пальцы сжимаем **до** всего остального: поза кисти двигает и ладонь.
+    for (const [bone, pose] of this.fist) bone.quaternion.copy(pose);
+
+    /**
+     * Разворот кисти под рукоять.
+     *
+     * Сжатые пальцы образуют трубку, и ось этой трубки идёт **поперёк
+     * ладони** — от основания указательного к основанию мизинца, а не вдоль
+     * пальцев. Топор стоит прямо по миру, значит доворачивать надо кисть:
+     * ищем поворот, который кладёт ось трубки на вертикаль, и досылаем его
+     * кисти в пространстве её родителя.
+     */
+    if (hand && knuckles) {
+      this.rig?.updateMatrixWorld(true);
+      const from = knuckles.index.getWorldPosition(this.size);
+      const to = knuckles.pinky.getWorldPosition(this.reach);
+      const along = to.sub(from).normalize();
+      if (along.lengthSq() > 0) {
+        this.spin.setFromUnitVectors(along, AXE_ALONG);
+        const parent = hand.parent?.getWorldQuaternion(this.turn) ?? this.turn.identity();
+        hand.quaternion.premultiply(parent.clone().invert().multiply(this.spin).multiply(parent));
+      }
+    }
+
+    this.rig?.updateMatrixWorld(true);
+
     const world = palm.getWorldScale(this.size).x || 1;
     const scale = (AXE.forearms * this.forearm) / (AXE.model * world);
     axe.scale.setScalar(scale);
@@ -458,7 +516,24 @@ export class ViewModel {
     palm.getWorldQuaternion(this.spin).invert();
     axe.quaternion.copy(this.spin).multiply(AXE_FACING);
 
-    axe.position.copy(AXE_GRIP).multiplyScalar(-scale).applyQuaternion(axe.quaternion);
+    /**
+     * Рукоять ложится в середину трубки, а не в точку кости.
+     *
+     * Кость ладони лежит у её края, и топор, посаженный прямо в неё, проходил
+     * мимо сжатых пальцев. Середину считаем **мировыми точками** и переводим
+     * в систему ладони: локальные `position` костей с разными родителями
+     * несравнимы — на этом уже теряли меч.
+     */
+    if (knuckles) {
+      const from = knuckles.index.getWorldPosition(this.size);
+      const to = knuckles.pinky.getWorldPosition(this.reach);
+      palm.worldToLocal(from.add(to).multiplyScalar(0.5));
+      axe.position.copy(from);
+    } else {
+      axe.position.set(0, 0, 0);
+    }
+    this.size.copy(AXE_GRIP).multiplyScalar(-scale).applyQuaternion(axe.quaternion);
+    axe.position.add(this.size);
   }
 
   /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */
@@ -832,11 +907,22 @@ export class ViewModel {
     // Кость ладони правой руки — точка подвеса топора. Имя без номера:
     // экспортёр дописывает номер, и он меняется от сборки к сборке.
     this.palm = null;
+    this.hand = null;
+    let index: THREE.Bone | null = null;
+    let pinky: THREE.Bone | null = null;
     rig.traverse((node) => {
       if (!this.palm && AXE.bone.test(node.name)) this.palm = node;
+      const bone = node as THREE.Bone;
+      if (!bone.isBone) return;
+      // Имена без номеров: у Rigify номер кости меняется от сборки к сборке.
+      if (!this.hand && /^DEF-handR/i.test(bone.name)) this.hand = bone;
+      if (!index && /^DEF-f_index01R/i.test(bone.name)) index = bone;
+      if (!pinky && /^DEF-f_pinky01R/i.test(bone.name)) pinky = bone;
     });
+    this.knuckles = index && pinky ? { index, pinky } : null;
     if (this.axe) this.attachAxe();
 
+    this.learnFist(rig);
     this.anchor(rig, this.race);
     this.needsAnchor = true;
 
@@ -858,6 +944,43 @@ export class ViewModel {
    * от кадра: на выбранном расстоянии руки должны занимать заданную долю его
    * ширины. Подбирать это руками пришлось бы заново после каждой замены модели.
    */
+  /**
+   * Снимает позу кулака с клипа удара и запоминает её.
+   *
+   * Владелец просил, чтобы рукоять была зажата в кулаке, а не проходила
+   * сквозь раскрытую ладонь. Своя поза пальцев числами не подбирается —
+   * двадцать суставов, и каждый круг правок выглядит сломанной кистью.
+   * Зато в клипе удара кисть уже сжата так, как её слепил автор модели:
+   * берём её оттуда целиком.
+   *
+   * Замер идёт тем же порядком, что и посадка рук: остановить микшер,
+   * проиграть нужный клип в нужный миг, снять кости, вернуть, что играло.
+   */
+  private learnFist(rig: THREE.Object3D): void {
+    const punch = this.actions.get('punchRight');
+    if (!punch || !this.mixer) return;
+
+    const wasPlaying = this.current;
+    this.unspreadArms();
+    this.mixer.stopAllAction();
+    punch.reset().play();
+    this.mixer.setTime(punch.getClip().duration * FIST_MOMENT);
+    rig.updateMatrixWorld(true);
+
+    this.fist.clear();
+    rig.traverse((node) => {
+      const bone = node as THREE.Bone;
+      if (bone.isBone && FIST_BONES.test(bone.name)) this.fist.set(bone, bone.quaternion.clone());
+    });
+
+    this.mixer.stopAllAction();
+    this.current = 'idle';
+    if (wasPlaying && wasPlaying !== 'idle') this.play(wasPlaying);
+    this.unspreadArms();
+    this.mixer.update(0);
+    this.spreadArms();
+  }
+
   private anchor(rig: THREE.Object3D, race: Race): void {
     const idle = this.actions.get('idle');
     if (!idle || !this.mixer) return;
