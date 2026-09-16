@@ -262,6 +262,65 @@ try {
    * уезжает — и кадр выходит то со служебным меню, то вовсе без рук
    * (docs/checks.md, то же правило, что у сквозных проверок).
    */
+  /**
+   * `potion` — выдать зелья, положить на панель и выпить одно.
+   *
+   * Проверяется то, что видно только глазами: картинка на ячейке и отсчёт
+   * отката поверх неё.
+   */
+  if (open === 'potion') {
+    const shown = (id: string) =>
+      page.waitForFunction(
+        (node: string) => document.getElementById(node)?.hasAttribute('hidden') === false,
+        { timeout: 10000 },
+        id,
+      );
+
+    await page.keyboard.press('F2');
+    await shown('admin');
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
+      buttons.find((button) => button.textContent === 'Зелье лечения')?.click();
+    });
+    await wait(600);
+    await page.click('#adminClose');
+    await wait(500);
+
+    // Кладём на панель перетаскиванием — тем же путём, что и игрок.
+    await page.keyboard.press('Tab');
+    await shown('inventory');
+    const spot = await page.evaluate(() => {
+      const item = [...document.querySelectorAll('.inv-item')].find((node) =>
+        node.textContent?.includes('Зелье'),
+      ) as HTMLElement | undefined;
+      const cell = document.querySelectorAll('#hotbar .hot')[0];
+      if (!item || !cell) return null;
+      const from = item.getBoundingClientRect();
+      const to = cell.getBoundingClientRect();
+      return {
+        fromX: from.left + from.width / 2,
+        fromY: from.top + from.height / 2,
+        toX: to.left + to.width / 2,
+        toY: to.top + to.height / 2,
+      };
+    });
+    if (spot) {
+      await page.mouse.move(spot.fromX, spot.fromY);
+      await page.mouse.down();
+      await page.mouse.move(spot.toX, spot.toY, { steps: 12 });
+      await page.mouse.up();
+      await wait(500);
+    }
+    await page.keyboard.press('Tab');
+    await wait(800);
+
+    // Пьём и снимаем кадр, пока идёт откат.
+    await page.mouse.click(800, 450);
+    await wait(400);
+    await page.keyboard.press('Digit1');
+    await wait(Number(process.env.GRIMHOLD_AFTER ?? 1200));
+  }
+
   if (open === 'axe') {
     const shown = (id: string) =>
       page.waitForFunction(

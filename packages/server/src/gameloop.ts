@@ -228,6 +228,8 @@ function tickPlayers(world: World, dt: number, outbox: Outbox): void {
 
     // Факел прогорает, пока он в руке, — и живой, и мёртвый: огонь не ждёт.
     if (player.torchLeft > 0) burnTorch(player, dt, outbox);
+    // Откат зелий идёт всегда: и в бою, и в покое, и стоя у сундука.
+    player.sipCooldown = Math.max(0, player.sipCooldown - dt);
 
     // Работа идёт, пока игрок стоит у цели: отошёл — брошена. Это и есть
     // способ передумать, отдельной кнопки отмены не нужно. Одинаково для

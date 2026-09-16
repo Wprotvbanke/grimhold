@@ -140,6 +140,9 @@ export class InventoryUi {
   private page: Page = 'bag';
 
   private state: InventoryMessage | null = null;
+
+  /** Сколько ещё нельзя пить, секунды. Приходит в снапшоте, считает сервер. */
+  private sip = 0;
   /** Раса персонажа: от неё зависит, какие рецепты вообще показывать. */
   private race: Race | null = null;
   private drag: DragState | null = null;
@@ -308,6 +311,19 @@ export class InventoryUi {
   }
 
   /** Принимает состояние от сервера и перерисовывает всё целиком. */
+  /**
+   * Откат расходников из снапшота.
+   *
+   * Панель перерисовывается, только пока идёт отсчёт или он только что
+   * кончился: снапшот приходит двадцать раз в секунду, и дёргать DOM на
+   * каждый было бы расточительно.
+   */
+  setSip(seconds: number): void {
+    const was = this.sip;
+    this.sip = seconds;
+    if (this.state && (seconds > 0 || was > 0)) this.renderHotbar(this.state);
+  }
+
   update(state: InventoryMessage): void {
     this.state = state;
     this.cancelDrag();
@@ -679,7 +695,16 @@ export class InventoryUi {
 
       const def = itemDef(defId);
       node.classList.add('filled', `kind-${def.kind}`);
-      node.append(document.createTextNode(def.name));
+
+      // Картинка вместо названия — там, где она есть: в бою читать некогда.
+      if (def.icon) {
+        const icon = document.createElement('div');
+        icon.className = 'icon';
+        icon.style.backgroundImage = `url(${def.icon})`;
+        node.append(icon);
+      } else {
+        node.append(document.createTextNode(def.name));
+      }
 
       // Сколько такого осталось. Ноль означает, что нажатие ничего не даст,
       // и это видно заранее, а не по сообщению об ошибке.
@@ -692,6 +717,19 @@ export class InventoryUi {
         qty.className = 'qty';
         qty.textContent = String(available);
         node.append(qty);
+      }
+
+      /**
+       * Отсчёт отката прямо на ячейке.
+       *
+       * Игрок должен видеть, когда зелье снова готово, а не жать вслепую
+       * и получать отказ. Считает откат сервер, здесь только отсчёт.
+       */
+      if (def.cooldown && this.sip > 0) {
+        const wait = document.createElement('div');
+        wait.className = 'wait';
+        wait.textContent = this.sip >= 1 ? String(Math.ceil(this.sip)) : this.sip.toFixed(1);
+        node.append(wait);
       }
 
       const hint = this.open

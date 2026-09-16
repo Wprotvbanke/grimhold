@@ -158,6 +158,18 @@ export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
     return refuse(`${def.name} сейчас бесполезен`);
   }
 
+  /**
+   * Пить залпом нельзя.
+   *
+   * Без отката лечение — это удержание клавиши: здоровье льётся ровно с той
+   * скоростью, с какой жмут, и бой перестаёт быть про здоровье вовсе. Откат
+   * общий для всех расходников: раздельный обходили бы, чередуя зелье
+   * с бинтом.
+   */
+  if (player.sipCooldown > 0) {
+    return refuse(`Ещё рано: ${player.sipCooldown.toFixed(1)} с`);
+  }
+
   if (def.restoreHealth) {
     combat.vitals.health = Math.min(player.maxima.health, combat.vitals.health + def.restoreHealth);
   }
@@ -167,6 +179,8 @@ export const handleUseItem: CommandHandler<UseItemMessage> = (ctx, payload) => {
       combat.vitals.stamina + def.restoreStamina,
     );
   }
+
+  if (def.cooldown) player.sipCooldown = def.cooldown;
 
   consumeOne(player, item);
   refreshLoadout(player);

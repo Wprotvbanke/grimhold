@@ -965,6 +965,9 @@ renderer.setAnimationLoop((frameTime: number) => {
     // 6. Руки: поза берётся из авторитетного состояния, скорость — из предсказания.
     const self = connection.latestSnapshot?.self;
 
+    // Откат зелий на панели: считает его сервер, мы только показываем.
+    inventoryUi.setSip(self?.sip ?? 0);
+
     /**
      * Свой огонь: факел в руке или «Светоч».
      *

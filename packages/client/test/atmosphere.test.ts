@@ -41,6 +41,7 @@ function state(overrides: Partial<SelfState> = {}): SelfState {
     light: 0,
     flag: 'white',
     karma: 0,
+    sip: 0,
     ...overrides,
   };
 }

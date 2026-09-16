@@ -257,6 +257,12 @@ export interface Player {
    * факел исчезает из руки.
    */
   torchLeft: number;
+  /**
+   * Сколько ещё нельзя пить расходники, секунды.
+   *
+   * Один на все зелья и бинты: раздельные откаты обходятся чередованием.
+   */
+  sipCooldown: number;
   /** Когда каждое заклинание снова готово, в секундах игрового времени. */
   spellCooldowns: Partial<Record<SpellId, number>>;
   /** Рюкзак: раскладку хранит и проверяет сервер, клиент только рисует. */
@@ -472,6 +478,7 @@ export class World {
       progress,
       deadFor: 0,
       torchLeft: 0,
+      sipCooldown: 0,
       spellCooldowns: {},
       inventory: character.inventory ?? createBackpack(),
       bank: character.bank ?? createBank(),
@@ -1004,6 +1011,7 @@ export class World {
       // ещё». Берём больший остаток: гасить свет, пока горит второй источник,
       // было бы враньём.
       light: round(Math.max(combat.lightRemaining, player.torchLeft)),
+      sip: round(player.sipCooldown),
       flag: flagFor(combat),
       karma: Math.round(combat.karma),
       // Подземельное едет только под землёй: наверху этих полей нет вовсе,

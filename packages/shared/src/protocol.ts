@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 28;
+export const PROTOCOL_VERSION = 29;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -833,6 +833,14 @@ export interface SelfState {
    * зажигать ли свет и не пора ли ему гаснуть.
    */
   light: number;
+  /**
+   * Сколько ещё нельзя пить, секунды.
+   *
+   * Клиент рисует этим отсчёт прямо на ячейке панели: игрок должен видеть,
+   * когда зелье снова готово, а не жать вслепую и получать отказ. Считает
+   * откат сервер — здесь только то, что показать.
+   */
+  sip: number;
   /** Свой флаг и карма: игрок должен видеть, во что он себя вогнал. */
   flag: PvpFlag;
   karma: number;
