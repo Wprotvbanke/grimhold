@@ -212,8 +212,20 @@ const AXE_ALONG = new THREE.Vector3(0, 1, 0);
 /** Куда смотрит лезвие: вперёд от игрока, то есть в −Z сцены видмодели. */
 const AXE_EDGE = new THREE.Vector3(0, 0, -1);
 
-/** С какого места играется замах топором: начало уходит за край кадра. */
-const SWING_START = 0.35;
+/**
+ * Замах топором идёт **целиком и вдвое медленнее** обычного удара.
+ *
+ * Сперва начало клипа пропускалось, а вынос руки приглушался — чтобы кисть
+ * не уходила за край экрана. Владелец забраковал: у топора инерция, он обязан
+ * уходить вверх на замахе и вниз на ударе, пусть и за кадр.
+ */
+const SWING_SLOW = 0.5;
+
+/** В какой доле замаха топор внизу — там и заминка удара. */
+const SWING_HIT = 0.72;
+
+/** Насколько замирает топор внизу, чтобы удар чувствовался. */
+const SWING_PAUSE = 0.12;
 
 /** Как быстро гаснет и возвращается добавка хвата, долей в секунду. */
 const GRIP_FADE = 6;
@@ -357,6 +369,11 @@ export class ViewModel {
 
   /** Насколько сейчас лежит наша добавка хвата: 1 — стойка, 0 — замах. */
   private gripBlend = 1;
+
+  /** Заминка внизу: сделана ли она в этом замахе и сколько ещё длится. */
+  private swingHit = false;
+
+  private swingPause = 0;
 
   /** Кисть целиком: её доворачиваем под рукоять поверх позы хвата. */
   private hand: THREE.Bone | null = null;
@@ -642,6 +659,29 @@ export class ViewModel {
     }
   }
 
+  /**
+   * Заминка удара: внизу топор на миг замирает.
+   *
+   * Без неё замах — ровное движение, и удара не чувствуется: тяжёлое железо
+   * обязано «вязнуть» в том, во что попало. Замирает **только замах**,
+   * остальные клипы идут своим ходом.
+   */
+  private hitch(dt: number): void {
+    const swing = this.actions.get('axeSwing');
+    if (!swing || this.current !== 'axeSwing') return;
+
+    if (this.swingPause > 0) {
+      this.swingPause -= dt;
+      swing.paused = this.swingPause > 0;
+      return;
+    }
+    if (!this.swingHit && swing.time >= swing.getClip().duration * SWING_HIT) {
+      this.swingHit = true;
+      this.swingPause = SWING_PAUSE;
+      swing.paused = true;
+    }
+  }
+
   /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */
   get playing(): HandsClip | null {
     return this.current;
@@ -667,6 +707,7 @@ export class ViewModel {
     // Микшер обязан писать в чистую кость, поэтому добавку снимаем до него
     // и возвращаем после.
     this.unspreadArms();
+    this.hitch(dt);
     this.mixer.update(dt);
     this.spreadArms();
     // Топор садится в кулак после микшера: микшер только что переписал
@@ -900,26 +941,25 @@ export class ViewModel {
     if (quick) {
       const kind = this.localAction?.kind === 'heavy' ? 'heavy' : 'attack';
       const timing = ACTIONS[kind].timing;
-      // Замах топором начинается не с начала клипа — см. SWING_START.
-      const part = clip === 'axeSwing' ? 1 - SWING_START : 1;
-      next.timeScale = (next.getClip().duration * part) / (timing.windup + timing.active);
+      next.timeScale = next.getClip().duration / (timing.windup + timing.active);
+      // Топор тяжёл: замах идёт вдвое медленнее маха кулаком.
+      if (clip === 'axeSwing') next.timeScale *= SWING_SLOW;
     }
 
     next.reset().fadeIn(fade).play();
-    /**
-     * Начало замаха пропускается.
-     *
-     * Первую треть клипа рука заносит топор вверх и назад — на человеке
-     * в полный рост это красиво, а от первого лица кисть просто уходит
-     * за край экрана, и кадр остаётся пустым. Начинаем с того места, где
-     * топор уже идёт вниз.
-     */
-    if (clip === 'axeSwing') next.time = next.getClip().duration * SWING_START;
+    if (clip === 'axeSwing') {
+      // Заминка удара считается заново на каждый замах.
+      next.paused = false;
+      this.swingHit = false;
+      this.swingPause = 0;
+    }
     previous?.fadeOut(fade);
 
     this.current = clip;
     // Одноразовые клипы держим до конца, чтобы их не перебило на полпути.
     this.holdFor = ONCE.includes(clip) ? this.lengthOf(clip) : 0;
+    // Заминку внизу клип обязан пережить: иначе его перебьёт стойкой.
+    if (clip === 'axeSwing') this.holdFor += SWING_PAUSE;
   }
 
   private lengthOf(clip: HandsClip): number {

@@ -28,7 +28,6 @@ import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AnimationClip, QuaternionKeyframeTrack } from 'three';
 
-const THREE = await import('three');
 const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -49,18 +48,13 @@ const WANTED = ['Sword_Idle', 'Sword_Slash'];
 const ARM_BONES = /^DEF-(upper_arm|forearm|hand|palm|f_|thumb)/i;
 
 /**
- * Насколько приглушается вынос кости, долей от позы покоя.
+ * Приглушать вынос руки **не надо**.
  *
- * Руки от первого лица нарочно крупные и придвинуты к камере (см.
- * docs/hands.md, «Посадка в кадре»), поэтому размах, снятый с человека
- * в полный рост, выносит кисть далеко за край экрана: в начале замаха кадр
- * оставался пустым. Приглушаем плечо сильнее, предплечье слабее, кисть
- * и пальцы не трогаем — работа кистью и есть то, ради чего клип берут.
+ * Сперва плечо и предплечье тянули обратно к позе покоя, чтобы кисть
+ * не уходила за край экрана. Владелец забраковал: у топора инерция, и он
+ * обязан уходить вверх на замахе и вниз на ударе, хоть бы и за кадр.
+ * Размах — часть удара, а не помеха.
  */
-const TAME: { bones: RegExp; keep: number }[] = [
-  { bones: /^DEF-upper_arm/i, keep: 0.4 },
-  { bones: /^DEF-forearm/i, keep: 0.7 },
-];
 
 const bytes = readFileSync(SOURCE);
 const group = new FBXLoader().parse(
@@ -114,18 +108,6 @@ for (const wanted of WANTED) {
 
     const times = (track as QuaternionKeyframeTrack).times;
     const values = new Float32Array((track as QuaternionKeyframeTrack).values);
-
-    // Приглушение: тянем поворот обратно к позе покоя этой же кости.
-    const keep = TAME.find((rule) => rule.bones.test(boneName))?.keep;
-    if (keep !== undefined) {
-      const [x, y, z, w] = node.getRotation();
-      const rest = new THREE.Quaternion(x, y, z, w);
-      const frame = new THREE.Quaternion();
-      for (let at = 0; at < values.length; at += 4) {
-        frame.set(values[at]!, values[at + 1]!, values[at + 2]!, values[at + 3]!);
-        rest.clone().slerp(frame, keep).toArray(values, at);
-      }
-    }
 
     const input = document
       .createAccessor(`${name}-${boneName}-time`)
