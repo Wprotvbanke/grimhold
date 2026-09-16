@@ -56,7 +56,6 @@ export type HandsClip =
   | 'punchRight'
   | 'punchLeft'
   | 'axeSwing'
-  | 'bowDraw'
   | 'blockStart'
   | 'blockLoop'
   | 'blockStop'
@@ -74,7 +73,6 @@ const CLIP_NAMES: Record<HandsClip, string[]> = {
   punchRight: ['Punch_R', 'Punch'],
   punchLeft: ['Punch_L', 'Punch_2'],
   axeSwing: ['Sword_Slash'],
-  bowDraw: ['Bow_Draw'],
   blockStart: ['Block_Start'],
   blockLoop: ['Block_Loop'],
   blockStop: ['Block_Stop'],
@@ -90,7 +88,6 @@ const ONCE: HandsClip[] = [
   'punchRight',
   'punchLeft',
   'axeSwing',
-  'bowDraw',
   'blockStart',
   'blockStop',
   'takeStart',
@@ -329,7 +326,6 @@ export class ViewModel {
   /** Уровень уклонения — приходит с прокачкой, см. `setEvasion`. */
   private evasion = 0;
   /** Лук в руке: с ним выстрел отыгрывается своим клипом, а не ударом. */
-  private bow = false;
   /** Кость ладони правой руки: к ней крепится топор. */
   private palm: THREE.Object3D | null = null;
   /** Модель топора. Грузится один раз, дальше только показывается и прячется. */
@@ -512,7 +508,6 @@ export class ViewModel {
 
   /** Что в основной руке: лук отыгрывается своим клипом, топор виден в кулаке. */
   setWeapon(defId: string | null): void {
-    this.bow = defId === 'hunting_bow';
     // Темп удара задаёт оружие — тот же множитель, что у сервера.
     this.swingScale = defId && isItemId(defId) ? (itemDef(defId).swing ?? 1) : 1;
     // И цена: голыми руками бьют дешевле.
@@ -844,21 +839,6 @@ export class ViewModel {
    */
   private choose(dt: number, state: ViewModelState): HandsClip | null {
     const action = this.localAction?.kind ?? null;
-
-    /**
-     * Выстрел из лука — своё движение, а не удар кулаком.
-     *
-     * Клип перенесён с чужого скелета Mixamo и **пока сырой**: что с ним
-     * не так и что с этим делать — отдельный разбор в docs/bow.md. В игре
-     * он остаётся: лучше видеть то, что правишь.
-     *
-     * Условие `has('bowDraw')` обязательно: клип живёт в модели, а модель
-     * пересобирается скриптами. Пропал клип — руки просто машут, как раньше,
-     * и бой от этого не ломается.
-     */
-    if ((action === 'attack' || action === 'heavy') && this.bow && this.actions.has('bowDraw')) {
-      return 'bowDraw';
-    }
 
     /**
      * Замах топором — клип владельца вместо маха кулаком.
