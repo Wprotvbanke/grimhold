@@ -321,6 +321,39 @@ try {
    * `stack` — проверить складывание: выдать зелья двумя стопками и перетащить
    * одну на другую мышью, как это делает игрок.
    */
+  /**
+   * `bank` — открыть казну: там окно шире обычного, и раскладку видно только так.
+   */
+  if (open === 'bank') {
+    await page.keyboard.press('F2');
+    await page.waitForFunction(
+      () => document.getElementById('admin')?.hasAttribute('hidden') === false,
+      { timeout: 10000 },
+    );
+    await page.evaluate(() => {
+      (document.getElementById('adminTeleport') as HTMLInputElement).value = '';
+    });
+    await page.type('#adminTeleport', '-4, 4');
+    await page.keyboard.press('Enter');
+    await wait(800);
+    await page.click('#adminClose');
+    await wait(1200);
+
+    // Смотрим на ларец и открываем его тем же E, что и в игре. Ждём факта:
+    // подсказка «Казна — E» появляется не в тот же миг, что и подход.
+    await page.mouse.click(800, 450);
+    await wait(800);
+    for (let tries = 0; tries < 6; tries++) {
+      await page.keyboard.press('KeyE');
+      await wait(700);
+      const open = await page.evaluate(
+        () => document.getElementById('bankCol')?.hasAttribute('hidden') === false,
+      );
+      if (open) break;
+    }
+    await wait(800);
+  }
+
   if (open === 'stack') {
     const shown = (id: string) =>
       page.waitForFunction(

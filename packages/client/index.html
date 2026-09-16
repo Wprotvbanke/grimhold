@@ -322,7 +322,12 @@
       .inv-close { padding: 3px 9px; font-size: 15px; letter-spacing: 0; }
 
       .inv-body { display: flex; gap: 14px; align-items: flex-start; }
-      .inv-page { flex: 1; min-width: 0; display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+      /* Колонки по центру: при открытой казне они не всегда влезают в строку,
+         и прижатые влево оставляли полплиты пустой. */
+      .inv-page {
+        flex: 1; min-width: 0; display: flex; gap: 18px;
+        align-items: flex-start; justify-content: center; flex-wrap: wrap;
+      }
       .inv-page[hidden] { display: none; }
       .inv-col { display: flex; flex-direction: column; gap: 10px; }
 
@@ -527,6 +532,12 @@
       }
       .portrait canvas { display: block; width: 100%; height: 100%; }
       /* Сундук или обмен рядом с рюкзаком — кукла уступает место второй сетке. */
+      /*
+       * С казной или столом обмена окно шире: две сетки рядом не влезают
+       * в обычную ширину, и казна переносилась под рюкзак, оставляя справа
+       * пустое поле в половину плиты.
+       */
+      .inv-panel.side-open { width: min(1340px, 98vw); }
       .inv-panel.side-open #equipSlots { display: none; }
       .slot {
         position: absolute; width: 80px; height: 80px; border-radius: 2px;
