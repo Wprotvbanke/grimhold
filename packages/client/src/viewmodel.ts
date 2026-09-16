@@ -113,7 +113,7 @@ const AXE = {
    * Берём короче жизни, но не настолько, чтобы он смотрелся игрушкой:
    * размер подобран владельцем на кадре.
    */
-  forearms: 1.9,
+  forearms: 1.35,
   /**
    * Где кулак держит топорище — вдоль оси модели, от её начала координат.
    *
@@ -206,6 +206,25 @@ const AXE_ALONG = new THREE.Vector3(0, 1, 0);
 
 /** Куда смотрит лезвие: вперёд от игрока, то есть в −Z сцены видмодели. */
 const AXE_EDGE = new THREE.Vector3(0, 0, -1);
+
+/**
+ * Как топор стоит в кадре: рукоять по вертикали, лезвие вперёд.
+ *
+ * У модели ось рукояти — +Y, лезвие — +X (внутри GLB узел уже повёрнут
+ * на −90° по X, см. ниже), поэтому базис строится из трёх постоянных осей.
+ */
+const AXE_STAND = new THREE.Quaternion().setFromRotationMatrix(
+  new THREE.Matrix4().makeBasis(AXE_EDGE, AXE_ALONG, new THREE.Vector3(1, 0, 0)),
+);
+
+/**
+ * Насколько сдвинуть топор внутрь кадра, в предплечьях.
+ *
+ * Кость ладони и середина трубки лежат у внешнего края кулака, и топор,
+ * посаженный ровно в них, уходил вправо из руки. Сдвиг влево ставит рукоять
+ * в сам кулак.
+ */
+const AXE_SHIFT = -0.1;
 
 /** Насколько притушен топор в руке — см. загрузку модели. */
 const AXE_TINT = 0.8;
@@ -518,19 +537,10 @@ export class ViewModel {
     }
 
     /**
-     * Рукоять кладётся **вдоль трубки кулака**, а не по мировой вертикали.
-     *
-     * Сжатые пальцы образуют трубку, и её ось идёт поперёк ладони — от
-     * основания указательного к основанию мизинца. Раньше топор держался
-     * прямо, а кисть доворачивалась под него; с готовым хватом всё наоборот:
-     * кисть стоит так, как её поставил владелец, а вдоль неё ложится топор.
-     * Знак оси выбирается по кадру — головка должна смотреть вверх.
-     */
-    /**
      * Разворот кисти под рукоять.
      *
      * Сжатые пальцы образуют трубку, и её ось идёт поперёк ладони — от
-     * основания указательного к основанию мизинца. Топор стоит прямо по миру,
+     * основания указательного к основанию мизинца. Топор стоит прямо,
      * значит доворачивать надо кисть: ищем поворот, который кладёт ось трубки
      * на вертикаль, и досылаем его кисти в пространстве её родителя.
      */
@@ -547,21 +557,16 @@ export class ViewModel {
       this.rig?.updateMatrixWorld(true);
     }
 
-    const from = knuckles.index.getWorldPosition(this.size);
-    const to = knuckles.pinky.getWorldPosition(this.reach);
-    const along = this.along.copy(to).sub(from).normalize();
-    if (along.y < 0) along.negate();
-
-    // Лезвие — вперёд, но строго поперёк рукояти: снимаем с «вперёд» ту часть,
-    // что лежит вдоль неё, иначе при наклоне кисти базис вырождается.
-    const edge = this.edge.copy(AXE_EDGE).addScaledVector(along, -AXE_EDGE.dot(along));
-    if (edge.lengthSq() < 1e-6) edge.set(1, 0, 0);
-    edge.normalize();
-
-    this.basis.makeBasis(edge, along, this.cross.copy(edge).cross(along).negate());
-    this.turn.setFromRotationMatrix(this.basis);
+    /**
+     * Поворот топора — **постоянный**, а не по оси трубки.
+     *
+     * Топор обязан стоять перпендикулярно земле и лезвием от экрана наружу.
+     * Пока поворот считался по трубке кулака, он повторял её остаточный
+     * наклон: кисть доворачивается близко к вертикали, но не идеально,
+     * и топор выходил под углом, а лезвие смотрело вбок.
+     */
     palm.getWorldQuaternion(this.spin).invert();
-    axe.quaternion.copy(this.spin).multiply(this.turn);
+    axe.quaternion.copy(this.spin).multiply(AXE_STAND);
 
     /**
      * Рукоять садится в середину трубки, а не в точку кости.
@@ -571,10 +576,22 @@ export class ViewModel {
      * в систему ладони: локальные `position` костей с разными родителями
      * несравнимы — на этом уже теряли меч.
      */
+    const from = knuckles.index.getWorldPosition(this.size);
+    const to = knuckles.pinky.getWorldPosition(this.reach);
     palm.worldToLocal(from.add(to).multiplyScalar(0.5));
     axe.position.copy(from);
-    this.size.copy(AXE_GRIP).multiplyScalar(-scale).applyQuaternion(axe.quaternion);
-    axe.position.add(this.size);
+
+    // Хват модели — не её начало координат: без этого топор висит в кулаке
+    // серединой топорища.
+    axe.position.add(this.edge.copy(AXE_GRIP).multiplyScalar(-scale).applyQuaternion(axe.quaternion));
+
+    // Сдвиг внутрь кадра. Считается в мире и переводится в систему ладони:
+    // у ладони свой поворот и свой масштаб.
+    axe.position.add(
+      this.edge
+        .set((AXE_SHIFT * this.forearm) / world, 0, 0)
+        .applyQuaternion(this.spin),
+    );
   }
 
   /** Какой клип идёт прямо сейчас — по нему удобно проверять поведение. */
