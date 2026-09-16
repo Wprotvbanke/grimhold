@@ -59,6 +59,23 @@ interface ModelSpec {
   animated?: boolean;
   /** Доля треугольников, которую оставить (meshoptimizer). */
   simplifyTo?: number;
+  /**
+   * Допустимая ошибка прореживания, доля размера модели.
+   *
+   * По умолчанию сотая: она держит силуэт, но у плотной геометрии
+   * не даёт срезать почти ничего — часовня с ней теряла один процент
+   * из тридцати пяти обещанных.
+   */
+  simplifyError?: number;
+  /**
+   * Сторона текстуры в пикселях. По умолчанию 512.
+   *
+   * Тысяча на двадцать домов — это мегабайты по сети и сотни мегабайт
+   * в видеопамяти: картинки распаковываются там несжатыми. Дома видно
+   * с трёх метров и в сумерках, и разницы между 1024 и 512 на них
+   * не различить — проверено снимком.
+   */
+  texture?: number;
 }
 
 const HOUSES = `${DESKTOP}/houses`;
@@ -77,7 +94,10 @@ const MODELS: ModelSpec[] = [
   // Таверна пришла вдвое крупнее жизни — этаж в семь метров; ужата до трёх с половиной.
   { source: `${HOUSES}/house5_towern.glb`, output: 'tavern.glb', normalize: { scale: 0.5 } },
   // Часовня пришла в сотнях единиц и на десять метров под землёй: 73 м высоты.
-  { source: `${HOUSES}/house3.glb`, output: 'chapel.glb', normalize: { height: 12 } },
+  // Часовня пришла с 83 тысячами треугольников — вчетверо больше соседних
+  // домов при том же силуэте. Прореживаем: издали она читается кровлей
+  // и башней, а не гранями.
+  { source: `${HOUSES}/house3.glb`, output: 'chapel.glb', normalize: { height: 12 }, simplifyTo: 0.35, simplifyError: 0.05 },
   { source: `${HOUSES}/house4.glb`, output: 'house_narrow.glb', normalize: {} },
   { source: `${HOUSES}/house_Triangle.glb`, output: 'house_gable.glb', normalize: {} },
   { source: `${HOUSES}/house_tiny.glb`, output: 'house_tiny.glb', normalize: {} },
@@ -104,7 +124,17 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 
 await MeshoptSimplifier.ready;
 
-for (const { source, output, normalize, keepParts, tint, animated, simplifyTo } of MODELS) {
+for (const {
+  source,
+  output,
+  normalize,
+  keepParts,
+  tint,
+  animated,
+  simplifyTo,
+  simplifyError,
+  texture,
+} of MODELS) {
   const input = source;
   const target = resolve(OUTPUT, output);
   const document = await io.read(input);
@@ -156,12 +186,18 @@ for (const { source, output, normalize, keepParts, tint, animated, simplifyTo } 
     // — нужна: по ней идут кости и клип.
     ...(animated ? [] : [flatten()]),
     weld(),
-    ...(simplifyTo ? [simplify({ simplifier: MeshoptSimplifier, ratio: simplifyTo, error: 0.01 })] : []),
+    ...(simplifyTo
+      ? [simplify({ simplifier: MeshoptSimplifier, ratio: simplifyTo, error: simplifyError ?? 0.01 })]
+      : []),
     // Сетки с одним материалом — в одну: вызов отрисовки на материал, а не на доску.
     ...(keepParts || animated ? [] : [join()]),
     dedup(),
     prune(),
-    textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024] }),
+    textureCompress({
+      encoder: sharp,
+      targetFormat: 'webp',
+      resize: [texture ?? 512, texture ?? 512],
+    }),
     draco(),
   );
   await io.write(target, document);
