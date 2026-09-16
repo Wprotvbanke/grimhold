@@ -99,16 +99,37 @@ describe('факел', () => {
     expect(countOf(player.inventory, 'torch')).toBe(1);
   });
 
-  it('а меч и щит вторым нажатием не снимаются', () => {
-    // Иначе двойное нажатие в бою обезоружило бы владельца.
+  /**
+   * То же и с тем, что держат в руках.
+   *
+   * Сперва снятие было только у расходников — из опасения, что двойное
+   * нажатие обезоружит владельца в бою. Владелец решил иначе: топор, надетый
+   * с панели, той же клавишей и убирается, иначе его снимаешь только
+   * через рюкзак.
+   */
+  it('вещь из рук вторым нажатием снимается', () => {
     const world = new World();
     const player = spawn(world);
     player.inventory = addItem(player.inventory, 'wooden_shield', 1).grid;
     player.hotbar[0] = 'wooden_shield';
 
     handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
-    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
     expect(player.equipment.offHand?.defId).toBe('wooden_shield');
+
+    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
+    expect(player.equipment.offHand).toBeUndefined();
+    expect(countOf(player.inventory, 'wooden_shield')).toBe(1);
+  });
+
+  it('а броня так не снимается: её носят ради защиты', () => {
+    const world = new World();
+    const player = spawn(world);
+    player.inventory = addItem(player.inventory, 'leather_cap', 1).grid;
+    player.hotbar[0] = 'leather_cap';
+
+    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
+    handleUseHotbar({ world, actor: player }, { t: 'useHotbar', index: 0, viewTick: 0 });
+    expect(player.equipment.head?.defId).toBe('leather_cap');
   });
 
   it('несущего огонь зверьё замечает дальше', () => {

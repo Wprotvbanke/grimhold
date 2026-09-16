@@ -1,3 +1,4 @@
+import { FIST_STAMINA_SCALE } from './combat.js';
 import { ITEMS, itemDef, type EquipSlot, type ItemId } from './items.js';
 
 /**
@@ -342,6 +343,17 @@ export function weaponDamageOf(equipment: Equipment): number {
 export function swingScaleOf(equipment: Equipment): number {
   const weapon = equipment.mainHand;
   return weapon ? (itemDef(weapon.defId).swing ?? 1) : 1;
+}
+
+/**
+ * Во сколько раз дешевле удар тем, что сейчас в руке.
+ *
+ * С оружием — как в профиле действия, голыми руками — вдвое дешевле
+ * (`FIST_STAMINA_SCALE`). Считают по нему обе стороны: сервер списывает
+ * стамину, клиент по той же цене решает, хватит ли её на замах.
+ */
+export function staminaScaleOf(equipment: Equipment): number {
+  return equipment.mainHand ? 1 : FIST_STAMINA_SCALE;
 }
 
 /** Инструмент в руке: по нему решается, поддастся ли нода. */

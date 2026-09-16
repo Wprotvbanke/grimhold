@@ -76,6 +76,7 @@ export function startAttack(
   attacker: Combatant,
   kind: 'attack' | 'heavy' | 'dodge',
   swingScale = 1,
+  staminaScale = 1,
 ): boolean {
   if (!canAct(attacker)) return false;
 
@@ -97,8 +98,13 @@ export function startAttack(
           timing: dodgeTiming(attacker.evasionSkill),
           staminaCost: dodgeCost(attacker.evasionSkill),
         }
-      : // Тяжёлое оружие бьёт реже: фазы растягиваются под него целиком.
-        { ...base, timing: scaleTiming(base.timing, swingScale) };
+      : {
+          ...base,
+          // Тяжёлое оружие бьёт реже: фазы растягиваются под него целиком.
+          timing: scaleTiming(base.timing, swingScale),
+          // А голыми руками бьют дешевле: цена зависит от того, что в руке.
+          staminaCost: base.staminaCost * staminaScale,
+        };
 
   if (!spendStamina(attacker, profile.staminaCost)) return false;
 

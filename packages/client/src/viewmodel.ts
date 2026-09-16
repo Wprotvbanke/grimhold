@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   ACTIONS,
   ATTACK_COOLDOWN,
+  FIST_STAMINA_SCALE,
   scaleTiming,
   isItemId,
   itemDef,
@@ -321,6 +322,9 @@ export class ViewModel {
 
   /** Во сколько раз удар в руке длиннее удара кулаком: топор тяжёл. */
   private swingScale = 1;
+
+  /** Во сколько раз он дешевле по стамине: голыми руками — вдвое. */
+  private staminaScale = FIST_STAMINA_SCALE;
   private dodgeCooldown = 0;
   /** Уровень уклонения — приходит с прокачкой, см. `setEvasion`. */
   private evasion = 0;
@@ -475,9 +479,24 @@ export class ViewModel {
     this.taking = 0;
   }
 
-  /** Хватает ли стамины: те же числа, по которым решает сервер. */
-  static staminaCost(kind: 'attack' | 'heavy' | 'dodge', evasion = 0): number {
-    return kind === 'dodge' ? dodgeCost(evasion) : ACTIONS[kind].staminaCost;
+  /**
+   * Хватает ли стамины: те же числа, по которым решает сервер.
+   *
+   * Цена удара зависит от того, что в руке: голыми руками бьют вдвое дешевле.
+   * Знай клиент другую цену — руки отказывались бы бить там, где сервер
+   * разрешает, или наоборот.
+   */
+  static staminaCost(
+    kind: 'attack' | 'heavy' | 'dodge',
+    evasion = 0,
+    staminaScale = 1,
+  ): number {
+    return kind === 'dodge' ? dodgeCost(evasion) : ACTIONS[kind].staminaCost * staminaScale;
+  }
+
+  /** Во сколько раз дешевле удар тем, что сейчас в руке. */
+  get handCost(): number {
+    return this.staminaScale;
   }
 
   /**
@@ -496,6 +515,8 @@ export class ViewModel {
     this.bow = defId === 'hunting_bow';
     // Темп удара задаёт оружие — тот же множитель, что у сервера.
     this.swingScale = defId && isItemId(defId) ? (itemDef(defId).swing ?? 1) : 1;
+    // И цена: голыми руками бьют дешевле.
+    this.staminaScale = defId ? 1 : FIST_STAMINA_SCALE;
 
     const axe = defId === AXE.item;
     if (this.axe) this.axe.visible = axe;

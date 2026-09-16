@@ -315,7 +315,10 @@ const controls = new Controls(renderer.domElement, {
     }
 
     const stamina = connection.latestSnapshot?.self.stamina ?? 0;
-    if (stamina < ViewModel.staminaCost(kind, evasionLevel) || !game.hands.beginAction(kind)) {
+    if (
+      stamina < ViewModel.staminaCost(kind, evasionLevel, game.hands.handCost) ||
+      !game.hands.beginAction(kind)
+    ) {
       return;
     }
 

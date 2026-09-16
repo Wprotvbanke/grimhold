@@ -2,6 +2,7 @@ import {
   SPELLS,
   beginAction,
   canDashAtWeight,
+  staminaScaleOf,
   swingScaleOf,
   type ActionMessage,
   type BlockMessage,
@@ -35,8 +36,14 @@ export const handleAction: CommandHandler<ActionMessage> = (ctx, payload) => {
   // Запоминаем, какой снапшот игрок видел: по нему отматываются цели.
   actor.pendingViewTick = payload.viewTick;
 
-  // Темп удара берётся у оружия в руке: топор тяжелее кулака и бьёт реже.
-  startAttack(actor.combat, payload.kind, swingScaleOf(actor.equipment));
+  // И темп удара, и его цена берутся у того, что в руке: топор тяжелее
+  // кулака и бьёт реже, зато кулаком махать дешевле.
+  startAttack(
+    actor.combat,
+    payload.kind,
+    swingScaleOf(actor.equipment),
+    staminaScaleOf(actor.equipment),
+  );
   return [];
 };
 

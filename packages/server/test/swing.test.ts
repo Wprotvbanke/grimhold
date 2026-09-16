@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ATTACK_COOLDOWN, LIGHT_ATTACK, attributesFor, fullVitals } from '@grimhold/shared';
+import {
+  ATTACK_COOLDOWN,
+  FIST_STAMINA_SCALE,
+  LIGHT_ATTACK,
+  attributesFor,
+  fullVitals,
+} from '@grimhold/shared';
 import { startAttack } from '../src/combat.js';
 import type { Combatant } from '../src/combatant.js';
 
@@ -55,6 +61,20 @@ describe('темп удара задаёт оружие', () => {
     expect(fist.swingCooldown).toBeCloseTo(
       ATTACK_COOLDOWN + LIGHT_ATTACK.timing.windup + LIGHT_ATTACK.timing.active,
     );
+  });
+
+  it('голыми руками удар дешевле', () => {
+    const fist = fighter();
+    const full = fist.vitals.stamina;
+    startAttack(fist, 'attack', 1, FIST_STAMINA_SCALE);
+    const cheap = full - fist.vitals.stamina;
+
+    const armed = fighter();
+    startAttack(armed, 'attack', 2);
+    const costly = armed.vitals.stamina;
+
+    expect(cheap).toBeCloseTo(LIGHT_ATTACK.staminaCost * FIST_STAMINA_SCALE);
+    expect(full - costly).toBeCloseTo(LIGHT_ATTACK.staminaCost);
   });
 
   it('топором фазы и пауза длиннее', () => {
