@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { sunHeight } from '@grimhold/shared';
 
 /**
@@ -33,6 +35,34 @@ const NIGHT_TINT = 0xb9c6e0;
  */
 const RADIUS = 120;
 
+/** Луна: модель от владельца, собрана prepare-moon.ts. */
+const MOON_URL = '/models/moon.glb';
+
+const MOON = {
+  /**
+   * Как далеко от камеры висит — чуть ближе купола.
+   *
+   * Дальше него нельзя: купол рисуется фоном без проверки глубины, и луна
+   * за ним просто не появилась бы.
+   */
+  distance: RADIUS * 0.92,
+  /**
+   * Радиус в метрах на этом расстоянии.
+   *
+   * Настоящая луна занимает полградуса — на экране это была бы крупинка.
+   * Берём заметно крупнее: небо в игре читают мельком и с земли.
+   */
+  size: 5.5,
+  /**
+   * Насколько быстро она пропадает на рассвете.
+   *
+   * Владелец просил, чтобы луна уходила, когда светлеет: множитель делает
+   * это раньше восхода — к тому времени, как солнце показалось из-за
+   * горизонта, её уже нет.
+   */
+  fade: 4,
+};
+
 export interface Sky {
   readonly mesh: THREE.Mesh;
   /**
@@ -44,6 +74,20 @@ export interface Sky {
    * равно читаются только силуэтом.
    */
   update(time: number, tint: THREE.Color, camera: THREE.Camera): void;
+}
+
+/**
+ * Куда смотреть за луной.
+ *
+ * Она ходит по той же дуге, что и солнце, но с обратной стороны — так же,
+ * как считает свет ночью (`daynight.ts`). Отсюда и сдвиг на полсуток, и знак
+ * у высоты: когда солнце внизу, луна вверху.
+ */
+function moonAt(time: number, out: THREE.Vector3): THREE.Vector3 {
+  const angle = (time + 0.5) * Math.PI * 2;
+  const height = -sunHeight(time);
+  const flat = Math.sqrt(Math.max(0, 1 - height * height));
+  return out.set(Math.cos(angle) * flat, height, Math.sin(angle) * flat);
 }
 
 export function createSky(scene: THREE.Scene): Sky {
@@ -67,6 +111,69 @@ export function createSky(scene: THREE.Scene): Sky {
     map.wrapS = THREE.RepeatWrapping;
     material.map = map;
   }
+
+  /**
+   * Луна — отдельная модель, а не пятно на панораме.
+   *
+   * На панораме она всходила бы и заходила вместе с облаками, то есть никак:
+   * картинка одна на все сутки. Своим телом она ходит по небу и уходит
+   * на рассвете.
+   */
+  const moon = new THREE.Group();
+  /**
+   * Рисуется **после купола, но до мира**.
+   *
+   * Ни у купола, ни у луны нет проверки глубины, поэтому кто позже — тот
+   * и поверх. С одинаковым порядком купол закрашивал луну целиком, и ночное
+   * небо оставалось пустым, хотя модель была на месте.
+   */
+  moon.renderOrder = -0.5;
+  moon.frustumCulled = false;
+  moon.visible = false;
+  scene.add(moon);
+
+  const moonMaterials: THREE.MeshBasicMaterial[] = [];
+  if (typeof document !== 'undefined') {
+    const loader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('/draco/');
+    loader.setDRACOLoader(draco);
+    void loader
+      .loadAsync(MOON_URL)
+      .then((gltf) => {
+        gltf.scene.traverse((node) => {
+          const part = node as THREE.Mesh;
+          if (!part.isMesh) return;
+          part.frustumCulled = false;
+          const source = (
+            Array.isArray(part.material) ? part.material[0] : part.material
+          ) as THREE.MeshStandardMaterial;
+          /**
+           * Луна светится сама.
+           *
+           * Свет на неё не падает — единственная лампа сцены и есть она же
+           * (см. daynight.ts): со светочувствительным материалом мы бы видели
+           * чёрный кружок. И глубину не трогаем, как у купола: небо — фон.
+           */
+          const flat = new THREE.MeshBasicMaterial({
+            map: source.map,
+            fog: false,
+            transparent: true,
+            depthWrite: false,
+            depthTest: false,
+          });
+          part.material = flat;
+          moonMaterials.push(flat);
+        });
+        moon.add(gltf.scene);
+      })
+      .catch((error: unknown) => {
+        // Нет луны — просто нет луны: ночь от этого не ломается.
+        console.warn('[небо] луна не загрузилась:', error);
+      });
+  }
+
+  const toMoon = new THREE.Vector3();
 
   const mesh = new THREE.Mesh(geometry, material);
   // Рисуем раньше всего остального и не пишем глубину: тогда купол не
@@ -98,6 +205,23 @@ export function createSky(scene: THREE.Scene): Sky {
         .setHex(NIGHT_TINT)
         .lerp(tint, day * 0.85)
         .multiplyScalar(0.8 + day * 0.5);
+
+      /**
+       * Луна видна, пока темно, и гаснет, как только светлеет.
+       *
+       * Прозрачностью, а не выключением: иначе она пропадала бы посреди неба
+       * в один кадр. Ниже горизонта не рисуем вовсе — светить из-под земли
+       * ей нечем.
+       */
+      const night = Math.max(0, Math.min(1, -sunHeight(time) * MOON.fade));
+      moon.visible = night > 0.01 && moonMaterials.length > 0;
+      if (!moon.visible) return;
+
+      moon.position
+        .copy(camera.position)
+        .addScaledVector(moonAt(time, toMoon), MOON.distance);
+      moon.scale.setScalar(MOON.size);
+      for (const face of moonMaterials) face.opacity = night;
     },
   };
 }

@@ -371,7 +371,15 @@ export class World {
    * остановил бы мир для всех.
    */
   setDaytime(time: number): void {
-    const now = timeOfDay(this.tick, TICK_RATE);
+    /**
+     * «Сейчас» берётся **с уже накопленным сдвигом**.
+     *
+     * Без него второй перевод промахивался ровно на прежний сдвиг: первый
+     * раз часы вставали куда просили, а дальше «полдень» давал то утро,
+     * то вечер. Ошибка накапливалась и была почти незаметна — стрелки ведь
+     * двигались, просто не туда.
+     */
+    const now = timeOfDay(this.tick, TICK_RATE, this.daytimeShift);
     this.daytimeShift = (((this.daytimeShift + time - now) % 1) + 1) % 1;
   }
 

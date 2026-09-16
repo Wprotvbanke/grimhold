@@ -32,7 +32,7 @@ try {
   await page.setViewport({ width: 1600, height: 900 });
   page.on('console', (message) => {
     const text = message.text();
-    if (/ошибк|error/i.test(text)) console.log('  [браузер]', text.slice(0, 200));
+    if (/ошибк|error|\[sky\]/i.test(text)) console.log('  [браузер]', text.slice(0, 200));
   });
 
   /**
@@ -99,6 +99,66 @@ try {
     await wait(600);
     await page.click('#adminClose');
     await wait(3000);
+  }
+
+  /**
+   * `GRIMHOLD_HOUR=noon|dawn|dusk|midnight` — перевести часы мира.
+   *
+   * Небо и свет проверяются только в своё время суток: луну днём не увидишь,
+   * а ночью не увидишь, как она уходит. Час задаётся латиницей — русское
+   * слово из оболочки доезжает сюда испорченным, и кнопка не находится.
+   */
+  const HOURS: Record<string, string> = {
+    dawn: 'Рассвет',
+    noon: 'Полдень',
+    dusk: 'Закат',
+    midnight: 'Полночь',
+  };
+  const hour = HOURS[process.env.GRIMHOLD_HOUR ?? ''];
+  if (hour) {
+    await page.keyboard.press('F2');
+    // Ждём факта, а не паузы: меню доходит до игры не всегда за полсекунды,
+    // и клик по кнопке часов уходил в пустоту — время оставалось прежним.
+    await page.waitForFunction(
+      () => document.getElementById('admin')?.hasAttribute('hidden') === false,
+      { timeout: 10000 },
+    );
+    const clicked = await page.evaluate((label: string) => {
+      const buttons = [...document.querySelectorAll('#adminHours button')] as HTMLButtonElement[];
+      const wanted = buttons.find((button) => button.textContent === label);
+      wanted?.click();
+      return { found: !!wanted, buttons: buttons.map((button) => button.textContent) };
+    }, hour);
+    console.log('  [clock]', JSON.stringify(clicked));
+    await wait(600);
+    await page.click('#adminClose');
+    // Солнце едет к новому часу не мгновенно.
+    await wait(6000);
+  }
+
+  /**
+   * `GRIMHOLD_PITCH=градусы` — посмотреть вверх (или вниз при минусе).
+   *
+   * Небо в кадр иначе не попадает: взгляд от первого лица смотрит в горизонт,
+   * а луна высоко.
+   */
+  const pitch = Number(process.env.GRIMHOLD_PITCH ?? 0);
+  const turn = Number(process.env.GRIMHOLD_YAW ?? 0);
+  if (pitch !== 0 || turn !== 0) {
+    await page.mouse.click(800, 450);
+    await wait(600);
+    // Поворот вокруг себя: `GRIMHOLD_YAW=градусы`, вправо — плюс.
+    if (turn !== 0) {
+      await page.mouse.move(800 + turn * 8.7, 450, { steps: 12 });
+      await wait(500);
+    }
+    // Мышь в захвате двигает взгляд: вверх — это отрицательное смещение.
+    // Восемь с лишним пикселей на градус — чувствительность игры (0.002 рад
+    // на пиксель); без этого «посмотри на 80°» поднимало голову на тридцать.
+    if (pitch !== 0) {
+      await page.mouse.move(800 + turn * 8.7, 450 - pitch * 8.7, { steps: 12 });
+      await wait(800);
+    }
   }
 
   /**
