@@ -354,6 +354,10 @@
         font-size: 10px; line-height: 1.1; text-align: center; color: #ddd3ba;
       }
       .inv-item:hover { border-color: var(--gold); background: #3a3328; }
+      /* Вещь с картинкой: она и есть содержимое ячейки, название — в подсказке. */
+      .inv-item.with-icon {
+        background-size: contain; background-repeat: no-repeat; background-position: center;
+      }
       .inv-item.dragging { opacity: 0.35; }
       .inv-item .count {
         position: absolute; right: 2px; bottom: 1px;

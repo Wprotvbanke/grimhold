@@ -773,7 +773,15 @@ export class InventoryUi {
     node.style.width = `${size.width * CELL - 2}px`;
     node.style.height = `${size.height * CELL - 2}px`;
     node.title = `${def.name}\n${def.weight} кг${def.description ? `\n\n${def.description}` : ''}`;
-    node.textContent = def.name;
+
+    // Картинка вместо названия — там, где она есть. Имя не теряется:
+    // оно в подсказке, вместе с весом и описанием.
+    if (def.icon) {
+      node.classList.add('with-icon');
+      node.style.backgroundImage = `url(${def.icon})`;
+    } else {
+      node.textContent = def.name;
+    }
 
     if (item.count > 1) {
       const count = document.createElement('span');

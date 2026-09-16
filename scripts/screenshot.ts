@@ -319,6 +319,14 @@ try {
     await wait(400);
     await page.keyboard.press('Digit1');
     await wait(Number(process.env.GRIMHOLD_AFTER ?? 1200));
+
+    // `GRIMHOLD_BAG=1` — заодно открыть рюкзак: на одном кадре и сетка
+    // с картинкой вещи, и отсчёт на панели.
+    if (process.env.GRIMHOLD_BAG === '1') {
+      await page.keyboard.press('Tab');
+      await shown('inventory');
+      await wait(600);
+    }
   }
 
   if (open === 'axe') {
