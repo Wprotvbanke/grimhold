@@ -354,10 +354,6 @@
         font-size: 10px; line-height: 1.1; text-align: center; color: #ddd3ba;
       }
       .inv-item:hover { border-color: var(--gold); background: #3a3328; }
-      /* Вещь с картинкой: она и есть содержимое ячейки, название — в подсказке. */
-      .inv-item.with-icon {
-        background-size: contain; background-repeat: no-repeat; background-position: center;
-      }
       .inv-item.dragging { opacity: 0.35; }
       .inv-item .count {
         position: absolute; right: 2px; bottom: 1px;
@@ -367,6 +363,17 @@
       .inv-item.kind-armor { background: #252c33; border-color: #47535e; }
       .inv-item.kind-consumable { background: #2b3326; border-color: #4c5a44; }
       .inv-item.kind-scroll { background: #35302a; border-color: #6a5c42; }
+      /**
+       * Вещь с картинкой: она и есть содержимое ячейки, название — в подсказке.
+       *
+       * Правило стоит **после** цветов по виду вещи нарочно: те заданы
+       * сокращённым `background`, который сбрасывает и размер картинки.
+       * Пока оно стояло выше, картинка рисовалась в натуральную величину
+       * и в ячейку влезала третью частью.
+       */
+      .inv-item.with-icon {
+        background-size: contain; background-repeat: no-repeat; background-position: center;
+      }
 
       /* Полоса работы: видно, что именно делается и сколько осталось.
          Раньше изделие появлялось сразу, а пауза шла молча — со стороны это
