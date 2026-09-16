@@ -152,7 +152,9 @@ try {
 
   const walk = Number(process.env.GRIMHOLD_WALK ?? 0);
   if (walk > 0) {
-    await page.click('canvas');
+    // Щелчок по координатам, а не по элементу: подсказка входа лежит поверх
+    // холста, и puppeteer отказывался его жать — «не кликабельно».
+    await page.mouse.click(800, 450);
     await wait(600);
     await page.keyboard.down('KeyW');
     await wait(walk * 1000);
