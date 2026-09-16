@@ -48,6 +48,24 @@ try {
     });
   }
 
+  /**
+   * `GRIMHOLD_SLOW=мбит` — придушить канал.
+   *
+   * Локально всё читается с диска за доли секунды, и экран загрузки
+   * не поймать в кадр. А главное — на быстром канале не видно того,
+   * ради чего он сделан: как игра выглядит, пока качается.
+   */
+  const slow = Number(process.env.GRIMHOLD_SLOW ?? 0);
+  if (slow > 0) {
+    const cdp = await page.createCDPSession();
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 60,
+      downloadThroughput: (slow * 1_000_000) / 8,
+      uploadThroughput: (slow * 500_000) / 8,
+    });
+  }
+
   await page.goto('http://localhost:5173/', { waitUntil: 'networkidle2', timeout: 60000 });
   await wait(2000);
 
@@ -75,6 +93,37 @@ try {
     entered = await page.evaluate(() => document.querySelector('#charScreen')?.hasAttribute('hidden') === true);
   }
   if (!entered) throw new Error('не удалось войти ни одним персонажем');
+
+  /**
+   * `loading` вторым аргументом — снять сам экран загрузки.
+   *
+   * Он живёт секунды: ждать, как обычно, двенадцать — значит снять уже
+   * построенный город. Поэтому стреляем сразу после выбора персонажа.
+   */
+  if (process.argv[3] === 'loading') {
+    await wait(Number(process.env.GRIMHOLD_AFTER ?? 1500));
+    await page.screenshot({ path: OUTPUT });
+    const state = await page.evaluate(() => {
+      const node = document.getElementById('loading');
+      if (!node) return { found: false };
+      const style = getComputedStyle(node);
+      return {
+        found: true,
+        hidden: node.hasAttribute('hidden'),
+        display: style.display,
+        opacity: style.opacity,
+        zIndex: style.zIndex,
+        background: style.backgroundImage.slice(0, 60),
+        fill: (document.getElementById('loadingFill') as HTMLElement | null)?.style.width,
+        text: document.getElementById('loadingText')?.textContent,
+      };
+    });
+    console.log('  [loading]', JSON.stringify(state));
+    await page.screenshot({ path: OUTPUT });
+    console.log(`снимок сохранён: ${OUTPUT}`);
+    await browser.close();
+    process.exit(0);
+  }
 
   // Ждём загрузку моделей и пару секунд игры.
   await wait(12000);

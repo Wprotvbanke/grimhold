@@ -70,6 +70,7 @@ import { createCues } from './cues.js';
 import { createSteps, surfaceAt, type Walker } from './steps.js';
 import { createAtmosphere } from './atmosphere.js';
 import { createLabour, labourForWork, type Worker } from './labour.js';
+import { createLoading } from './loading.js';
 import { createShowcase } from './showcase.js';
 import { createVermin } from './vermin.js';
 import { createExhibits } from './exhibits.js';
@@ -117,6 +118,9 @@ setAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
 const world = createScene();
 const scene = world.scene;
+/** Экран загрузки: показывается на входе в мир — см. loading.ts. */
+const loading = createLoading();
+
 /** Пробная модель на площади — см. showcase.ts. */
 const showcase = createShowcase(scene);
 /** Крысы, бегущие в люк, — картинка города, см. vermin.ts. */
@@ -838,6 +842,10 @@ function weightSpeedFactorFor(weight: number, capacity: number): number {
 }
 
 function startGame(character: CharacterSummary, spawn: { x: number; y: number; z: number }): void {
+  // Картинка с полосой поверх всего: дальше пойдут руки, дома и звук,
+  // и это секунды, в которые игрок иначе смотрит в пустоту.
+  loading.show();
+
   const profile = RACES[character.race];
   const body = { radius: profile.radius, height: profile.height };
 
