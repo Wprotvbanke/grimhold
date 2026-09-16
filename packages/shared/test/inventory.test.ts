@@ -5,8 +5,10 @@ import {
   ITEMS,
   addItem,
   attributesFor,
+  arrangeInGrid,
   canPlace,
   carryCapacity,
+  createGrid,
   countOf,
   createBackpack,
   equipmentArmor,
@@ -250,5 +252,61 @@ describe('удаление', () => {
 
     const after = removeItem(grid, grid.items[0]!);
     expect(canPlace(after, 'bandage', 0, 0, false)).toBe(true);
+  });
+});
+
+describe('стопку кладут на стопку', () => {
+  /**
+   * Складывать одинаковое перетаскиванием — то, чего ждут от сетки.
+   * Правило живёт в arrangeInGrid и общее для рюкзака, казны и мешка.
+   */
+  it('одинаковые складываются, предел соблюдается', () => {
+    let grid = createGrid(10, 6);
+    grid = addItem(grid, 'health_potion', 1).grid;
+    // Вторую стопку кладём руками: addItem сам сложил бы её в первую.
+    grid = {
+      ...grid,
+      items: [...grid.items, { defId: 'health_potion', count: 3, x: 4, y: 0, rotated: false }],
+    };
+
+    const moved = arrangeInGrid(grid, 0, 0, 4, 0, false);
+    expect(typeof moved).not.toBe('string');
+    if (typeof moved === 'string') return;
+
+    expect(moved.items).toHaveLength(1);
+    expect(moved.items[0]).toMatchObject({ defId: 'health_potion', count: 4, x: 4, y: 0 });
+  });
+
+  it('лишнее остаётся на месте: предел стопки не обходится', () => {
+    const stack = itemDef('health_potion').stack;
+    let grid = createGrid(10, 6);
+    grid = {
+      ...grid,
+      items: [
+        { defId: 'health_potion', count: 3, x: 0, y: 0, rotated: false },
+        { defId: 'health_potion', count: stack - 1, x: 4, y: 0, rotated: false },
+      ],
+    };
+
+    const moved = arrangeInGrid(grid, 0, 0, 4, 0, false);
+    if (typeof moved === 'string') throw new Error(moved);
+
+    const target = moved.items.find((item) => item.x === 4);
+    const rest = moved.items.find((item) => item.x === 0);
+    expect(target?.count).toBe(stack);
+    expect(rest?.count).toBe(3 - 1);
+  });
+
+  it('разное не складывается', () => {
+    let grid = createGrid(10, 6);
+    grid = {
+      ...grid,
+      items: [
+        { defId: 'health_potion', count: 1, x: 0, y: 0, rotated: false },
+        { defId: 'bandage', count: 1, x: 4, y: 0, rotated: false },
+      ],
+    };
+
+    expect(typeof arrangeInGrid(grid, 0, 0, 4, 0, false)).toBe('string');
   });
 });

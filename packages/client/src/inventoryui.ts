@@ -15,6 +15,7 @@ import {
   type RecipeId,
   SLOT_NAMES,
   countOf,
+  itemAt,
   itemDef,
   sizeOf,
   type EquipSlot,
@@ -1068,8 +1069,22 @@ export class InventoryUi {
     if (!grid) return;
 
     const size = sizeOf(this.drag.item.defId, this.drag.rotated);
-    const fits =
-      target.x + size.width <= grid.width && target.y + size.height <= grid.height;
+    const inside = target.x + size.width <= grid.width && target.y + size.height <= grid.height;
+
+    /**
+     * Зелёным светится и чужая стопка того же вида.
+     *
+     * Складывать их правила умеют, и игрок должен видеть, что это можно,
+     * а не гадать по красной клетке, которая на самом деле примет вещь.
+     */
+    const under = itemAt(grid, target.x, target.y);
+    const stacks =
+      under !== null &&
+      under !== this.drag.item &&
+      under.defId === this.drag.item.defId &&
+      under.count < itemDef(under.defId).stack;
+
+    const fits = inside || stacks;
 
     for (let dy = 0; dy < size.height; dy++) {
       for (let dx = 0; dx < size.width; dx++) {
@@ -1108,15 +1123,40 @@ export class InventoryUi {
     return !node.closest('.inv-panel') && !node.closest('#hotbar');
   }
 
+  /**
+   * Какая клетка под курсором.
+   *
+   * Сперва спрашиваем саму клетку, но **над занятым местом её не достать**:
+   * вещи лежат отдельным слоем поверх сетки, и `elementFromPoint` возвращает
+   * вещь, а не клетку под ней. Пока это не учитывалось, стопку нельзя было
+   * бросить на стопку — перетаскивание молча отменялось, хотя правила
+   * складывать умеют.
+   *
+   * Поэтому второй заход: нашли вещь — считаем клетку по геометрии сетки,
+   * в которой она лежит.
+   */
   private cellUnder(event: MouseEvent): { grid: GridKind; x: number; y: number } | null {
     const node = document.elementFromPoint(event.clientX, event.clientY);
+
     const cell = node?.closest('.cell') as HTMLElement | null;
-    if (!cell) return null;
-    return {
-      grid: (cell.dataset.grid ?? 'backpack') as GridKind,
-      x: Number(cell.dataset.x),
-      y: Number(cell.dataset.y),
-    };
+    if (cell) {
+      return {
+        grid: (cell.dataset.grid ?? 'backpack') as GridKind,
+        x: Number(cell.dataset.x),
+        y: Number(cell.dataset.y),
+      };
+    }
+
+    const wrap = node?.closest('.grid-wrap') as HTMLElement | null;
+    const cells = wrap?.querySelector('.grid-cells') as HTMLElement | null;
+    if (!wrap || !cells) return null;
+
+    const box = cells.getBoundingClientRect();
+    const x = Math.floor((event.clientX - box.left - GRID_INSET) / CELL);
+    const y = Math.floor((event.clientY - box.top - GRID_INSET) / CELL);
+    if (x < 0 || y < 0) return null;
+
+    return { grid: wrap.id === 'bankWrap' ? 'bank' : 'backpack', x, y };
   }
 
   private cancelDrag(): void {

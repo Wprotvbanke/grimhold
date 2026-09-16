@@ -317,6 +317,75 @@ try {
    * Проверяется то, что видно только глазами: картинка на ячейке и отсчёт
    * отката поверх неё.
    */
+  /**
+   * `stack` — проверить складывание: выдать зелья двумя стопками и перетащить
+   * одну на другую мышью, как это делает игрок.
+   */
+  if (open === 'stack') {
+    const shown = (id: string) =>
+      page.waitForFunction(
+        (node: string) => document.getElementById(node)?.hasAttribute('hidden') === false,
+        { timeout: 10000 },
+        id,
+      );
+
+    await page.keyboard.press('F2');
+    await shown('admin');
+    // Две выдачи подряд: первая заполнит стопку, вторая ляжет рядом.
+    for (let round = 0; round < 2; round++) {
+      await page.evaluate(() => {
+        const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
+        buttons.find((button) => button.textContent === 'Зелье лечения')?.click();
+      });
+      await wait(500);
+    }
+    await page.click('#adminClose');
+    await wait(500);
+
+    await page.keyboard.press('Tab');
+    await shown('inventory');
+    await wait(600);
+
+    const before = await page.evaluate(() =>
+      [...document.querySelectorAll('.inv-item')]
+        .filter((node) => (node as HTMLElement).title.includes('Зелье'))
+        .map((node) => node.textContent?.trim() || '1'),
+    );
+    console.log('  [stack] до:', JSON.stringify(before));
+
+    const spots = await page.evaluate(() => {
+      const potions = [...document.querySelectorAll('.inv-item')].filter((node) =>
+        (node as HTMLElement).title.includes('Зелье'),
+      ) as HTMLElement[];
+      if (potions.length < 2) return null;
+      const from = potions[0]!.getBoundingClientRect();
+      const to = potions[1]!.getBoundingClientRect();
+      return {
+        fromX: from.left + from.width / 2,
+        fromY: from.top + from.height / 2,
+        toX: to.left + to.width / 2,
+        toY: to.top + to.height / 2,
+      };
+    });
+    if (spots) {
+      await page.mouse.move(spots.fromX, spots.fromY);
+      await page.mouse.down();
+      await page.mouse.move(spots.toX, spots.toY, { steps: 14 });
+      await wait(300);
+      await page.mouse.up();
+      await wait(700);
+    } else {
+      console.log('  [stack] двух стопок не нашлось');
+    }
+
+    const after = await page.evaluate(() =>
+      [...document.querySelectorAll('.inv-item')]
+        .filter((node) => (node as HTMLElement).title.includes('Зелье'))
+        .map((node) => node.textContent?.trim() || '1'),
+    );
+    console.log('  [stack] после:', JSON.stringify(after));
+  }
+
   if (open === 'potion') {
     const shown = (id: string) =>
       page.waitForFunction(
