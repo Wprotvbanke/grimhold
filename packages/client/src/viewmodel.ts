@@ -135,6 +135,13 @@ interface HeldSpec {
    * «опусти пониже» начнёт менять место хвата в кулаке.
    */
   drop?: number;
+  /**
+   * Сдвиг к экрану, в предплечьях.
+   *
+   * Кость ладони — не точка хвата: у посоха древко выходило чуть впереди
+   * кулака, будто рука держит воздух. Плюс тянет вещь к зрителю.
+   */
+  pull?: number;
   /** Насколько притушить материал: у вещей текстуры темнее кожи. */
   tint: number;
 }
@@ -231,6 +238,8 @@ const HELD: Record<string, HeldSpec> = {
     shift: -0.1,
     /** Ниже топора: владелец опустил его, глядя в кадр. */
     drop: 0.3,
+    /** И чуть ближе к экрану: древко стояло впереди кулака. */
+    pull: 0.12,
     tint: 0.85,
   },
 };
@@ -732,7 +741,7 @@ export class ViewModel {
           .set(
             (spec.shift * this.forearm) / world,
             (-(spec.drop ?? 0) * this.forearm) / world,
-            0,
+            ((spec.pull ?? 0) * this.forearm) / world,
           )
           .applyQuaternion(this.spin),
       );
