@@ -69,7 +69,7 @@ export class Ui {
     byRace: {
       human: { zoom: 1.3 },
       elf: { zoom: 1.3 },
-      dwarf: { aim: 0.8, shift: 0.3 },
+      dwarf: { aim: 0.9, shift: 0.3 },
     },
   });
 
