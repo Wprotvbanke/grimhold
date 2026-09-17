@@ -67,7 +67,7 @@ export class Ui {
      * лучше ложится в перспективу коридора на заднике.
      */
     byRace: {
-      human: { zoom: 1.3, shift: 0.22 },
+      human: { zoom: 1.17, shift: 0.22 },
       elf: { zoom: 1.3 },
       dwarf: { aim: 0.9, shift: 0.3 },
     },
