@@ -21,7 +21,14 @@ import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const SOURCE = 'C:/Users/Wprot/OneDrive/Рабочий стол/Vignette_Meditation/Vignette.png';
+/**
+ * Второй рисунок владельца: пятно меньше, край плотнее.
+ *
+ * Первый (`Vignette.png`) оставлял открытым почти весь кадр, и затемнение
+ * терялось в и без того тёмной ночной сцене. Этот темнит заметно больше —
+ * владелец выбрал его, посмотрев оба в игре.
+ */
+const SOURCE = 'C:/Users/Wprot/OneDrive/Рабочий стол/Vignette_Meditation/Vignette2.png';
 const OUTPUT = resolve(ROOT, 'packages/client/public/textures/meditation_vignette.webp');
 
 /**

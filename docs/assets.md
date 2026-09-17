@@ -46,7 +46,7 @@
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
 | `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |
 | `public/sounds/sigh_relief.wav` | [«Sigh by the mouth»](https://bigsoundbank.com/sigh-by-the-mouth-s1405.html), BigSoundBank; обрезан до 1.5 с `scripts/prepare-sigh.ts` | **CC0** |
-| `public/textures/meditation_vignette.webp` | от владельца проекта, собрана `scripts/prepare-vignette.ts`; 4K png → 960×540 webp, 59 КБ | уточнить |
+| `public/textures/meditation_vignette.webp` | от владельца проекта (второй вариант, плотнее первого), собрана `scripts/prepare-vignette.ts`; 4K png → 960×540 webp, 22 КБ | уточнить |
 | `public/icons/scroll_damage.webp` · `scroll_control.webp` · `scroll_support.webp` | от владельца проекта, собраны `scripts/prepare-scrolls.ts`; по рисунку на разряд свитка, 128×128, 24 КБ на все три | уточнить |
 | `public/models/hands.glb` | от владельца проекта, обработан `scripts/prepare-arms.ts` | уточнить |
 | `public/models/nature.glb` | от владельца проекта, собран `scripts/prepare-nature.ts` | уточнить |
