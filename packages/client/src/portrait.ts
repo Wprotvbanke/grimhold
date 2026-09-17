@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RACES, type Race } from '@grimhold/shared';
 
 /**
- * Живой портрет персонажа в окне рюкзака.
+ * Живой портрет персонажа: в арке рюкзака и во весь рост в лобби.
  *
  * Модель своей расы стоит в арке посреди слотов снаряжения и дышит — как
  * в старых ролевых играх, где на куклу вешают вещи. Это отдельный маленький
@@ -13,6 +13,10 @@ import { RACES, type Race } from '@grimhold/shared';
  *
  * Рисуется **только пока окно открыто** (`start`/`stop`): второй рендер
  * каждый кадр за закрытым окном — это пустая работа на каждой машине.
+ *
+ * Одна дверь на два места намеренно. Лобби (docs/lobby.md) показывает ту же
+ * фигуру, только крупнее и в другом развороте, и заводить ради этого второй
+ * рендер значило бы чинить свет и посадку дважды.
  */
 
 /** Модель и клип портрета на расу. Клип один — стойка: кукла не танцует. */
@@ -28,6 +32,25 @@ const TURN = -0.35;
 /** Сколько роста помещается в кадр: запас сверху и снизу, чтобы не резать макушку. */
 const FRAME = 1.12;
 
+export interface PortraitOptions {
+  /** Разворот фигуры, радианы. */
+  turn?: number;
+  /**
+   * Сколько ростов помещается в кадр по вертикали.
+   *
+   * Больше единицы — фигура мельче и с запасом вокруг; в лобби запас нужен
+   * побольше, чтобы человек стоял на полу задника, а не упирался в край.
+   */
+  frame?: number;
+  /**
+   * Куда смотрит камера по высоте, в долях роста.
+   *
+   * Половина — в середину фигуры. Ниже — фигура уезжает вверх кадра, и под
+   * ней остаётся пол; в лобби это и нужно.
+   */
+  aim?: number;
+}
+
 export interface Portrait {
   /** Какую расу показывать. Та же раса второй раз — ничего. */
   setRace(race: Race): void;
@@ -35,7 +58,10 @@ export interface Portrait {
   stop(): void;
 }
 
-export function createPortrait(canvas: HTMLCanvasElement): Portrait {
+export function createPortrait(canvas: HTMLCanvasElement, options: PortraitOptions = {}): Portrait {
+  const turn = options.turn ?? TURN;
+  const frame = options.frame ?? FRAME;
+  const aim = options.aim ?? 0.5;
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -55,7 +81,7 @@ export function createPortrait(canvas: HTMLCanvasElement): Portrait {
   scene.add(rim);
 
   const holder = new THREE.Group();
-  holder.rotation.y = TURN;
+  holder.rotation.y = turn;
   scene.add(holder);
 
   const loader = new GLTFLoader();
@@ -65,7 +91,8 @@ export function createPortrait(canvas: HTMLCanvasElement): Portrait {
 
   let race: Race | null = null;
   let mixer: THREE.AnimationMixer | null = null;
-  let frame = 0;
+  /** Номер запрошенного кадра анимации: по нему рендер и останавливают. */
+  let ticking = 0;
   let last = 0;
   /** Номер загрузки: сменили расу, пока грузилась прошлая, — прошлую не ставим. */
   let loading = 0;
@@ -77,15 +104,15 @@ export function createPortrait(canvas: HTMLCanvasElement): Portrait {
     renderer.setSize(width, tall, false);
     camera.aspect = width / tall;
     // Расстояние, на котором весь рост с запасом помещается по вертикали.
-    const span = height * FRAME;
+    const span = height * frame;
     const distance = span / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    camera.position.set(0, height * 0.52, distance);
-    camera.lookAt(0, height * 0.5, 0);
+    camera.position.set(0, height * (aim + 0.02), distance);
+    camera.lookAt(0, height * aim, 0);
     camera.updateProjectionMatrix();
   }
 
   function render(): void {
-    frame = requestAnimationFrame(render);
+    ticking = requestAnimationFrame(render);
     const now = performance.now();
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
@@ -126,15 +153,15 @@ export function createPortrait(canvas: HTMLCanvasElement): Portrait {
     },
 
     start() {
-      if (frame) return;
+      if (ticking) return;
       if (race) fit(RACES[race].height);
       last = performance.now();
       render();
     },
 
     stop() {
-      cancelAnimationFrame(frame);
-      frame = 0;
+      cancelAnimationFrame(ticking);
+      ticking = 0;
     },
   };
 }

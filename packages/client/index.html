@@ -67,6 +67,126 @@
         text-shadow: 0 2px 5px #000;
       }
 
+      /*
+       * Лобби: задник, фигура и две панели по краям.
+       *
+       * Раскладка — сетка в три колонки: слева персонажи, в середине пусто
+       * (там стоит фигура на холсте во весь экран), справа создание. Холст
+       * лежит подложкой под панелями и не ловит мышь: он картинка, а не
+       * элемент управления. Подробности — docs/lobby.md.
+       */
+      .lobby {
+        display: grid; align-items: start; justify-items: stretch;
+        grid-template-columns: 320px 1fr 340px;
+        gap: 18px; padding: 26px 26px 0;
+        background: #05050a url("/textures/lobby.webp") center / cover no-repeat;
+        overflow: hidden;
+      }
+      /* Края задника притемнены: панели читаются, середина остаётся светлой. */
+      .lobby::before {
+        content: ''; position: absolute; inset: 0; pointer-events: none;
+        background:
+          linear-gradient(to right, rgba(4, 3, 6, 0.85) 0%, transparent 26%,
+            transparent 74%, rgba(4, 3, 6, 0.85) 100%),
+          linear-gradient(to bottom, rgba(4, 3, 6, 0.55), transparent 30%,
+            transparent 60%, rgba(4, 3, 6, 0.9));
+      }
+      #lobbyStage {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        pointer-events: none;
+      }
+
+      .lobby-side, .lobby-make {
+        position: relative; z-index: 1;
+        display: flex; flex-direction: column; gap: 10px;
+        max-height: calc(100vh - 150px); overflow-y: auto;
+        padding: 14px 16px 16px;
+        background: linear-gradient(rgba(22, 20, 19, 0.88), rgba(12, 11, 10, 0.92));
+        border: 1px solid #161514; border-radius: 4px;
+        box-shadow: inset 0 0 0 1px #57534d, 0 12px 40px rgba(0, 0, 0, 0.7);
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      .lobby-make { grid-column: 3; }
+      .lobby-side { grid-column: 1; }
+      /* Скрытая панель обязана исчезать: `display: flex` выше по весу,
+         чем `[hidden]`, и без этой строки пустая колонка остаётся в кадре. */
+      .lobby-side[hidden], .lobby-make[hidden] { display: none; }
+
+      .lobby-plate {
+        font-size: 12px; font-weight: 600; letter-spacing: 0.16em;
+        text-transform: uppercase; color: #efe5cc;
+        border-bottom: 1px solid #3b3733; padding-bottom: 4px; margin-top: 4px;
+      }
+      .lobby-who { font-size: 12px; color: #a39a89; }
+      .lobby-hint { margin: 0; font-size: 12px; line-height: 1.5; color: #a39a89; }
+      .lobby-error { margin: 0; min-height: 18px; font-size: 13px; color: #d08a72; }
+
+      /* Строка персонажа — каменная плашка; выбранная светится золотом. */
+      .lobby .char {
+        display: flex; justify-content: space-between; align-items: center; gap: 8px;
+        padding: 8px 10px; cursor: pointer; border-radius: 3px;
+        background: #1c1b19; border: 1px solid #2c2925; color: #ddd3ba;
+      }
+      .lobby .char:hover { border-color: #6d6249; background: #242220; }
+      .lobby .char.on {
+        border-color: var(--gold); background: #2d271f; color: #fff3d4;
+        box-shadow: inset 0 0 0 1px rgba(200, 168, 96, 0.35);
+      }
+      .lobby .char .meta { font-size: 11px; color: #9a9182; }
+
+      .lobby-field { display: grid; gap: 4px; font-size: 12px; color: #a39a89; }
+      .lobby-field input {
+        width: 100%; padding: 7px 9px; border-radius: 3px;
+        background: #121110; border: 1px solid #3b3733; color: #efe5cc;
+        font-family: Georgia, "Times New Roman", serif; font-size: 14px;
+      }
+      .lobby-field input:focus { outline: none; border-color: var(--gold); }
+
+      .lobby-races, .lobby-classes { display: flex; flex-wrap: wrap; gap: 6px; }
+      .lobby-races button, .lobby-classes button {
+        flex: 1 1 30%; width: auto; margin: 0; padding: 7px 4px;
+        font-family: Georgia, "Times New Roman", serif; font-size: 13px;
+        background: linear-gradient(#3b3936, #262421); color: #ddd3ba;
+        border: 1px solid #161514; border-radius: 2px;
+        box-shadow: inset 0 1px 0 #55514b;
+      }
+      .lobby-races button:hover, .lobby-classes button:hover { color: #fff3d4; }
+      .lobby-races button.on, .lobby-classes button.on {
+        background: linear-gradient(#7a766f, #504d48); color: #fff3d4;
+        box-shadow: inset 0 1px 0 #aca69c, 0 0 0 1px var(--gold);
+      }
+
+      .lobby-ghost {
+        width: 100%; margin: 0; padding: 7px 10px;
+        font-family: Georgia, "Times New Roman", serif; font-size: 12px;
+        letter-spacing: 0.08em; background: transparent; color: #a39a89;
+        border: 1px solid #3b3733; border-radius: 2px;
+      }
+      .lobby-ghost:hover { color: #efe5cc; border-color: #6d6249; }
+
+      /* «Играть» — единственная крупная кнопка экрана, и стоит она по центру
+         внизу, под фигурой: это последнее движение перед входом в мир. */
+      .lobby-foot {
+        position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+        z-index: 1; display: grid; justify-items: center; gap: 6px; width: min(420px, 60vw);
+      }
+      .lobby-play {
+        width: 100%; margin: 0; padding: 12px 18px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 17px; letter-spacing: 0.22em; text-transform: uppercase;
+        color: #fff3d4; background: linear-gradient(#6d4a22, #3b2611);
+        border: 1px solid #161514; border-radius: 3px;
+        box-shadow: inset 0 1px 0 #a8793c, 0 10px 30px rgba(0, 0, 0, 0.6);
+      }
+      .lobby-play:hover { background: linear-gradient(#82592a, #4a3016); }
+      .lobby-play:disabled { opacity: 0.45; box-shadow: none; }
+
+      /* Узкий экран: панели становятся полосами, фигура остаётся за ними. */
+      @media (max-width: 900px) {
+        .lobby { grid-template-columns: 1fr; gap: 10px; padding: 14px 14px 0; }
+        .lobby-side, .lobby-make { grid-column: 1; max-height: 34vh; }
+      }
+
       .panel {
         width: min(440px, 100%); background: var(--panel);
         border: 1px solid var(--line); border-radius: 6px; padding: 26px;
@@ -1196,36 +1316,45 @@
       </div>
     </div>
 
-    <!-- Выбор персонажа -->
-    <div class="screen" id="charScreen" hidden>
-      <div class="panel">
-        <h1>Персонажи</h1>
-        <p class="subtitle" id="charSubtitle"></p>
+    <!--
+      Лобби: выбор персонажа перед входом в мир.
 
+      Задник — картинка, на ней во весь рост стоит выбранный персонаж, слева
+      его собратья по учётной записи, внизу «Играть». Устройство и правила —
+      docs/lobby.md.
+    -->
+    <div class="screen lobby" id="charScreen" hidden>
+      <canvas id="lobbyStage"></canvas>
+
+      <aside class="lobby-side">
+        <div class="lobby-plate">Персонажи</div>
+        <div class="lobby-who" id="charSubtitle"></div>
         <div id="charList"></div>
+        <button id="newCharBtn" class="lobby-ghost">Новый персонаж</button>
+        <button id="logoutBtn" class="lobby-ghost">Сменить учётную запись</button>
+      </aside>
 
-        <div id="createBlock">
-          <h2>Новый персонаж</h2>
-          <label>
-            Имя
-            <input id="newName" type="text" maxlength="16" />
-          </label>
-          <div class="row">
-            <label>
-              Раса
-              <select id="newRace"></select>
-            </label>
-            <label>
-              Класс
-              <select id="newClass"></select>
-            </label>
-          </div>
-          <p class="hint" id="raceHint"></p>
-          <button id="createBtn">Создать персонажа</button>
-        </div>
+      <section class="lobby-make" id="createBlock" hidden>
+        <div class="lobby-plate">Новый персонаж</div>
 
-        <p class="error" id="charError"></p>
-        <button id="logoutBtn" class="ghost">Сменить учётную запись</button>
+        <label class="lobby-field">
+          Имя
+          <input id="newName" type="text" maxlength="16" autocomplete="off" />
+        </label>
+
+        <div class="lobby-plate">Раса</div>
+        <div class="lobby-races" id="raceButtons"></div>
+
+        <div class="lobby-plate">Путь</div>
+        <div class="lobby-classes" id="classButtons"></div>
+
+        <p class="lobby-hint" id="raceHint"></p>
+        <button id="cancelCharBtn" class="lobby-ghost">Отмена</button>
+      </section>
+
+      <div class="lobby-foot">
+        <p class="lobby-error" id="charError"></p>
+        <button id="playBtn" class="lobby-play">Играть</button>
       </div>
     </div>
 

@@ -1,5 +1,7 @@
 import {
   CLASSES,
+  DEFAULT_CLASS,
+  DEFAULT_RACE,
   RACES,
   type CharacterClass,
   type CharacterSummary,
@@ -7,6 +9,7 @@ import {
   type GatheringMessage,
   type Race,
 } from '@grimhold/shared';
+import { createPortrait } from './portrait.js';
 
 /**
  * Экраны вне игры и чат. Здесь только DOM: никакой игровой логики,
@@ -40,8 +43,31 @@ export class Ui {
   /** Пока открыт чат, ввод не должен уходить в движение. */
   chatFocused = false;
 
+  /**
+   * Фигура в лобби: та же живая модель, что в арке рюкзака, только во весь
+   * рост и почти анфас. Стоит на заднике и дышит, пока человек выбирает.
+   *
+   * Кадр с запасом (`frame`) и взгляд ниже середины (`aim`) — чтобы под
+   * ногами оставался пол картинки, а не обрез.
+   */
+  private readonly stage = createPortrait(el<HTMLCanvasElement>('lobbyStage'), {
+    turn: -0.18,
+    frame: 1.62,
+    aim: 0.6,
+  });
+
+  /** Кого выбрали в списке. `null` — никого, тогда играть нечем. */
+  private chosen: CharacterSummary | null = null;
+  /** Открыто ли создание нового персонажа. */
+  private creating = false;
+  /** Что выбрано в создании. Раса решает, кто стоит на заднике. */
+  private newRace: Race = DEFAULT_RACE;
+  private newClass: CharacterClass = DEFAULT_CLASS;
+  private characters: CharacterSummary[] = [];
+  /** Сколько персонажей разрешено на учётную запись. Решает сервер. */
+  private maxCharacters = 3;
+
   constructor(private readonly handlers: UiHandlers) {
-    this.fillSelects();
     this.wireAuth();
     this.wireCharacters();
     this.wireChat();
@@ -52,21 +78,44 @@ export class Ui {
   showAuth(error?: string): void {
     this.authScreen.hidden = false;
     this.charScreen.hidden = true;
+    // За закрытым лобби фигуру рисовать незачем — это работа впустую.
+    this.stage.stop();
     el<HTMLParagraphElement>('authError').textContent = error ?? '';
   }
 
   showCharacters(username: string, characters: CharacterSummary[], max: number): void {
     this.authScreen.hidden = true;
     this.charScreen.hidden = false;
+    this.characters = characters;
+    this.maxCharacters = max;
     el<HTMLParagraphElement>('charError').textContent = '';
-    el<HTMLParagraphElement>('charSubtitle').textContent = `${username} · ${characters.length} из ${max}`;
+    el<HTMLDivElement>('charSubtitle').textContent = `${username} · ${characters.length} из ${max}`;
 
+    /**
+     * Кого показать на заднике.
+     *
+     * Держимся прежнего выбора, если он ещё существует: список приходит
+     * заново после каждого создания, и сбрасывать выбор значило бы каждый
+     * раз возвращать человека к первому персонажу.
+     */
+    const keep = characters.find((entry) => entry.id === this.chosen?.id);
+    this.chosen = keep ?? characters[0] ?? null;
+
+    // Персонажей нет вовсе — первый экран сразу про создание: пустое лобби
+    // с недоступной кнопкой «Играть» ничего человеку не объясняет.
+    this.setCreating(characters.length === 0);
+    this.renderCharacters();
+    this.stage.start();
+  }
+
+  /** Список персонажей слева. Выбранный подсвечен, он же стоит на заднике. */
+  private renderCharacters(): void {
     const list = el<HTMLDivElement>('charList');
     list.replaceChildren();
 
-    for (const character of characters) {
+    for (const character of this.characters) {
       const row = document.createElement('div');
-      row.className = 'char';
+      row.className = character.id === this.chosen?.id ? 'char on' : 'char';
 
       const left = document.createElement('div');
       const name = document.createElement('strong');
@@ -78,25 +127,88 @@ export class Ui {
         `${RACES[character.race].name} · ${CLASSES[character.characterClass].name}` +
         ` · в игре ${formatPlaytime(character.playtimeSeconds)}`;
       left.append(name, meta);
+      row.append(left);
 
-      const enter = document.createElement('button');
-      enter.textContent = 'Войти';
-      enter.style.width = 'auto';
-      enter.style.marginTop = '0';
-
-      row.append(left, enter);
-
-      const enterWorld = () => this.handlers.onEnterWorld(character.id);
-      row.addEventListener('click', enterWorld);
-      enter.addEventListener('click', (event) => {
-        event.stopPropagation();
-        enterWorld();
+      /**
+       * Щелчок **выбирает**, а не входит в мир.
+       *
+       * Раньше он входил, и это было единственное действие экрана. Теперь
+       * вход — отдельная кнопка внизу: посмотреть своего эльфа во весь рост,
+       * не проваливаясь сразу в игру, человек тоже вправе.
+       */
+      row.addEventListener('click', () => {
+        this.chosen = character;
+        this.setCreating(false);
+        this.renderCharacters();
       });
 
       list.append(row);
     }
 
-    el<HTMLDivElement>('createBlock').hidden = characters.length >= max;
+    this.refreshStage();
+  }
+
+  /**
+   * Кто стоит на заднике и что написано на кнопке.
+   *
+   * Одно место на оба режима: в создании показываем выбранную расу, иначе —
+   * расу выбранного персонажа. Разведи это по двум местам, и однажды фигура
+   * останется от прошлого режима.
+   */
+  private refreshStage(): void {
+    const race = this.creating ? this.newRace : this.chosen?.race;
+    if (race) this.stage.setRace(race);
+
+    const play = el<HTMLButtonElement>('playBtn');
+    play.textContent = this.creating ? 'Создать' : 'Играть';
+    play.disabled = !this.creating && !this.chosen;
+  }
+
+  /** Переключает лобби между выбором и созданием. */
+  private setCreating(on: boolean): void {
+    this.creating = on;
+    el<HTMLElement>('createBlock').hidden = !on;
+    // Пока создание открыто, звать в него второй раз незачем.
+    el<HTMLButtonElement>('newCharBtn').hidden = on || this.characters.length >= this.maxCharacters;
+    // Отменять нечего, когда персонажей нет вовсе: лобби без них пустое.
+    el<HTMLButtonElement>('cancelCharBtn').hidden = this.characters.length === 0;
+    if (on) this.renderRaceButtons();
+    this.refreshStage();
+  }
+
+  /** Кнопки рас и путей. Расы три, и выбор виден фигурой, а не подписью. */
+  private renderRaceButtons(): void {
+    const races = el<HTMLDivElement>('raceButtons');
+    races.replaceChildren();
+    for (const race of Object.values(RACES)) {
+      const button = document.createElement('button');
+      button.textContent = race.name;
+      button.className = race.id === this.newRace ? 'on' : '';
+      button.addEventListener('click', () => {
+        this.newRace = race.id;
+        this.renderRaceButtons();
+      });
+      races.append(button);
+    }
+
+    const classes = el<HTMLDivElement>('classButtons');
+    classes.replaceChildren();
+    for (const profile of Object.values(CLASSES)) {
+      const button = document.createElement('button');
+      button.textContent = profile.name;
+      button.className = profile.id === this.newClass ? 'on' : '';
+      button.addEventListener('click', () => {
+        this.newClass = profile.id;
+        this.renderRaceButtons();
+      });
+      classes.append(button);
+    }
+
+    const race = RACES[this.newRace];
+    el<HTMLParagraphElement>('raceHint').textContent =
+      `${race.name}: крафтит ${race.craft}. ${CLASSES[this.newClass].description}.`;
+
+    this.refreshStage();
   }
 
   showCharacterError(message: string): void {
@@ -110,6 +222,8 @@ export class Ui {
   enterGame(): void {
     this.authScreen.hidden = true;
     this.charScreen.hidden = true;
+    // Игра началась — второй рендер за спрятанным лобби не нужен.
+    this.stage.stop();
   }
 
   /**
@@ -283,34 +397,6 @@ export class Ui {
 
   // ---------- проводка ----------
 
-  private fillSelects(): void {
-    const raceSelect = el<HTMLSelectElement>('newRace');
-    for (const race of Object.values(RACES)) {
-      const option = document.createElement('option');
-      option.value = race.id;
-      option.textContent = race.name;
-      raceSelect.append(option);
-    }
-
-    const classSelect = el<HTMLSelectElement>('newClass');
-    for (const profile of Object.values(CLASSES)) {
-      const option = document.createElement('option');
-      option.value = profile.id;
-      option.textContent = profile.name;
-      classSelect.append(option);
-    }
-
-    const hint = el<HTMLParagraphElement>('raceHint');
-    const updateHint = () => {
-      const race = RACES[raceSelect.value as Race];
-      const profile = CLASSES[classSelect.value as CharacterClass];
-      hint.textContent = `${race.name}: крафтит ${race.craft}. ${profile.description}.`;
-    };
-    raceSelect.addEventListener('change', updateHint);
-    classSelect.addEventListener('change', updateHint);
-    updateHint();
-  }
-
   private wireAuth(): void {
     const user = el<HTMLInputElement>('authUser');
     const pass = el<HTMLInputElement>('authPass');
@@ -327,13 +413,30 @@ export class Ui {
   }
 
   private wireCharacters(): void {
-    el<HTMLButtonElement>('createBtn').addEventListener('click', () => {
-      this.handlers.onCreateCharacter(
-        el<HTMLInputElement>('newName').value.trim(),
-        el<HTMLSelectElement>('newRace').value as Race,
-        el<HTMLSelectElement>('newClass').value as CharacterClass,
-      );
+    /**
+     * «Играть» — одна кнопка на два смысла: войти выбранным или создать
+     * нового. Так задумано владельцем: внизу экрана всегда одно действие,
+     * и какое именно — видно по надписи.
+     */
+    el<HTMLButtonElement>('playBtn').addEventListener('click', () => {
+      if (this.creating) {
+        this.handlers.onCreateCharacter(
+          el<HTMLInputElement>('newName').value.trim(),
+          this.newRace,
+          this.newClass,
+        );
+        return;
+      }
+      if (this.chosen) this.handlers.onEnterWorld(this.chosen.id);
     });
+
+    // Имя вводят с клавиатуры, и Enter там значит то же, что кнопка.
+    el<HTMLInputElement>('newName').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') el<HTMLButtonElement>('playBtn').click();
+    });
+
+    el<HTMLButtonElement>('newCharBtn').addEventListener('click', () => this.setCreating(true));
+    el<HTMLButtonElement>('cancelCharBtn').addEventListener('click', () => this.setCreating(false));
     el<HTMLButtonElement>('logoutBtn').addEventListener('click', () => location.reload());
   }
 

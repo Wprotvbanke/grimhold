@@ -75,6 +75,45 @@ try {
   await wait(4000);
 
   /**
+   * `lobby` вторым аргументом — снять лобби и на этом остановиться.
+   *
+   * В мир при этом не входим: лобби живёт **до** входа, и всякая попытка
+   * снять его «по дороге» даёт кадр уже закрытого экрана.
+   * `GRIMHOLD_CREATE=1` открывает создание персонажа, `GRIMHOLD_RACE=имя`
+   * выбирает расу — фигура на заднике меняется вместе с ней.
+   */
+  if (process.argv[3] === 'lobby') {
+    await page.waitForFunction(
+      () => document.getElementById('charScreen')?.hasAttribute('hidden') === false,
+      { timeout: 15000 },
+    );
+
+    if (process.env.GRIMHOLD_CREATE === '1') {
+      await page.evaluate(() => {
+        const button = document.getElementById('newCharBtn') as HTMLButtonElement | null;
+        if (button && !button.hidden) button.click();
+      });
+      await wait(400);
+    }
+
+    const race = process.env.GRIMHOLD_RACE;
+    if (race) {
+      await page.evaluate((name: string) => {
+        const buttons = [...document.querySelectorAll('#raceButtons button')] as HTMLButtonElement[];
+        buttons.find((button) => button.textContent === name)?.click();
+      }, race);
+    }
+
+    // Ждём факта: модель расы приезжает по сети, и кадр без неё покажет
+    // пустой задник. Три секунды — с запасом на самую тяжёлую из трёх.
+    await wait(Number(process.env.GRIMHOLD_AFTER ?? 4000));
+    await page.screenshot({ path: OUTPUT });
+    console.log(`снимок сохранён: ${OUTPUT}`);
+    await browser.close();
+    process.exit(0);
+  }
+
+  /**
    * Перебираем персонажей: часть может быть занята прошлой сессией.
    *
    * `GRIMHOLD_CHAR=номер` — начать с этого персонажа. Нужно, когда снимку
@@ -85,10 +124,21 @@ try {
   let entered = false;
   for (let step = 0; step < 3 && !entered; step++) {
     const index = (first + step) % 3;
+    /**
+     * Лобби: сперва выбрать персонажа в списке, потом нажать «Играть».
+     *
+     * Раньше в строке была своя кнопка «Войти», и хватало одного щелчка.
+     * Теперь строка только выбирает — вход отдельной кнопкой внизу.
+     */
     await page.evaluate((i) => {
-      const buttons = [...document.querySelectorAll('#charList button')];
-      (buttons[i] as HTMLButtonElement | undefined)?.click();
+      const rows = [...document.querySelectorAll('#charList .char')];
+      (rows[i] as HTMLElement | undefined)?.click();
     }, index);
+    await wait(400);
+    await page.evaluate(() => {
+      const play = document.getElementById('playBtn') as HTMLButtonElement | null;
+      if (play && !play.disabled && play.textContent === 'Играть') play.click();
+    });
     await wait(2500);
     entered = await page.evaluate(() => document.querySelector('#charScreen')?.hasAttribute('hidden') === true);
   }
