@@ -196,6 +196,14 @@ const STAFF_YAW = THREE.MathUtils.degToRad(15);
 const STAFF_TILT = THREE.MathUtils.degToRad(5);
 
 /**
+ * Наклон посоха влево по кадру: верхушка уходит к левому краю.
+ *
+ * Тоже в мировых осях: вправо по экрану — это +X, значит влево кладёт
+ * поворот вокруг +Z.
+ */
+const STAFF_LEAN = THREE.MathUtils.degToRad(5);
+
+/**
  * Посох стоит почти вертикально, с наклоном вперёд.
  *
  * Наклон домножается **слева**: `stand` — это мировая ориентация вещи
@@ -203,7 +211,8 @@ const STAFF_TILT = THREE.MathUtils.degToRad(5);
  * поэтому доворот вокруг мировой X кладёт верхушку вперёд, в −Z.
  */
 const STAFF_STAND = new THREE.Quaternion()
-  .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -STAFF_TILT)
+  .setFromAxisAngle(new THREE.Vector3(0, 0, 1), STAFF_LEAN)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -STAFF_TILT))
   .multiply(new THREE.Quaternion().setFromAxisAngle(ALONG, STAFF_YAW))
   .multiply(
     new THREE.Quaternion().setFromRotationMatrix(
