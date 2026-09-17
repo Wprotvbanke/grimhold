@@ -94,7 +94,9 @@ export function createHouses(scene: THREE.Scene): Houses {
       url,
       (gltf) => {
         const model = gltf.scene;
-        model.position.set(house.x, 0, house.z);
+        // `sink` опускает вид в землю: иной дом на ровной мостовой читается
+        // зависшим. Телесность считается от нуля и этого не знает.
+        model.position.set(house.x, -(house.sink ?? 0), house.z);
         // Разворот тот же, что у коробки в level.ts: там пятно поворачивается
         // по той же формуле, иначе фасад и телесность разъедутся.
         model.rotation.y = house.turn;

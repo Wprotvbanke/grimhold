@@ -367,6 +367,26 @@ const HOUSE = {
   wagon: { minX: -1.2, maxX: 1.2, minZ: -2.6, maxZ: 2.3 },
 } as const;
 
+/**
+ * На сколько утоплены деревенские дома.
+ *
+ * Сборка ставит дом основанием на ноль по габаритам модели, но у этих
+ * в габариты попадает свес кровли или порог — и корпус оказывается на
+ * палец выше мостовой. На кадре с трёх метров это видно: дом будто
+ * не достаёт до земли. Общая осадка для всех, кроме приземистого.
+ */
+const VILLAGE_SINK = 0.12;
+
+/**
+ * На сколько утоплен приземистый каменный дом (`village_house7`).
+ *
+ * Сборка ставит дом основанием на ноль по габаритам, но у этого внизу
+ * широкий цоколь, и на ровной мостовой он читается зависшим — владелец
+ * заметил это у обеих его копий. Число одно на всю модель: разъедься они,
+ * один дом сидел бы в земле глубже другого.
+ */
+const SEVEN_SINK = 0.6;
+
 export const TOWN_HOUSES: readonly {
   model:
     | 'village_house1'
@@ -383,6 +403,14 @@ export const TOWN_HOUSES: readonly {
   turn: number;
   /** Во сколько раз модель больше собранной; пятно и высота даны уже с ним. */
   scale?: number;
+  /**
+   * На сколько метров опустить модель в землю.
+   *
+   * Сборка ставит дом основанием на ноль по габаритам, а у иного дома внизу
+   * цоколь или выступ, и на ровной мостовой он читается зависшим. Опускаем
+   * вид — телесность при этом не трогаем: коробка и так от земли.
+   */
+  sink?: number;
   height: number;
   footprint: { minX: number; maxX: number; minZ: number; maxZ: number };
 }[] = [
@@ -399,28 +427,37 @@ export const TOWN_HOUSES: readonly {
    */
 
   // Северо-восток: вдоль северной улицы, фасадом на запад, к ней.
-  { model: 'village_house3', x: 11.5, z: -14, turn: -Math.PI / 2, height: 11, footprint: HOUSE.three },
-  { model: 'village_house1', x: 11, z: -27, turn: -Math.PI / 2, height: 9, footprint: HOUSE.one },
-  { model: 'village_house7', x: 12.5, z: -36.5, turn: -Math.PI / 2, height: 7, footprint: HOUSE.seven },
+  { model: 'village_house3', x: 11.5, z: -14, turn: -Math.PI / 2, height: 11, sink: VILLAGE_SINK, footprint: HOUSE.three },
+  { model: 'village_house1', x: 11, z: -27, turn: -Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.one },
+  // Стоял в (12.5, −36.5), почти вплотную к северной стене — владелец
+  // отодвинул его в глубину квартала, к востоку.
+  { model: 'village_house7', x: 30.6, z: -28.4, turn: -Math.PI / 2, height: 7, footprint: HOUSE.seven, sink: SEVEN_SINK },
   // Северо-восток: вдоль восточной улицы, фасадом на юг.
-  { model: 'village_house6', x: 26, z: -11, turn: 0, height: 7, footprint: HOUSE.six },
+  { model: 'village_house6', x: 26, z: -11, turn: 0, height: 7, sink: VILLAGE_SINK, footprint: HOUSE.six },
 
   // Юго-восток: вдоль восточной улицы, фасадом на север.
-  { model: 'village_house4', x: 25, z: 10.5, turn: Math.PI, height: 9, footprint: HOUSE.four },
+  { model: 'village_house4', x: 25, z: 10.5, turn: Math.PI, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.four },
   // Юго-восток: вдоль южной улицы, фасадом на запад.
-  { model: 'village_house8', x: 11, z: 15, turn: -Math.PI / 2, height: 8, footprint: HOUSE.eight },
-  { model: 'village_house5', x: 13, z: 29, turn: -Math.PI / 2, height: 9, footprint: HOUSE.five },
+  { model: 'village_house8', x: 11, z: 15, turn: -Math.PI / 2, height: 8, sink: VILLAGE_SINK, footprint: HOUSE.eight },
+  { model: 'village_house5', x: 13, z: 29, turn: -Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.five },
 
   // Юго-запад: вдоль западной улицы, фасадом на север.
-  { model: 'village_house2', x: -27, z: 13, turn: Math.PI, height: 9, footprint: HOUSE.two },
-  // Юго-запад: вдоль южной улицы, фасадом на восток.
-  { model: 'village_house7', x: -13, z: 14, turn: Math.PI / 2, height: 7, footprint: HOUSE.seven },
-  { model: 'village_house1', x: -11.5, z: 28, turn: Math.PI / 2, height: 9, footprint: HOUSE.one },
+  { model: 'village_house2', x: -27, z: 13, turn: Math.PI, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.two },
+  /*
+   * Юго-запад: вдоль южной улицы, фасадом на восток.
+   *
+   * Здесь стоял приземистый каменный (`village_house7`) — он парил над
+   * мостовой, и владелец поменял его местами с узким двухэтажным из
+   * северо-западного квартала.
+   */
+  { model: 'village_house4', x: -13, z: 14, turn: Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.four },
+  { model: 'village_house1', x: -11.5, z: 28, turn: Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.one },
 
   // Северо-запад, за таверной: вдоль северной улицы, фасадом на восток.
-  { model: 'village_house6', x: -11.5, z: -30, turn: Math.PI / 2, height: 7, footprint: HOUSE.six },
-  // Северо-запад, в глубине квартала за люком.
-  { model: 'village_house4', x: -29, z: -29, turn: 0, height: 9, footprint: HOUSE.four },
+  { model: 'village_house6', x: -11.5, z: -30, turn: Math.PI / 2, height: 7, sink: VILLAGE_SINK, footprint: HOUSE.six },
+  // Северо-запад, в глубине квартала за люком. Приземистый каменный утоплен
+  // в мостовую: собранный по габаритам, он стоял на ней, будто завис.
+  { model: 'village_house7', x: -29, z: -29, turn: 0, height: 7, footprint: HOUSE.seven, sink: SEVEN_SINK },
 
   // Лавка на колёсах у люка — сюжетная, стоит там же, где стояла.
   { model: 'wagon', x: -30, z: -8, turn: Math.PI / 2, height: 3.6, footprint: HOUSE.wagon },
