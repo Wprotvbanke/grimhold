@@ -127,6 +127,14 @@ interface HeldSpec {
   stand: THREE.Quaternion;
   /** Сдвиг внутрь кадра, в предплечьях: плюс — вправо. */
   shift: number;
+  /**
+   * Осадка вниз по кадру, в предплечьях.
+   *
+   * Отдельно от точки хвата: `grip` — про то, где кулак держит древко,
+   * а это — про то, как высоко вещь стоит в кадре. Смешаешь их, и правка
+   * «опусти пониже» начнёт менять место хвата в кулаке.
+   */
+  drop?: number;
   /** Насколько притушить материал: у вещей текстуры темнее кожи. */
   tint: number;
 }
@@ -162,12 +170,29 @@ const AXE_STAND = new THREE.Quaternion()
   );
 
 /**
- * Посох стоит просто вертикально: у него нет лезвия, которое надо повернуть
- * к зрителю, и любой доворот вокруг древка на вид не влияет.
+ * Насколько посох наклонён верхушкой вперёд, от экрана.
+ *
+ * Строго вертикальный посох читался палкой, приставленной к глазам: владелец
+ * просил дать верхушке уйти вперёд. Наклон **в мировых осях**, а не вокруг
+ * древка: вокруг своей оси у посоха нет лезвия, и такой поворот на вид
+ * не влияет вовсе.
  */
-const STAFF_STAND = new THREE.Quaternion().setFromRotationMatrix(
-  new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), ALONG, new THREE.Vector3(1, 0, 0)),
-);
+const STAFF_TILT = THREE.MathUtils.degToRad(5);
+
+/**
+ * Посох стоит почти вертикально, с наклоном вперёд.
+ *
+ * Наклон домножается **слева**: `stand` — это мировая ориентация вещи
+ * (в кадре она получается как поворот ладони, погашенный и заменённый этим),
+ * поэтому доворот вокруг мировой X кладёт верхушку вперёд, в −Z.
+ */
+const STAFF_STAND = new THREE.Quaternion()
+  .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -STAFF_TILT)
+  .multiply(
+    new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), ALONG, new THREE.Vector3(1, 0, 0)),
+    ),
+  );
 
 const HELD: Record<string, HeldSpec> = {
   crude_axe: {
@@ -204,6 +229,8 @@ const HELD: Record<string, HeldSpec> = {
     grip: new THREE.Vector3(0, -0.15, 0),
     stand: STAFF_STAND,
     shift: -0.1,
+    /** Ниже топора: владелец опустил его, глядя в кадр. */
+    drop: 0.3,
     tint: 0.85,
   },
 };
@@ -701,7 +728,13 @@ export class ViewModel {
       // Сдвиг внутрь кадра. Считается в мире и переводится в систему ладони:
       // у ладони свой поворот и свой масштаб.
       held.position.add(
-        this.edge.set((spec.shift * this.forearm) / world, 0, 0).applyQuaternion(this.spin),
+        this.edge
+          .set(
+            (spec.shift * this.forearm) / world,
+            (-(spec.drop ?? 0) * this.forearm) / world,
+            0,
+          )
+          .applyQuaternion(this.spin),
       );
 
       this.seat.quaternion.copy(held.quaternion);
