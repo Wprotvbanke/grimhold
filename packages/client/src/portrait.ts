@@ -57,13 +57,16 @@ export interface PortraitOptions {
    */
   shift?: number;
   /**
-   * Насколько крупнее обычного показывать расу.
+   * Поправки на расу поверх общих.
    *
-   * Расы разного роста, и одна мерка даёт разный вид: дворф в полтора метра
-   * занимает кадр иначе, чем эльф. Число делит `frame`, то есть больше
-   * единицы — крупнее.
+   * Одна мерка на всех не годится: расы разного роста и сложения, и в кадре
+   * это видно — дворф в полтора метра стоит иначе, чем эльф в метр восемьдесят.
+   * `zoom` больше единицы — крупнее; `aim` и `shift` перебивают общие.
+   *
+   * Одной таблицей, а не тремя: три параллельные карты рано или поздно
+   * разъезжаются, и раса оказывается крупнее в одной и мельче в другой.
    */
-  zoom?: Partial<Record<Race, number>>;
+  byRace?: Partial<Record<Race, { aim?: number; shift?: number; zoom?: number }>>;
 }
 
 export interface Portrait {
@@ -78,7 +81,7 @@ export function createPortrait(canvas: HTMLCanvasElement, options: PortraitOptio
   const frame = options.frame ?? FRAME;
   const aim = options.aim ?? 0.5;
   const shift = options.shift ?? 0;
-  const zoom = options.zoom ?? {};
+  const byRace = options.byRace ?? {};
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -121,19 +124,22 @@ export function createPortrait(canvas: HTMLCanvasElement, options: PortraitOptio
     renderer.setSize(width, tall, false);
     camera.aspect = width / tall;
 
-    // Крупность своя у каждой расы: делит общий кадр, потому и больше
-    // единицы значит «крупнее».
-    const near = race ? (zoom[race] ?? 1) : 1;
+    // Поправки этой расы поверх общих настроек.
+    const own = race ? byRace[race] : undefined;
+    const near = own?.zoom ?? 1;
+    const look = own?.aim ?? aim;
+    const side = own?.shift ?? shift;
+
     // Расстояние, на котором весь рост с запасом помещается по вертикали.
     const span = (height * frame) / near;
     const distance = span / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
 
     // Сдвиг вбок делается фигурой, а не камерой: поверни камеру, и вместе
     // с фигурой поедет перспектива — она встанет боком к зрителю.
-    holder.position.x = height * shift;
+    holder.position.x = height * side;
 
-    camera.position.set(0, height * (aim + 0.02), distance);
-    camera.lookAt(0, height * aim, 0);
+    camera.position.set(0, height * (look + 0.02), distance);
+    camera.lookAt(0, height * look, 0);
     camera.updateProjectionMatrix();
   }
 
