@@ -246,6 +246,34 @@
         transition: opacity 0.28s ease-out;
       }
 
+      /*
+       * Виньетка медитации.
+       *
+       * Чистая картинка и ничего больше: сервер о ней не знает, клиент
+       * выводит её из `meditating` в снапшоте. Лежит ниже красной виньетки
+       * урона (z-index 4): удар в спину посреди медитации должен быть виден
+       * поверх неё, а не под ней.
+       *
+       * Появляется и уходит медленно — за полторы секунды. Медитация не
+       * вспышка, а состояние; мгновенное затемнение читалось бы как удар.
+       */
+      #meditation {
+        position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0;
+        background: url("/textures/meditation_vignette.webp") center / 100% 100% no-repeat;
+        transition: opacity 1.4s ease-in-out;
+      }
+      /* Дыхание: пятно едва заметно сжимается и разжимается, как вдох и выдох.
+         Четыре секунды на круг — темп спокойного дыхания, а не пульса. */
+      #meditation.on { opacity: 1; animation: breathe 4s ease-in-out infinite; }
+      @keyframes breathe {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.06); }
+      }
+      /* Кому движение на экране мешает — тому только затемнение, без дыхания. */
+      @media (prefers-reduced-motion: reduce) {
+        #meditation.on { animation: none; }
+      }
+
       #deathScreen {
         position: fixed; inset: 0; z-index: 15; display: grid; place-items: center;
         background: rgba(4, 3, 3, 0.86); text-align: center;
@@ -814,6 +842,7 @@
     <div id="crosshair"></div>
     <div id="labels"></div>
     <div id="hud"></div>
+    <div id="meditation"></div>
     <div id="hurt"></div>
     <div id="damage"></div>
 

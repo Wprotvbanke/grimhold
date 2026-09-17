@@ -502,6 +502,122 @@ try {
      * Иначе не увидеть ни снаряда, ни отсчёта отката на ячейке: и то и другое
      * живёт ровно секунду после нажатия.
      */
+    /**
+     * `GRIMHOLD_MEDITATE=1` — сесть медитировать и снять кадр с виньеткой.
+     *
+     * Два подвоха, на которые уже наступали:
+     * - **клетки умений могли забиться** прошлыми прогонами, и свежий свиток
+     *   в них не влезет; поэтому сперва ищем «Медитацию» среди вставленных
+     *   и только потом выдаём новую;
+     * - **на полном запасе маны медитация кончается в тот же тик**, поэтому
+     *   перед ней тратим ману огненными шарами.
+     */
+    if (process.env.GRIMHOLD_MEDITATE === '1') {
+      /**
+       * Рюкзак открываем, только если он закрыт.
+       *
+       * Режим `magic` оставляет окно открытым, и слепое нажатие Tab его
+       * закрывало — дальше скрипт ждал открытия, которого никто не делал.
+       */
+      const openBag = async (): Promise<void> => {
+        const already = await page.evaluate(
+          () => document.getElementById('inventory')?.hasAttribute('hidden') === false,
+        );
+        if (!already) await page.keyboard.press('Tab');
+        await shown('inventory');
+      };
+
+      await openBag();
+
+      /** Лежит ли «Медитация» в клетках умений. */
+      const inserted = async (): Promise<boolean> =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('#scrollWrap .inv-item')].some((node) =>
+            (node as HTMLElement).title.startsWith('Медитация'),
+          ),
+        );
+
+      if (!(await inserted())) {
+        await page.keyboard.press('Tab');
+        await wait(300);
+        await page.keyboard.press('F2');
+        await shown('admin');
+        await page.evaluate(() => {
+          const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
+          buttons.find((button) => button.textContent === 'Медитация')?.click();
+        });
+        await wait(600);
+        await page.click('#adminClose');
+        await wait(400);
+        await openBag();
+
+        // Двойной щелчок по свитку в рюкзаке вставляет его в клетки умений —
+        // тот же путь, которым это делает игрок.
+        const spot = await page.evaluate(() => {
+          const item = [...document.querySelectorAll('#backpackWrap .inv-item')].find((node) =>
+            (node as HTMLElement).title.startsWith('Медитация'),
+          ) as HTMLElement | undefined;
+          if (!item) return null;
+          const box = item.getBoundingClientRect();
+          return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+        });
+        if (spot) {
+          // Двойной щелчок: puppeteer шлёт его двумя, как настоящая мышь.
+          await page.mouse.click(spot.x, spot.y);
+          await page.mouse.click(spot.x, spot.y);
+          await wait(500);
+        }
+      }
+
+      // Вешаем именно «Медитацию» на восьмую ячейку — по имени, а не по месту
+      // в ряду: порядок свитков в клетках зависит от прошлых прогонов.
+      const drag = await page.evaluate(() => {
+        const item = [...document.querySelectorAll('#scrollWrap .inv-item')].find((node) =>
+          (node as HTMLElement).title.startsWith('Медитация'),
+        ) as HTMLElement | undefined;
+        const hot = document.querySelectorAll('#hotbar .hot')[7];
+        if (!item || !hot) return null;
+        const from = item.getBoundingClientRect();
+        const to = hot.getBoundingClientRect();
+        return {
+          fromX: from.left + from.width / 2,
+          fromY: from.top + from.height / 2,
+          toX: to.left + to.width / 2,
+          toY: to.top + to.height / 2,
+        };
+      });
+      if (drag) {
+        await page.mouse.move(drag.fromX, drag.fromY);
+        await page.mouse.down();
+        await page.mouse.move(drag.toX, drag.toY, { steps: 12 });
+        await page.mouse.up();
+        await wait(500);
+      }
+
+      await page.keyboard.press('Tab');
+      await wait(500);
+      await page.mouse.click(800, 450);
+      await wait(400);
+
+      // Тратим ману: шар стоит четырнадцать, запас у первого персонажа семьдесят.
+      for (let shot = 0; shot < 5; shot++) {
+        await page.keyboard.press('Digit7');
+        await wait(1900);
+      }
+
+      await page.keyboard.press('Digit8');
+      await wait(Number(process.env.GRIMHOLD_AFTER ?? 3000));
+
+      // Метки латиницей: консоль Windows показывает вывод в другой кодировке.
+      const state = await page.evaluate(() => {
+        const layer = document.getElementById('meditation');
+        const cell = document.querySelectorAll('#hotbar .hot')[7] as HTMLElement | undefined;
+        const name = cell?.title.split(String.fromCharCode(10))[0] ?? 'pusto';
+        return `${layer?.className || 'net klassa'} | yacheika 8: ${name}`;
+      });
+      console.log(`vignette: ${state}`);
+    }
+
     if (process.env.GRIMHOLD_CAST === '1') {
       await page.keyboard.press('Tab');
       await wait(600);
