@@ -172,6 +172,7 @@ export type ItemId =
   | 'arrow'
   | 'health_potion'
   // ---- снаряжение базового яруса ----
+  | 'mage_staff'
   | 'wooden_club'
   | 'wooden_shield'
   | 'cloth_hood'
@@ -363,6 +364,27 @@ const ITEM_LIST: ItemDef[] = [
   { id: 'arrow', name: 'Стрелы', kind: 'consumable', width: 1, height: 1, weight: 0.05, stack: 60, tier: 0 },
 
   // ---------- снаряжение базового яруса ----------
+  {
+    /**
+     * Посох мага — вторая вещь, которую видно в руке.
+     *
+     * Бьёт слабо и медленно: это не оружие ближнего боя, а то, с чем читают
+     * свитки. Навык от него растёт разрушением, а не клинком.
+     */
+    id: 'mage_staff',
+    name: 'Посох мага',
+    kind: 'weapon',
+    width: 1,
+    height: 4,
+    weight: 2,
+    stack: 1,
+    tier: 2,
+    slot: 'mainHand',
+    damage: 6,
+    skill: 'evocation',
+    swing: 2,
+    description: 'Древко в рост человека. Оружие из него дурное, зато не мешает читать свитки.',
+  },
   {
     id: 'wooden_club',
     name: 'Деревянная дубина',

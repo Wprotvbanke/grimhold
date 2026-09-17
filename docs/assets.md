@@ -44,6 +44,7 @@
 | `public/models/rat_king.glb` | от владельца проекта, выгрузка Sketchfab — король крыс, облик хозяина глубины; 130 → 27 тыс. треугольников, 13.6 → 1.4 МБ | CC, со слов владельца (вид не указан) |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
+| `public/models/staff.glb` | от владельца проекта, `Animacija_Staff/Staff.fbx`; собран `scripts/prepare-weapon.ts`, 966 треугольников, 19 КБ. Клип `rig|Staff_Shot` из `StaffAnim.fbx` перенесён в руки `prepare-sword.ts` | уточнить |
 | `public/models/village_house1…8.glb` | от владельца проекта, пак `house_village.glb` (Sketchfab) — восемь домов в одной сцене; каждый берётся по имени узла `scripts/prepare-town.ts`, 9 МБ → 30–90 КБ на дом | CC, со слов владельца (вид не указан) |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
 | `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |

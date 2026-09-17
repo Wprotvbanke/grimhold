@@ -59,6 +59,9 @@ interface WeaponSpec {
 
 const WEAPONS: WeaponSpec[] = [
   { source: `${DESKTOP}/Axe/Axe.fbx`, output: 'axe.glb', material: 'Axe' },
+  // Посох мага — вторая вещь в руке. Клип выстрела к нему лежит отдельно
+  // и переносится в руки `prepare-sword.ts` (docs/hands.md).
+  { source: `${DESKTOP}/Animacija_Staff/Staff.fbx`, output: 'staff.glb', material: 'Staff' },
 ];
 
 /** Картинка, зашитая в FBX: PNG сам себя обозначает подписью и меткой IEND. */

@@ -3,10 +3,11 @@
  *
  *   npx tsx scripts/prepare-sword.ts
  *
- * Исходник — `Animacija_Sword/SwordAnims.fbx`: стойка с оружием и замах,
- * сделанные владельцем **на нашем же риге**. Имена костей совпадают номер
- * в номер (`DEF-handR_0583`), поэтому переносить позу, как у лука, не нужно
- * вовсе: дорожки поворотов просто перекладываются в hands.glb.
+ * Исходники — выгрузки владельца, сделанные **на нашем же риге**: стойка
+ * с оружием и замах (`Animacija_Sword/SwordAnims.fbx`), выстрел посохом
+ * (`Animacija_Staff/StaffAnim.fbx`). Имена костей совпадают номер в номер
+ * (`DEF-handR_0583`), поэтому переносить позу, как у лука, не нужно вовсе:
+ * дорожки поворотов просто перекладываются в hands.glb.
  *
  * Отсюда и вся ценность этих клипов. Перенос с чужого скелета всегда
  * приблизителен — на нём споткнулись и лук, и меч; здесь приближения нет.
@@ -31,11 +32,20 @@ import type { AnimationClip, QuaternionKeyframeTrack } from 'three';
 const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
 
 const ROOT = resolve(import.meta.dirname, '..');
-const SOURCE = 'C:/Users/Wprot/OneDrive/Рабочий стол/Animacija_Sword/SwordAnims.fbx';
+const DESKTOP = 'C:/Users/Wprot/OneDrive/Рабочий стол';
 const MODEL = resolve(ROOT, 'packages/client/public/models/hands.glb');
 
-/** Какие клипы берём. Приставка rig| — как у остальных: так их пишет экспортёр. */
-const WANTED = ['Sword_Idle', 'Sword_Slash'];
+/**
+ * Откуда что берём. Приставка `rig|` — как у остальных: так их пишет экспортёр.
+ *
+ * Список, а не один файл: клипы приходят от владельца по одному-двум за раз,
+ * каждый в своей папке, и класть их в hands.glb надо одним проходом —
+ * иначе второй запуск затирал бы то, что положил первый.
+ */
+const SOURCES: { file: string; clips: string[] }[] = [
+  { file: `${DESKTOP}/Animacija_Sword/SwordAnims.fbx`, clips: ['Sword_Idle', 'Sword_Slash'] },
+  { file: `${DESKTOP}/Animacija_Staff/StaffAnim.fbx`, clips: ['Staff_Shot'] },
+];
 
 /**
  * Какие кости берём: **только ветка руки от плеча вниз**.
@@ -56,12 +66,6 @@ const ARM_BONES = /^DEF-(upper_arm|forearm|hand|palm|f_|thumb)/i;
  * Размах — часть удара, а не помеха.
  */
 
-const bytes = readFileSync(SOURCE);
-const group = new FBXLoader().parse(
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-  '',
-);
-
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   'draco3d.encoder': await draco3d.createEncoderModule(),
   'draco3d.decoder': await draco3d.createDecoderModule(),
@@ -74,7 +78,14 @@ const buffer = root.listBuffers()[0]!;
 const byName = new Map<string, Node>();
 for (const node of root.listNodes()) byName.set(node.getName(), node);
 
-for (const wanted of WANTED) {
+for (const { file, clips } of SOURCES) {
+  const bytes = readFileSync(file);
+  const group = new FBXLoader().parse(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+    '',
+  );
+
+  for (const wanted of clips) {
   const clip = group.animations.find(
     (candidate: AnimationClip) => (candidate.name.split('|').pop() ?? candidate.name) === wanted,
   );
@@ -141,6 +152,7 @@ for (const wanted of WANTED) {
     `${name}: ${written} костей, ${clip.duration.toFixed(2)} с` +
       (missing.length > 0 ? `, не нашлось в модели: ${missing.length}` : ''),
   );
+  }
 }
 
 await io.write(MODEL, document);

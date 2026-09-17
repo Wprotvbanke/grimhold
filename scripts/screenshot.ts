@@ -763,6 +763,14 @@ try {
     }
   }
 
+  /**
+   * `GRIMHOLD_HAND=имя` — какую вещь брать в руку в режиме `axe`.
+   *
+   * Режим один на всё, что видно в кулаке: порядок проверки у топора
+   * и посоха одинаковый, а разного — только имя в служебном меню.
+   */
+  const inHand = process.env.GRIMHOLD_HAND ?? 'Грубый топор';
+
   if (open === 'axe') {
     const shown = (id: string) =>
       page.waitForFunction(
@@ -779,10 +787,11 @@ try {
 
     await page.keyboard.press('F2');
     await shown('admin');
-    await page.evaluate(() => {
+    // Имя передаём в страницу: замыкания скрипта внутри браузера не видно.
+    await page.evaluate((name: string) => {
       const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
-      buttons.find((button) => button.textContent === 'Грубый топор')?.click();
-    });
+      buttons.find((button) => button.textContent === name)?.click();
+    }, inHand);
     await wait(600);
     // Закрываем кнопкой: открытое меню ставит курсор в поле поиска,
     // и второго F2 игра не видит вовсе.
@@ -791,12 +800,12 @@ try {
 
     await page.keyboard.press('Tab');
     await shown('inventory');
-    await page.evaluate(() => {
-      const axe = [...document.querySelectorAll('.inv-item')].find((node) =>
-        node.textContent?.includes('Грубый топор'),
+    await page.evaluate((name: string) => {
+      const thing = [...document.querySelectorAll('.inv-item')].find((node) =>
+        node.textContent?.includes(name),
       );
-      axe?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    });
+      thing?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    }, inHand);
     /**
      * Топор в слоте — значит надет. Не дождались — снимаем **как есть**,
      * с открытым рюкзаком: на кадре будет видно, что пошло не так, а падение
@@ -811,15 +820,16 @@ try {
     let worn = true;
     try {
       await page.waitForFunction(
-        () =>
+        (name: string) =>
           [...document.querySelectorAll('.slot.filled')].some((node) =>
-            node.textContent?.includes('Грубый топор'),
+            node.textContent?.includes(name),
           ),
         { timeout: 8000 },
+        inHand,
       );
     } catch {
       worn = false;
-      console.log('  ···  топор в слот не попал — снимаю рюкзак как есть');
+      console.log(`  ···  ${inHand} в слот не попал — снимаю рюкзак как есть`);
     }
 
     if (worn) {
