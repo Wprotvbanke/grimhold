@@ -111,15 +111,27 @@
         pointer-events: none;
       }
 
-      .lobby-side, .lobby-make {
+      /*
+       * Панели лобби — тот же камень, что у окна вещей (`.inv-panel`):
+       * текстура, тёмная рамка и врезанные кромки. Экран один, и стиль
+       * у него должен быть один.
+       */
+      .lobby-side, .lobby-make, .lobby-slab {
         position: relative; z-index: 1;
+        background:
+          linear-gradient(rgba(62, 60, 57, 0.82), rgba(34, 33, 32, 0.92)),
+          url("/textures/stone.jpg") center / 360px;
+        border: 3px solid #161514; border-radius: 4px;
+        box-shadow:
+          inset 0 0 0 1px #6f6b65, inset 0 0 0 6px #2b2a28, inset 0 0 0 7px #57534d,
+          inset 0 0 60px rgba(0, 0, 0, 0.55), 0 14px 50px rgba(0, 0, 0, 0.75);
+        color: #d8d1c3;
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      .lobby-side, .lobby-make {
         display: flex; flex-direction: column; gap: 10px;
         max-height: calc(100vh - 150px); overflow-y: auto;
         padding: 14px 16px 16px;
-        background: linear-gradient(rgba(22, 20, 19, 0.88), rgba(12, 11, 10, 0.92));
-        border: 1px solid #161514; border-radius: 4px;
-        box-shadow: inset 0 0 0 1px #57534d, 0 12px 40px rgba(0, 0, 0, 0.7);
-        font-family: Georgia, "Times New Roman", serif;
       }
       .lobby-make { grid-column: 3; }
       .lobby-side { grid-column: 1; }
@@ -127,10 +139,13 @@
          чем `[hidden]`, и без этой строки пустая колонка остаётся в кадре. */
       .lobby-side[hidden], .lobby-make[hidden] { display: none; }
 
+      /* Заголовок разделов — каменная плашка, как `.card-plate` в рюкзаке. */
       .lobby-plate {
+        padding: 3px 0; text-align: center;
         font-size: 12px; font-weight: 600; letter-spacing: 0.16em;
         text-transform: uppercase; color: #efe5cc;
-        border-bottom: 1px solid #3b3733; padding-bottom: 4px; margin-top: 4px;
+        background: linear-gradient(#57544f, #393734);
+        border: 1px solid #171615; box-shadow: inset 0 1px 0 #8b867e;
       }
       .lobby-who { font-size: 12px; color: #a39a89; }
       .lobby-hint { margin: 0; font-size: 12px; line-height: 1.5; color: #a39a89; }
@@ -181,9 +196,11 @@
 
       /* «Играть» — единственная крупная кнопка экрана, и стоит она по центру
          внизу, под фигурой: это последнее движение перед входом в мир. */
+      /* Кнопка входа стоит не на голой темноте, а на каменной плите. */
       .lobby-foot {
-        position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
-        z-index: 1; display: grid; justify-items: center; gap: 6px; width: min(420px, 60vw);
+        position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+        z-index: 1; display: grid; justify-items: center; gap: 6px;
+        width: min(460px, 64vw); padding: 14px 22px 16px;
       }
       .lobby-play {
         width: 100%; margin: 0; padding: 12px 18px;
@@ -1369,7 +1386,7 @@
         <button id="cancelCharBtn" class="lobby-ghost">Отмена</button>
       </section>
 
-      <div class="lobby-foot">
+      <div class="lobby-foot lobby-slab">
         <p class="lobby-error" id="charError"></p>
         <button id="playBtn" class="lobby-play">Играть</button>
       </div>
