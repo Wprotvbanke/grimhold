@@ -74,6 +74,9 @@ export class Session {
       case 'createCharacter':
         this.createCharacter(message.name, message.race, message.characterClass);
         return true;
+      case 'deleteCharacter':
+        this.deleteCharacter(message.characterId, message.name);
+        return true;
       case 'enterWorld':
         this.enterWorld(message.characterId);
         return true;
@@ -139,6 +142,52 @@ export class Session {
 
     this.storage.createCharacter(this.accountId, name, race, characterClass, SPAWN_POINT);
     console.log(`[персонаж] создан ${name} (${race}/${characterClass})`);
+    this.sendCharacterList();
+  }
+
+  /**
+   * Удалить персонажа насовсем.
+   *
+   * Четыре проверки, и каждая отвечает за своё:
+   *
+   * 1. **чужой персонаж не удаляется** — номер приходит от клиента, и без
+   *    сверки учётной записи им можно было бы стереть кого угодно;
+   * 2. **имя должно совпасть** — это подтверждение руками, ради которого
+   *    всё и затевалось. Регистр не важен: человек подтверждает намерение,
+   *    а не проходит проверку на внимательность;
+   * 3. **играющего не трогаем** — тот же персонаж может быть в мире другой
+   *    сессией, и удаление из-под него оставило бы в памяти игрока,
+   *    которого нет в базе;
+   * 4. **свой играющий — тоже** (сюда не доходит: из мира лобби не видно,
+   *    но проверка стоит рядом с третьей, чтобы не разъехались).
+   *
+   * Казна не трогается: она общая на учётную запись (bank.md), и стирать
+   * её вместе с одним персонажем значило бы обокрасть остальных.
+   */
+  private deleteCharacter(characterId: string, name: string): void {
+    if (!this.accountId) {
+      this.send({ t: 'authError', message: 'Сначала войдите' });
+      return;
+    }
+
+    const character = this.storage.getCharacter(characterId);
+    if (!character || character.accountId !== this.accountId) {
+      this.send({ t: 'authError', message: 'Персонаж не найден' });
+      return;
+    }
+
+    if (character.name.toLowerCase() !== name.trim().toLowerCase()) {
+      this.send({ t: 'authError', message: 'Имя не совпадает' });
+      return;
+    }
+
+    if (this.world.findByCharacterId(character.id)) {
+      this.send({ t: 'authError', message: 'Этот персонаж сейчас в игре' });
+      return;
+    }
+
+    this.storage.deleteCharacter(character.id);
+    console.log(`[персонаж] удалён ${character.name}`);
     this.sendCharacterList();
   }
 

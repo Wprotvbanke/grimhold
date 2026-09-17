@@ -193,6 +193,20 @@
         border: 1px solid #3b3733; border-radius: 2px;
       }
       .lobby-ghost:hover { color: #efe5cc; border-color: #6d6249; }
+      /* Опасное действие видно по цвету: его не жмут мимоходом. */
+      .lobby-danger { color: #c08373; border-color: #4a2b25; }
+      .lobby-danger:hover { color: #e8a08c; border-color: #a8554a; }
+
+      .lobby-warn { margin: 0; font-size: 12px; line-height: 1.5; color: #d08a72; }
+      .lobby-agree {
+        display: flex; align-items: flex-start; gap: 8px;
+        font-size: 12px; line-height: 1.4; color: #c9c1b1; cursor: pointer;
+      }
+      .lobby-agree input { margin: 2px 0 0; accent-color: #a8554a; }
+
+      /* Кнопка входа в мир, ставшая кнопкой удаления, — красного камня. */
+      .lobby-play.danger { background: linear-gradient(#7a2b1e, #45150e); }
+      .lobby-play.danger:hover { background: linear-gradient(#933626, #551b12); }
 
       /* «Играть» — единственная крупная кнопка экрана, и стоит она по центру
          внизу, под фигурой: это последнее движение перед входом в мир. */
@@ -1365,6 +1379,7 @@
         <div class="lobby-who" id="charSubtitle"></div>
         <div id="charList"></div>
         <button id="newCharBtn" class="lobby-ghost">Новый персонаж</button>
+        <button id="deleteCharBtn" class="lobby-ghost lobby-danger">Удалить персонажа</button>
         <button id="logoutBtn" class="lobby-ghost">Сменить учётную запись</button>
       </aside>
 
@@ -1384,6 +1399,25 @@
 
         <p class="lobby-hint" id="raceHint"></p>
         <button id="cancelCharBtn" class="lobby-ghost">Отмена</button>
+      </section>
+
+      <!--
+        Удаление: имя вписывают руками, и только после этого кнопка внизу
+        становится «Удалить». Сервер сверяет имя ещё раз — клиентская
+        проверка ничего не стоит (docs/lobby.md).
+      -->
+      <section class="lobby-make" id="deleteBlock" hidden>
+        <div class="lobby-plate">Удалить персонажа</div>
+        <p class="lobby-warn" id="deleteWarn"></p>
+        <label class="lobby-field">
+          Впиши имя персонажа
+          <input id="deleteName" type="text" maxlength="16" autocomplete="off" />
+        </label>
+        <label class="lobby-agree">
+          <input id="deleteAgree" type="checkbox" />
+          <span>Понимаю, что персонаж исчезнет навсегда</span>
+        </label>
+        <button id="cancelDeleteBtn" class="lobby-ghost">Отмена</button>
       </section>
 
       <div class="lobby-foot lobby-slab">

@@ -223,6 +223,8 @@ const ui = new Ui({
     if (password.length < 6) return ui.showAuth('Пароль от 6 символов');
     connection.register(username, password);
   },
+  onDeleteCharacter: (characterId, name) =>
+    connection.send({ t: 'deleteCharacter', characterId, name }),
   onCreateCharacter: (name, race, characterClass) => {
     if (name.length < 3) return ui.showCharacterError('Имя от 3 символов');
     connection.send({ t: 'createCharacter', name, race, characterClass });

@@ -31,6 +31,9 @@ function fakeStorage(): Storage & { writes: CharacterSave[][] } {
     createCharacter: () => {
       throw new Error('не используется');
     },
+    deleteCharacter: () => {
+      throw new Error('не используется');
+    },
     getBank: () => createBank(),
     saveBank: () => {},
     close: () => {},

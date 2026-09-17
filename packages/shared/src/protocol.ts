@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 30;
+export const PROTOCOL_VERSION = 31;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -88,6 +88,22 @@ export const CreateCharacterSchema = z.object({
   name: NameSchema,
   race: RaceSchema,
   characterClass: ClassSchema,
+});
+
+/**
+ * Удалить персонажа — навсегда.
+ *
+ * Имя едет вместе с номером не по недосмотру: сервер сверяет его с тем,
+ * что в базе, и отказывает при расхождении. Это **подтверждение руками**,
+ * а не удобство клиента: удаление необратимо, и одного промаха мышью по
+ * кнопке для него мало. Клиентская проверка тут ничего не стоит — её
+ * обходит любой, кто шлёт пакеты сам.
+ */
+export const DeleteCharacterSchema = z.object({
+  t: z.literal('deleteCharacter'),
+  characterId: z.string().min(1).max(64),
+  /** Имя персонажа, вписанное игроком. Должно совпасть с настоящим. */
+  name: NameSchema,
 });
 
 export const EnterWorldSchema = z.object({
@@ -427,6 +443,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   RegisterSchema,
   LoginSchema,
   CreateCharacterSchema,
+  DeleteCharacterSchema,
   EnterWorldSchema,
   ChatSchema,
   InputSchema,
@@ -466,6 +483,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
 export type RegisterMessage = z.infer<typeof RegisterSchema>;
 export type LoginMessage = z.infer<typeof LoginSchema>;
 export type CreateCharacterMessage = z.infer<typeof CreateCharacterSchema>;
+export type DeleteCharacterMessage = z.infer<typeof DeleteCharacterSchema>;
 export type EnterWorldMessage = z.infer<typeof EnterWorldSchema>;
 export type ChatMessage = z.infer<typeof ChatSchema>;
 export type InputMessage = z.infer<typeof InputSchema>;

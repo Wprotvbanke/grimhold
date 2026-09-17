@@ -22,6 +22,8 @@ export interface UiHandlers {
   onLogin(username: string, password: string): void;
   onRegister(username: string, password: string): void;
   onCreateCharacter(name: string, race: Race, characterClass: CharacterClass): void;
+  /** Удалить персонажа. Имя игрок вписывает руками — сервер сверит его сам. */
+  onDeleteCharacter(characterId: string, name: string): void;
   onEnterWorld(characterId: string): void;
   onChatSend(channel: 'local' | 'global', text: string): void;
 }
@@ -75,8 +77,14 @@ export class Ui {
 
   /** Кого выбрали в списке. `null` — никого, тогда играть нечем. */
   private chosen: CharacterSummary | null = null;
-  /** Открыто ли создание нового персонажа. */
-  private creating = false;
+  /**
+   * Что открыто в лобби.
+   *
+   * Режим, а не пара флагов: состояний стало три, и «создаю и удаляю разом»
+   * из них не собирается — а два независимых булевых значения такое
+   * состояние допускают.
+   */
+  private mode: 'pick' | 'create' | 'delete' = 'pick';
   /** Что выбрано в создании. Раса решает, кто стоит на заднике. */
   private newRace: Race = DEFAULT_RACE;
   private newClass: CharacterClass = DEFAULT_CLASS;
@@ -120,7 +128,7 @@ export class Ui {
 
     // Персонажей нет вовсе — первый экран сразу про создание: пустое лобби
     // с недоступной кнопкой «Играть» ничего человеку не объясняет.
-    this.setCreating(characters.length === 0);
+    this.setMode(characters.length === 0 ? 'create' : 'pick');
     this.renderCharacters();
     this.stage.start();
   }
@@ -155,7 +163,7 @@ export class Ui {
        */
       row.addEventListener('click', () => {
         this.chosen = character;
-        this.setCreating(false);
+        this.setMode('pick');
         this.renderCharacters();
       });
 
@@ -173,23 +181,57 @@ export class Ui {
    * останется от прошлого режима.
    */
   private refreshStage(): void {
-    const race = this.creating ? this.newRace : this.chosen?.race;
+    const race = this.mode === 'create' ? this.newRace : this.chosen?.race;
     if (race) this.stage.setRace(race);
 
     const play = el<HTMLButtonElement>('playBtn');
-    play.textContent = this.creating ? 'Создать' : 'Играть';
-    play.disabled = !this.creating && !this.chosen;
+    play.textContent =
+      this.mode === 'create' ? 'Создать' : this.mode === 'delete' ? 'Удалить' : 'Играть';
+    play.classList.toggle('danger', this.mode === 'delete');
+
+    /**
+     * Удаление разрешается, только когда имя вписано верно и согласие дано.
+     *
+     * Сервер проверяет то же самое ещё раз — клиентская проверка тут ради
+     * человека, а не ради надёжности: гасшая кнопка объясняет, чего не
+     * хватает, лучше отказа после нажатия.
+     */
+    if (this.mode === 'delete') {
+      const typed = el<HTMLInputElement>('deleteName').value.trim().toLowerCase();
+      const agreed = el<HTMLInputElement>('deleteAgree').checked;
+      play.disabled = !this.chosen || typed !== this.chosen.name.toLowerCase() || !agreed;
+      return;
+    }
+
+    play.disabled = this.mode === 'pick' && !this.chosen;
   }
 
-  /** Переключает лобби между выбором и созданием. */
-  private setCreating(on: boolean): void {
-    this.creating = on;
-    el<HTMLElement>('createBlock').hidden = !on;
-    // Пока создание открыто, звать в него второй раз незачем.
-    el<HTMLButtonElement>('newCharBtn').hidden = on || this.characters.length >= this.maxCharacters;
+  /** Переключает лобби между выбором, созданием и удалением. */
+  private setMode(mode: 'pick' | 'create' | 'delete'): void {
+    this.mode = mode;
+    el<HTMLElement>('createBlock').hidden = mode !== 'create';
+    el<HTMLElement>('deleteBlock').hidden = mode !== 'delete';
+
+    // Пока открыто создание, звать в него второй раз незачем; удалять
+    // выбранного — тоже не отсюда.
+    const busy = mode !== 'pick';
+    el<HTMLButtonElement>('newCharBtn').hidden =
+      busy || this.characters.length >= this.maxCharacters;
+    el<HTMLButtonElement>('deleteCharBtn').hidden = busy || !this.chosen;
     // Отменять нечего, когда персонажей нет вовсе: лобби без них пустое.
     el<HTMLButtonElement>('cancelCharBtn').hidden = this.characters.length === 0;
-    if (on) this.renderRaceButtons();
+
+    if (mode === 'create') this.renderRaceButtons();
+    if (mode === 'delete') {
+      // Поля чистые при каждом заходе: подтверждение — разовое действие,
+      // и вчерашняя галочка не должна разрешать сегодняшнее удаление.
+      el<HTMLInputElement>('deleteName').value = '';
+      el<HTMLInputElement>('deleteAgree').checked = false;
+      el<HTMLParagraphElement>('deleteWarn').textContent = this.chosen
+        ? `«${this.chosen.name}» исчезнет со всеми вещами и прокачкой. Это навсегда.`
+        : '';
+    }
+
     this.refreshStage();
   }
 
@@ -431,12 +473,12 @@ export class Ui {
 
   private wireCharacters(): void {
     /**
-     * «Играть» — одна кнопка на два смысла: войти выбранным или создать
-     * нового. Так задумано владельцем: внизу экрана всегда одно действие,
-     * и какое именно — видно по надписи.
+     * «Играть» — одна кнопка на все три смысла: войти выбранным, создать
+     * нового или стереть. Так задумано владельцем: внизу экрана всегда одно
+     * действие, и какое именно — видно по надписи.
      */
     el<HTMLButtonElement>('playBtn').addEventListener('click', () => {
-      if (this.creating) {
+      if (this.mode === 'create') {
         this.handlers.onCreateCharacter(
           el<HTMLInputElement>('newName').value.trim(),
           this.newRace,
@@ -444,6 +486,17 @@ export class Ui {
         );
         return;
       }
+
+      if (this.mode === 'delete') {
+        if (this.chosen) {
+          this.handlers.onDeleteCharacter(
+            this.chosen.id,
+            el<HTMLInputElement>('deleteName').value.trim(),
+          );
+        }
+        return;
+      }
+
       if (this.chosen) this.handlers.onEnterWorld(this.chosen.id);
     });
 
@@ -452,8 +505,15 @@ export class Ui {
       if (event.key === 'Enter') el<HTMLButtonElement>('playBtn').click();
     });
 
-    el<HTMLButtonElement>('newCharBtn').addEventListener('click', () => this.setCreating(true));
-    el<HTMLButtonElement>('cancelCharBtn').addEventListener('click', () => this.setCreating(false));
+    // Пока имя не вписано верно и согласие не дано, кнопка внизу гаснет:
+    // проверяем на каждый ввод, а не по нажатию.
+    el<HTMLInputElement>('deleteName').addEventListener('input', () => this.refreshStage());
+    el<HTMLInputElement>('deleteAgree').addEventListener('change', () => this.refreshStage());
+
+    el<HTMLButtonElement>('newCharBtn').addEventListener('click', () => this.setMode('create'));
+    el<HTMLButtonElement>('deleteCharBtn').addEventListener('click', () => this.setMode('delete'));
+    el<HTMLButtonElement>('cancelCharBtn').addEventListener('click', () => this.setMode('pick'));
+    el<HTMLButtonElement>('cancelDeleteBtn').addEventListener('click', () => this.setMode('pick'));
     el<HTMLButtonElement>('logoutBtn').addEventListener('click', () => location.reload());
   }
 

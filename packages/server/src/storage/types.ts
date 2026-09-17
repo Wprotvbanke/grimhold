@@ -97,6 +97,14 @@ export interface Storage {
   listCharacters(accountId: string): CharacterRecord[];
   findCharacterByName(name: string): CharacterRecord | null;
   getCharacter(id: string): CharacterRecord | null;
+  /**
+   * Стереть персонажа насовсем.
+   *
+   * Без возврата и без корзины: место в учётной записи освобождается сразу,
+   * иначе удаление ничего не решает. Казна не трогается — она общая
+   * на аккаунт (см. bank.md).
+   */
+  deleteCharacter(id: string): void;
   createCharacter(
     accountId: string,
     name: string,
