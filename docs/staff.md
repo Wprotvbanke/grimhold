@@ -1,7 +1,7 @@
 # Посох в руке
 
 Вторая вещь в кулаке. Здесь всё, что относится к посоху. Общая механика —
-в [hands.md](hands.md), топор — в [axe.md](axe.md), заклинания, которые
+в [hands.md](hands.md), числа боя и усиление магии — в [weapons.md](weapons.md), топор — в [axe.md](axe.md), заклинания, которые
 посохом читают, — в [magic.md](magic.md).
 
 **Снять кадром:** `GRIMHOLD_HAND="Посох мага" npx tsx scripts/screenshot.ts

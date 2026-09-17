@@ -1,6 +1,6 @@
 import type { CharacterClass } from './classes.js';
 import { FIST_STAMINA_SCALE } from './combat.js';
-import { ITEMS, itemDef, type EquipSlot, type ItemId } from './items.js';
+import { ITEMS, itemDef, spellPowerOf, type EquipSlot, type ItemId } from './items.js';
 
 /**
  * Инвентарь-сетка.
@@ -386,6 +386,16 @@ export function equipmentArmor(equipment: Equipment): number {
 export function weaponDamageOf(equipment: Equipment): number {
   const weapon = equipment.mainHand;
   return weapon ? (itemDef(weapon.defId).damage ?? 0) : 0;
+}
+
+/**
+ * Во сколько раз надетое усиливает заклинания.
+ *
+ * Рядом с уроном и темпом нарочно: это третий показатель одной
+ * и той же вещи в руке, и спрашивать его надо там же.
+ */
+export function spellFocusOf(equipment: Equipment): number {
+  return spellPowerOf(equipment.mainHand?.defId ?? null);
 }
 
 /**

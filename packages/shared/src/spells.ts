@@ -48,7 +48,18 @@ export interface SpellProfile {
   /** Время произнесения в секундах. */
   castTime: number;
   cooldown: number;
-  /** Базовый урон, лечение или прибавка к броне. */
+  /**
+   * Базовый урон, лечение или прибавка к броне.
+   *
+   * Урон и лечение здесь — **с пустой рукой**: столько бьёт свиток
+   * у того, у кого нет посоха, и это мало — меньше удара мечом. То, что
+   * в руке, умножает это число (`spellPower` вещи, у посоха втрое);
+   * числа оружия — docs/weapons.md.
+   *
+   * Броня «Каменной кожи» посохом не растёт: она ставится напрямую
+   * и держится двадцать секунд — утроить её значило бы сделать мага
+   * неуязвимым.
+   */
   power: number;
   /** Дальность снаряда либо радиус кольца, метры. */
   range: number;
@@ -73,7 +84,7 @@ export const SPELLS: Record<SpellId, SpellProfile> = {
     manaCost: 14,
     castTime: 0.6,
     cooldown: 1.2,
-    power: 28,
+    power: 9,
     range: 40,
     projectileSpeed: 28,
   },
@@ -89,7 +100,7 @@ export const SPELLS: Record<SpellId, SpellProfile> = {
     manaCost: 24,
     castTime: 0.9,
     cooldown: 8,
-    power: 12,
+    power: 4,
     range: 10,
     duration: 5,
   },
@@ -105,7 +116,7 @@ export const SPELLS: Record<SpellId, SpellProfile> = {
     manaCost: 28,
     castTime: 1.2,
     cooldown: 10,
-    power: 60,
+    power: 20,
     range: 8,
   },
   wardskin: {

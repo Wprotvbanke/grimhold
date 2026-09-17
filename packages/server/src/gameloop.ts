@@ -30,6 +30,7 @@ import {
   RED_SKILL_PENALTY,
   step,
   weaponDamageOf,
+  spellFocusOf,
   weightSpeedFactor,
   findByDefId,
   type CombatEvent,
@@ -554,9 +555,25 @@ function castSpell(world: World, caster: Player, spellId: SpellId, outbox: Outbo
   caster.spellCooldowns[spellId] = world.elapsed + spell.cooldown;
   const skillLevel = caster.skills[spell.skill].level;
 
+  /**
+   * Сила заклинания зависит от того, что в руке.
+   *
+   * Без посоха магия слабая — слабее удара мечом; посох утраивает.
+   * Берётся в миг чтения: сменит руку потом — снаряд уже летит
+   * со своей силой.
+   */
+  const focus = spellFocusOf(caster.equipment);
+
   if (spell.shape === 'projectile') {
     world.projectiles.push(
-      createProjectile(world.nextEntityId('x'), caster.combat, spellId, caster.pitch, skillLevel),
+      createProjectile(
+        world.nextEntityId('x'),
+        caster.combat,
+        spellId,
+        caster.pitch,
+        skillLevel,
+        focus,
+      ),
     );
     return;
   }
@@ -574,10 +591,16 @@ function castSpell(world: World, caster: Player, spellId: SpellId, outbox: Outbo
   const others = world.combatantsIn(caster.instanceId);
   const outcome =
     spell.shape === 'burst'
-      ? resolveBurst(caster.combat, spellId, others, skillLevel)
+      ? resolveBurst(caster.combat, spellId, others, skillLevel, focus)
       : spell.shape === 'blessing'
-        ? resolveBlessing(caster.combat, spellId, others, skillLevel, (combatant) =>
-            world.playerByCombatantId(combatant.id)?.maxima.health ?? combatant.vitals.health,
+        ? resolveBlessing(
+            caster.combat,
+            spellId,
+            others,
+            skillLevel,
+            (combatant) =>
+              world.playerByCombatantId(combatant.id)?.maxima.health ?? combatant.vitals.health,
+            focus,
           )
         : resolveSelfSpell(caster.combat, spellId);
 

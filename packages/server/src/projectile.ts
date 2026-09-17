@@ -49,6 +49,13 @@ export interface Projectile {
    * фиксируем при вылете, а не ищем стрелявшего потом.
    */
   casterAttributes: Attributes;
+  /**
+   * Во сколько раз посох усилил этот снаряд.
+   *
+   * Фиксируется при вылете по той же причине, что и атрибуты: шар
+   * летит полторы секунды, и за это время посох можно убрать в рюкзак.
+   */
+  casterFocus: number;
 }
 
 const RADIUS = 0.25;
@@ -68,6 +75,7 @@ export function createProjectile(
   spellId: SpellId,
   pitch: number,
   skillLevel: number,
+  focus = 1,
 ): Projectile {
   const spell = SPELLS[spellId];
   const speed = spell.projectileSpeed ?? 20;
@@ -101,6 +109,7 @@ export function createProjectile(
     lifetime: spell.range / speed,
     skillLevel,
     casterAttributes: owner.attributes,
+    casterFocus: focus,
   };
 }
 
@@ -144,6 +153,8 @@ export function spawnArrow(
     lifetime: BOW_RANGE / ARROW_SPEED,
     skillLevel,
     casterAttributes: owner.attributes,
+    // Стрела не заклинание: посох ей ни к чему.
+    casterFocus: 1,
   };
 }
 
@@ -247,7 +258,12 @@ function checkImpact(
 function damageOf(projectile: Projectile): number {
   if (projectile.spellId) {
     const spell = SPELLS[projectile.spellId];
-    return spellDamage(projectile.casterAttributes, spell.power, projectile.skillLevel);
+    return spellDamage(
+      projectile.casterAttributes,
+      spell.power,
+      projectile.skillLevel,
+      projectile.casterFocus,
+    );
   }
 
   const flown = Math.hypot(

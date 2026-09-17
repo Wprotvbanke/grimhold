@@ -346,6 +346,22 @@ try {
       await page.click(`.inv-tab[data-page="${tab}"]`);
       await wait(800);
     }
+
+    /**
+     * `GRIMHOLD_TITLE=имя` — напечатать подсказку вещи.
+     *
+     * Подсказка браузера на снимок не попадает вовсе: её рисует сам
+     * браузер поверх страницы. Значит проверять её надо текстом.
+     */
+    const wanted = process.env.GRIMHOLD_TITLE;
+    if (wanted) {
+      const title = await page.evaluate((name: string) => {
+        const nodes = [...document.querySelectorAll('.inv-item, .slot.filled')];
+        const found = nodes.find((node) => (node as HTMLElement).title.startsWith(name));
+        return (found as HTMLElement | undefined)?.title ?? 'ne najdeno';
+      }, wanted);
+      console.log(`podskazka: ${title.split(String.fromCharCode(10)).join(' / ')}`);
+    }
   }
 
   /**

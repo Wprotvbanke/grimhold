@@ -420,10 +420,15 @@ export function arrowFalloff(distance: number): number {
   return 1 - k * (1 - ARROW_FAR_SCALE);
 }
 
-export function spellDamage(attributes: Attributes, base: number, skillLevel: number): number {
+export function spellDamage(
+  attributes: Attributes,
+  base: number,
+  skillLevel: number,
+  focus = 1,
+): number {
   const intellect = 1 + attributes.intellect * 0.04;
   const skill = 1 + skillLevel * 0.01;
-  return base * intellect * skill;
+  return base * intellect * skill * focus;
 }
 
 /** Броня режет урон по убывающей: 50 брони — половина, 100 — две трети. */

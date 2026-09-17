@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SPELLS,
   addItem,
   attributesFor,
   createScrolls,
   dungeonInstance,
   fullVitals,
+  itemDef,
+  spellPowerOf,
   movementSpeedFactor,
 } from '@grimhold/shared';
 import { resolveBlessing } from '../src/combat.js';
@@ -307,5 +310,37 @@ describe('кольцо помощи', () => {
 
     expect(caster.wardArmor).toBeGreaterThan(0);
     expect(friend.wardRemaining).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Посох — это не оружие, а сила заклинаний.
+ *
+ * Базовое поведение, а не мелочь: без этого правила маг не отличается
+ * от любого, кто вставил свиток в клетки.
+ */
+describe('посох усиливает магию', () => {
+  it('лечит втрое сильнее, чем пустой рукой', () => {
+    const bare = makeCombatant({ id: 'bare' });
+    const armed = makeCombatant({ id: 'armed' });
+    bare.vitals.health = 10;
+    armed.vitals.health = 10;
+
+    resolveBlessing(bare, 'mend', [bare], 0, () => 500);
+    resolveBlessing(armed, 'mend', [armed], 0, () => 500, spellPowerOf('mage_staff'));
+
+    const withoutStaff = bare.vitals.health - 10;
+    const withStaff = armed.vitals.health - 10;
+    // Ровно втрое не выйдет: лечение округляется на каждом чтении.
+    expect(withStaff / withoutStaff).toBeGreaterThan(2.8);
+    expect(withStaff / withoutStaff).toBeLessThan(3.2);
+  });
+
+  it('голая рука бьёт слабее меча', () => {
+    // Обещание владельца: магия без посоха — запасной вариант, а не бой.
+    expect(SPELLS.fireball.power).toBeLessThan(itemDef('iron_sword').damage ?? 0);
+    expect(SPELLS.fireball.power * spellPowerOf('mage_staff')).toBeGreaterThan(
+      itemDef('iron_sword').damage ?? 0,
+    );
   });
 });

@@ -18,6 +18,7 @@ import {
   itemAt,
   isItemId,
   itemDef,
+  itemStats,
   sizeOf,
   type EquipSlot,
   type Equipment,
@@ -62,6 +63,9 @@ function sizeOfCell(grid: GridKind): number {
 export function hotbarKey(index: number): string {
   return String((index + 1) % 10);
 }
+
+/** Подсказка браузера ломает строки только по переводу строки. */
+const NEWLINE = '\n';
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -864,7 +868,20 @@ export class InventoryUi {
     node.style.top = `${GRID_INSET + item.y * cell}px`;
     node.style.width = `${size.width * cell - 2}px`;
     node.style.height = `${size.height * cell - 2}px`;
-    node.title = `${def.name}\n${def.weight} кг${def.description ? `\n\n${def.description}` : ''}`;
+    /**
+     * Подсказка: имя, вес, **характеристики** и описание.
+     *
+     * Показатели берутся из общего кода (`itemStats`), а не собираются здесь:
+     * иначе новый показатель пришлось бы дописывать в каждом экране,
+     * где показывают вещи, и один из них однажды забудут.
+     */
+    const stats = isItemId(item.defId) ? itemStats(item.defId) : [];
+    node.title = [
+      def.name,
+      `${def.weight} кг`,
+      ...(stats.length > 0 ? ['', ...stats] : []),
+      ...(def.description ? ['', def.description] : []),
+    ].join(NEWLINE);
 
     // Картинка вместо названия — там, где она есть. Имя не теряется:
     // оно в подсказке, вместе с весом и описанием.
@@ -964,7 +981,20 @@ export class InventoryUi {
         bonus.className = 'slot-name';
         bonus.textContent = def.armor ? `броня ${def.armor}` : def.damage ? `урон ${def.damage}` : '';
         node.append(bonus);
-        node.title = 'Щелчок — снять, перетаскивание — в нужную клетку';
+
+        /**
+         * В слоте видно только одно число — остальные в подсказке.
+         *
+         * У посоха главный показатель вовсе не урон, и подсказка
+         * обязана его назвать и тогда, когда вещь уже в руке.
+         */
+        const stats = isItemId(item.defId) ? itemStats(item.defId) : [];
+        node.title = [
+          def.name,
+          ...(stats.length > 0 ? ['', ...stats] : []),
+          '',
+          'Щелчок — снять, перетаскивание — в нужную клетку',
+        ].join(NEWLINE);
       } else {
         node.title = '';
       }

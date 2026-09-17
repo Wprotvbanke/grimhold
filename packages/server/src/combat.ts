@@ -272,6 +272,7 @@ export function resolveBurst(
   spellId: SpellId,
   targets: Combatant[],
   skillLevel: number,
+  focus = 1,
 ): CombatOutcome {
   const outcome = emptyOutcome();
   const spell = SPELLS[spellId];
@@ -290,7 +291,7 @@ export function resolveBurst(
 
     markAggressor(caster, target);
 
-    const raw = spellDamage(caster.attributes, spell.power, skillLevel);
+    const raw = spellDamage(caster.attributes, spell.power, skillLevel, focus);
     const result = applyDamage(target, raw, {
       blockReduction: BLOCK_REDUCTION * 0.5,
       staminaOnBlock: BLOCK_STAMINA_HIT * 0.5,
@@ -350,10 +351,11 @@ export function resolveBlessing(
   targets: Combatant[],
   skillLevel: number,
   maxHealthOf: (combatant: Combatant) => number,
+  focus = 1,
 ): CombatOutcome {
   const outcome = emptyOutcome();
   const spell = SPELLS[spellId];
-  const power = spellDamage(caster.attributes, spell.power, skillLevel);
+  const power = spellDamage(caster.attributes, spell.power, skillLevel, focus);
 
   const blessed: Combatant[] = [caster];
   for (const target of targets) {

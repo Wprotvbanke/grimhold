@@ -62,6 +62,18 @@ export interface ItemDef {
    * ещё только заносится, и картинка расходилась бы с правдой.
    */
   swing?: number;
+  /**
+   * Во сколько раз эта вещь усиливает заклинания, пока она в руке.
+   *
+   * Второй показатель оружия после урона — и для посоха главный.
+   * Маг носит посох не затем, чтобы бить им по голове: удар у посоха
+   * запасной, а сила его — в том, что с ним свитки бьют втрое сильнее.
+   * Пусто — значит вещь магии не помогает вовсе (`BARE_SPELL_POWER`).
+   *
+   * Числа всего оружия сведены в docs/weapons.md — туда же дописывать
+   * новые показатели, когда они появятся.
+   */
+  spellPower?: number;
   /** Броня: складывается со всей надетой и режет урон в applyDamage. */
   armor?: number;
   toolKind?: ToolKind;
@@ -383,7 +395,10 @@ const ITEM_LIST: ItemDef[] = [
     damage: 6,
     skill: 'evocation',
     swing: 2,
-    description: 'Древко в рост человека. Оружие из него дурное, зато не мешает читать свитки.',
+    /** Втрое к силе свитков — ради этого посох и носят. */
+    spellPower: 3,
+    description:
+      'Древко в рост человека. Оружие из него дурное, зато заклинания с ним бьют втрое сильнее.',
   },
   {
     id: 'wooden_club',
@@ -552,4 +567,43 @@ export function itemDef(id: ItemId): ItemDef {
 /** Существует ли такой предмет. Нужно при разборе данных из базы. */
 export function isItemId(value: string): value is ItemId {
   return value in ITEMS;
+}
+
+/**
+ * Сила заклинаний с пустой рукой.
+ *
+ * Единица — это и есть число из описания свитка: без посоха магия бьёт
+ * слабо, слабее удара мечом, и вся сила мага — в том, что у него в руке.
+ */
+export const BARE_SPELL_POWER = 1;
+
+/** Во сколько раз эта вещь усиливает заклинания. */
+export function spellPowerOf(defId: string | null | undefined): number {
+  if (!defId || !isItemId(defId)) return BARE_SPELL_POWER;
+  return itemDef(defId).spellPower ?? BARE_SPELL_POWER;
+}
+
+/**
+ * Характеристики вещи строками — для подсказки и любого будущего экрана.
+ *
+ * Живут в общем коде, а не в интерфейсе: показателей у оружия будет
+ * больше одного урона, и разведи их по экранам — один из них однажды
+ * соврёт о том, что вещь умеет.
+ */
+export function itemStats(id: ItemId): string[] {
+  const def = itemDef(id);
+  const lines: string[] = [];
+
+  if (def.damage) lines.push(`Урон: ${def.damage}`);
+  if (def.spellPower && def.spellPower !== BARE_SPELL_POWER) {
+    const gain = Math.round((def.spellPower / BARE_SPELL_POWER - 1) * 100);
+    lines.push(`Урон магии: +${gain}%`);
+  }
+  if (def.swing && def.swing > 1) lines.push(`Удар длиннее кулачного в ${def.swing} раза`);
+  if (def.armor) lines.push(`Броня: ${def.armor}`);
+  if (def.restoreHealth) lines.push(`Жизнь: +${def.restoreHealth}`);
+  if (def.restoreStamina) lines.push(`Стамина: +${def.restoreStamina}`);
+  if (def.restoreMana) lines.push(`Мана: +${def.restoreMana}`);
+
+  return lines;
 }
