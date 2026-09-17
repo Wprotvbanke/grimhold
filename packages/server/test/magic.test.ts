@@ -186,10 +186,25 @@ describe('медитация', () => {
     expect(still).toBe(0);
   });
 
+  it('на полном запасе не начинается вовсе', () => {
+    const world = new World();
+    const player = spawnMage(world);
+    player.scrolls = addItem(createScrolls(), 'spell_meditation', 1).grid;
+
+    /**
+     * Медитация кончается сама, когда мана полна, — значит нажатие на полном
+     * запасе включало её и гасило в тот же тик. Со стороны это выглядело
+     * как «ничего не произошло»: ни маны, ни виньетки. Отказ вслух честнее.
+     */
+    expect(beginCast(world, player, 'meditation', 0)).toMatch(/полна/i);
+    expect(player.combat.action).toBeNull();
+  });
+
   it('включается и выключается тем же свитком', () => {
     const world = new World();
     const player = spawnMage(world);
     player.scrolls = addItem(createScrolls(), 'spell_meditation', 1).grid;
+    player.combat.vitals.mana = 10;
 
     expect(beginCast(world, player, 'meditation', 0)).toBeNull();
     // Каст дошёл до конца — медитация началась (это делает игровой цикл).
@@ -205,6 +220,7 @@ describe('медитация', () => {
     const world = new World();
     const player = spawnMage(world);
     player.scrolls = addItem(createScrolls(), 'spell_meditation', 1).grid;
+    player.combat.vitals.mana = 10;
     player.meditating = true;
 
     beginCast(world, player, 'meditation', 0);

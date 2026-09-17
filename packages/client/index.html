@@ -254,14 +254,17 @@
        * урона (z-index 4): удар в спину посреди медитации должен быть виден
        * поверх неё, а не под ней.
        *
-       * Появляется и уходит медленно — за полторы секунды. Медитация не
-       * вспышка, а состояние; мгновенное затемнение читалось бы как удар.
+       * Появляется за полсекунды, уходит за полторы. Полторы на появление
+       * было слишком медленно: игрок жмёт свиток и первые секунды не видит
+       * ничего. Уход медленный намеренно — так состояние отпускает, а не
+       * обрывается.
        */
       #meditation {
         position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0;
         background: url("/textures/meditation_vignette.webp") center / 100% 100% no-repeat;
-        transition: opacity 1.4s ease-in-out;
+        transition: opacity 1.5s ease-in-out;
       }
+      #meditation.on { transition-duration: 0.5s; }
       /* Дыхание: пятно едва заметно сжимается и разжимается, как вдох и выдох.
          Четыре секунды на круг — темп спокойного дыхания, а не пульса. */
       #meditation.on { opacity: 1; animation: breathe 4s ease-in-out infinite; }
