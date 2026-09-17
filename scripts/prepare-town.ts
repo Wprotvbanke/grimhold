@@ -16,7 +16,18 @@
  */
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRMaterialsUnlit } from '@gltf-transform/extensions';
-import { dedup, draco, flatten, getBounds, join, prune, simplify, textureCompress, weld } from '@gltf-transform/functions';
+import {
+  dedup,
+  draco,
+  flatten,
+  getBounds,
+  join,
+  metalRough,
+  prune,
+  simplify,
+  textureCompress,
+  weld,
+} from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 import draco3d from 'draco3dgltf';
 import sharp from 'sharp';
@@ -68,6 +79,15 @@ interface ModelSpec {
    */
   simplifyError?: number;
   /**
+   * Взять из файла один узел по имени и выбросить остальное.
+   *
+   * Нужно для паков: деревенские дома приехали восемью строениями в одной
+   * сцене, вместе с землёй, камерой и лампами автора. Резать их в редакторе
+   * значило бы держать восемь исходников вместо одного и резать заново,
+   * когда владелец пришлёт обновление.
+   */
+  pick?: string;
+  /**
    * Сторона текстуры в пикселях. По умолчанию 512.
    *
    * Тысяча на двадцать домов — это мегабайты по сети и сотни мегабайт
@@ -80,9 +100,33 @@ interface ModelSpec {
 
 const HOUSES = `${DESKTOP}/houses`;
 
+/**
+ * Дома из деревенского пака.
+ *
+ * Высоты взяты по виду строения, а не по исходнику: в паке всё сложено
+ * в одном масштабе, где дом в два человеческих роста соседствует с башней
+ * в четыре. В городе они стоят рядом с таверной, и мерка у них общая.
+ */
+const VILLAGE_PACK = 'C:/Users/Wprot/OneDrive/Рабочий стол/Village/house_village.glb';
+const VILLAGE: ModelSpec[] = (
+  [
+    ['maison7', 'village_house1.glb', 9],
+    ['poutre_5_1', 'village_house2.glb', 9],
+    ['ZBrushPolyMesh3D_1', 'village_house3.glb', 11],
+    ['maison', 'village_house4.glb', 9],
+    ['Cube_1', 'village_house5.glb', 9],
+    ['Box024_2', 'village_house6.glb', 7],
+    ['toit', 'village_house7.glb', 7],
+    ['Box030_1', 'village_house8.glb', 8],
+  ] as const
+).map(([pick, output, height]) => ({
+  source: VILLAGE_PACK,
+  output,
+  pick,
+  normalize: { height },
+}));
+
 const MODELS: ModelSpec[] = [
-  { source: `${SOURCE}/low_poly_town_hall (1).glb`, output: 'town_hall.glb' },
-  { source: `${SOURCE}/townhouse_3_now_with_dust.glb`, output: 'townhouse.glb' },
   // Казна: каменный ларец. Середина в нуле, половина под землёй — поднимаем;
   // чуть больше исходника, чтобы читался на площади.
   { source: `${DESKTOP}/bank/bank.glb`, output: 'bank.glb', normalize: { scale: 1.1 } },
@@ -90,19 +134,25 @@ const MODELS: ModelSpec[] = [
   // по именам, поэтому не сливаются.
   { source: `${DESKTOP}/walls/walls.glb`, output: 'walls.glb', keepParts: true },
 
-  // Дома улиц. Все основанием на ноль и серединой в начало координат.
+  /*
+   * Таверна и лавка на колёсах — всё, что осталось от прежней застройки.
+   * Остальные дома улиц (ратуша, часовня, три домика) владелец убрал: город
+   * застроен заново деревенским паком, см. VILLAGE ниже и docs/buildings.md.
+   */
   // Таверна пришла вдвое крупнее жизни — этаж в семь метров; ужата до трёх с половиной.
   { source: `${HOUSES}/house5_towern.glb`, output: 'tavern.glb', normalize: { scale: 0.5 } },
-  // Часовня пришла в сотнях единиц и на десять метров под землёй: 73 м высоты.
-  // Часовня пришла с 83 тысячами треугольников — вчетверо больше соседних
-  // домов при том же силуэте. Прореживаем: издали она читается кровлей
-  // и башней, а не гранями.
-  { source: `${HOUSES}/house3.glb`, output: 'chapel.glb', normalize: { height: 12 }, simplifyTo: 0.35, simplifyError: 0.05 },
-  { source: `${HOUSES}/house4.glb`, output: 'house_narrow.glb', normalize: {} },
-  { source: `${HOUSES}/house_Triangle.glb`, output: 'house_gable.glb', normalize: {} },
-  { source: `${HOUSES}/house_tiny.glb`, output: 'house_tiny.glb', normalize: {} },
   // Повозка висела в четырёх метрах над землёй и в шести сбоку от начала.
+  // Она сюжетная: стоит у люка в подземелье.
   { source: `${HOUSES}/shop_on_wheels.glb`, output: 'wagon.glb', normalize: {} },
+
+  /**
+   * Деревенские дома: один пак, восемь строений в одной сцене.
+   *
+   * Берём каждое по имени узла (`pick`) и приводим к своему росту: в паке
+   * они в десятках единиц и стоят на общей земле. Имена узлов авторские,
+   * французские и невнятные — наши имена файлов говорят, что это за дом.
+   */
+  ...VILLAGE,
 
   // Люк в подземелье за лавкой на колёсах: крышка открывается клипом.
   { source: `${DESKTOP}/Trapdoor/trapdoor.glb`, output: 'trapdoor.glb', normalize: {}, animated: true },
@@ -134,12 +184,32 @@ for (const {
   simplifyTo,
   simplifyError,
   texture,
+  pick,
 } of MODELS) {
   const input = source;
   const target = resolve(OUTPUT, output);
   const document = await io.read(input);
   const root = document.getRoot();
   const before = root.listMeshes().length;
+
+  /**
+   * Выбор узла идёт **до** нормализации: она считает габариты по сцене,
+   * и лишняя земля под домом сплющила бы его в лепёшку.
+   */
+  if (pick) {
+    const scene = root.listScenes()[0]!;
+    const found = root.listNodes().find((node) => node.getName() === pick);
+    if (!found) throw new Error(`${output}: в файле нет узла «${pick}»`);
+    // Узел мог лежать глубоко в чужой иерархии — поднимаем его в сцену,
+    // сохранив собственный поворот и масштаб.
+    const parent = found.getParentNode();
+    if (parent) parent.removeChild(found);
+    for (const child of [...scene.listChildren()]) {
+      if (child !== found) child.dispose();
+    }
+    scene.addChild(found);
+    await document.transform(prune());
+  }
 
   if (normalize) {
     // Всё содержимое сцены — под один узел со сдвигом и масштабом; дальше
@@ -169,6 +239,19 @@ for (const {
       if (!material.getBaseColorTexture()) material.setBaseColorFactor([...tint, 1]);
     }
   }
+
+  /**
+   * Старые материалы «блеск и глянец» — в обычные PBR.
+   *
+   * `KHR_materials_pbrSpecularGlossiness` держит картинки **внутри себя**,
+   * а не в базовом материале, и наш конвейер их попросту не видел: дома
+   * из деревенского пака собирались белыми, как гипс. Расширение объявлено
+   * устаревшим, three его тоже не читает — переводим на месте.
+   */
+  const glossy = root
+    .listExtensionsUsed()
+    .some((extension) => extension.extensionName === 'KHR_materials_pbrSpecularGlossiness');
+  if (glossy) await document.transform(metalRough());
 
   // Материал без освещения — снимаем расширение, материал остаётся обычным.
   // Блеск металла у штукатурки и черепицы не нужен: матовые, как всё в городе.
@@ -205,6 +288,7 @@ for (const {
   console.log(
     `${output}: ${megabytes(statSync(input).size)} → ${megabytes(statSync(target).size)}; ` +
       `сеток ${before} → ${root.listMeshes().length}, материалов ${root.listMaterials().length}` +
-      (unlit ? '; снят материал без освещения' : ''),
+      (unlit ? '; снят материал без освещения' : '') +
+      (glossy ? '; блеск переведён в PBR' : ''),
   );
 }

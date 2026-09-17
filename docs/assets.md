@@ -44,6 +44,7 @@
 | `public/models/rat_king.glb` | от владельца проекта, выгрузка Sketchfab — король крыс, облик хозяина глубины; 130 → 27 тыс. треугольников, 13.6 → 1.4 МБ | CC, со слов владельца (вид не указан) |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |
+| `public/models/village_house1…8.glb` | от владельца проекта, пак `house_village.glb` (Sketchfab) — восемь домов в одной сцене; каждый берётся по имени узла `scripts/prepare-town.ts`, 9 МБ → 30–90 КБ на дом | CC, со слов владельца (вид не указан) |
 | `public/models/loot_bag.glb` | [photoscan bag](https://sketchfab.com/3d-models/photoscan-bag-fa0ede1f6c5646d9b05a74b9601a4fba), ghosternight; собран `scripts/prepare-bag.ts` | **CC-BY-4.0** |
 | `public/textures/exit_symbol.webp` | от владельца проекта, собран `scripts/prepare-symbol.ts` | уточнить |
 | `public/sounds/sigh_relief.wav` | [«Sigh by the mouth»](https://bigsoundbank.com/sigh-by-the-mouth-s1405.html), BigSoundBank; обрезан до 1.5 с `scripts/prepare-sigh.ts` | **CC0** |

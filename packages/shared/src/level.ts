@@ -339,17 +339,45 @@ export const DUNGEON_GATE = {
  * Соседи: фонарь в (10, −2) южнее, платформы с x = 12 восточнее, дорога
  * сквозных проверок к люку идёт по z = −2 — всё снаружи.
  */
-/** Пятна домов у земли в их координатах — по моделям, чуть внутрь. */
+/**
+ * Пятна домов у земли в их координатах — по моделям, чуть внутрь.
+ *
+ * Числа сняты с собранных моделей (`village_house*.glb`) и ужаты на три
+ * десятых: свес кровли и крыльцо не должны останавливать за полметра
+ * до стены. Внутрь домов не войти — это коробки, а не таверна.
+ */
 const HOUSE = {
-  chapel: { minX: -3.0, maxX: 2.8, minZ: -5.2, maxZ: 4.9 },
-  narrow: { minX: -2.5, maxX: 2.5, minZ: -4.2, maxZ: 4.2 },
-  gable: { minX: -3.0, maxX: 3.0, minZ: -2.6, maxZ: 2.6 },
-  tiny: { minX: -3.3, maxX: 3.3, minZ: -2.4, maxZ: 2.4 },
+  /** Каменный с мансардой и трубой, 9 м. */
+  one: { minX: -4.6, maxX: 4.6, minZ: -4.1, maxZ: 4.1 },
+  /** Широкий с навесом на столбах, 9 м. Самый глубокий из всех. */
+  two: { minX: -6.1, maxX: 6.1, minZ: -7.9, maxZ: 7.9 },
+  /** Высокий с башенкой, 11 м — доминанта квартала. */
+  three: { minX: -4.5, maxX: 4.5, minZ: -5.5, maxZ: 5.5 },
+  /** Узкий двухэтажный с большими окнами, 9 м. */
+  four: { minX: -3.6, maxX: 3.6, minZ: -3.2, maxZ: 3.2 },
+  /** Двор с крытой галереей, 9 м. */
+  five: { minX: -6.1, maxX: 6.1, minZ: -6.0, maxZ: 6.0 },
+  /** Фахверковый амбар с воротами, 7 м. */
+  six: { minX: -4.7, maxX: 4.7, minZ: -4.9, maxZ: 4.9 },
+  /** Приземистый каменный, 7 м — самый широкий. */
+  seven: { minX: -6.9, maxX: 6.9, minZ: -5.2, maxZ: 5.2 },
+  /** Двухэтажный с галереей, 8 м. */
+  eight: { minX: -3.6, maxX: 3.6, minZ: -3.6, maxZ: 3.6 },
+  /** Лавка на колёсах у люка — сюжетная, осталась от прежней застройки. */
   wagon: { minX: -1.2, maxX: 1.2, minZ: -2.6, maxZ: 2.3 },
 } as const;
 
 export const TOWN_HOUSES: readonly {
-  model: 'town_hall' | 'townhouse' | 'chapel' | 'house_narrow' | 'house_gable' | 'house_tiny' | 'wagon';
+  model:
+    | 'village_house1'
+    | 'village_house2'
+    | 'village_house3'
+    | 'village_house4'
+    | 'village_house5'
+    | 'village_house6'
+    | 'village_house7'
+    | 'village_house8'
+    | 'wagon';
   x: number;
   z: number;
   turn: number;
@@ -358,66 +386,43 @@ export const TOWN_HOUSES: readonly {
   height: number;
   footprint: { minX: number; maxX: number; minZ: number; maxZ: number };
 }[] = [
-  {
-    // Ратуша со шпилем — владелец зовёт её церковью. Место и разворот выбрал
-    // он сам: к юго-востоку от точки появления, **лицом к центру площади**.
-    // Угол считается от места к центру, а не вписан числом: передвинут —
-    // и фасад сам повернётся за площадью.
-    // Потом владелец перенёс её в юго-восточный квартал, по-прежнему лицом
-    // к центру, и увеличил вдвое. Вдвое большая на его месте (14.6, 19.7)
-    // заходила западным углом на южную улицу — сдвинута на метр к востоку.
-    model: 'town_hall',
-    x: 15.6,
-    z: 19.7,
-    turn: facing(15.6, 19.7, 0, 0),
-    scale: 2,
-    height: 20,
-    // Пятно модели в масштабе 1 было {−3.6…3.6, −4.2…4.3} — здесь вдвое.
-    footprint: { minX: -7.2, maxX: 7.2, minZ: -8.4, maxZ: 8.6 },
-  },
-  {
-    model: 'townhouse',
-    // Краем пятна заходил на северную улицу на полтора метра — видно на плане
-    // сверху. Отодвинут к востоку.
-    x: 8.7,
-    z: -15.8,
-    turn: -Math.PI / 2,
-    height: 12,
-    footprint: { minX: -2.9, maxX: 2.9, minZ: -3.0, maxZ: 4.1 },
-  },
-
   /*
    * Кварталы. Главные улицы к воротам — полосы |x| ≤ 4.5 и |z| ≤ 4.5 — пустые,
    * площадь вокруг казны и точки появления тоже. Дома встают рядами вдоль улиц
    * фасадом к ним и уходят вглубь к стенам, через три-четыре метра друг от друга.
    * Разворот: 0 — фасад на юг (+Z), π — на север, π/2 — на восток, −π/2 — на запад.
-   * Пятна — по модели у земли, чуть внутрь.
+   *
+   * Застройка сменилась целиком: старые дома владелец убрал, оставив только
+   * таверну и лавку на колёсах у люка. Новые — из деревенского пака, восемь
+   * видов; повторяются они намеренно, как повторяются дома в настоящем
+   * городке, но соседями ставятся разные.
    */
 
   // Северо-восток: вдоль северной улицы, фасадом на запад, к ней.
-  { model: 'house_gable', x: 7.8, z: -26, turn: -Math.PI / 2, height: 9, footprint: HOUSE.gable },
-  { model: 'house_narrow', x: 9.4, z: -37, turn: -Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
+  { model: 'village_house3', x: 11.5, z: -14, turn: -Math.PI / 2, height: 11, footprint: HOUSE.three },
+  { model: 'village_house1', x: 11, z: -27, turn: -Math.PI / 2, height: 9, footprint: HOUSE.one },
+  { model: 'village_house7', x: 12.5, z: -36.5, turn: -Math.PI / 2, height: 7, footprint: HOUSE.seven },
   // Северо-восток: вдоль восточной улицы, фасадом на юг.
-  { model: 'house_tiny', x: 20, z: -8.5, turn: 0, height: 6.9, footprint: HOUSE.tiny },
+  { model: 'village_house6', x: 26, z: -11, turn: 0, height: 7, footprint: HOUSE.six },
 
   // Юго-восток: вдоль восточной улицы, фасадом на север.
-  { model: 'house_gable', x: 36, z: 9, turn: Math.PI, height: 9, footprint: HOUSE.gable },
-  // Юго-восток: вдоль южной улицы за ратушей, фасадом на запад.
-  { model: 'house_tiny', x: 7.55, z: 30, turn: -Math.PI / 2, height: 6.9, footprint: HOUSE.tiny },
-  // Стоял в z = 42 — ровно на новой стене, когда город ужали до 84×84.
-  { model: 'house_narrow', x: 9.4, z: 36.5, turn: -Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
+  { model: 'village_house4', x: 25, z: 10.5, turn: Math.PI, height: 9, footprint: HOUSE.four },
+  // Юго-восток: вдоль южной улицы, фасадом на запад.
+  { model: 'village_house8', x: 11, z: 15, turn: -Math.PI / 2, height: 8, footprint: HOUSE.eight },
+  { model: 'village_house5', x: 13, z: 29, turn: -Math.PI / 2, height: 9, footprint: HOUSE.five },
 
-  // Юго-запад: часовня и дом вдоль западной улицы, фасадом на север.
-  { model: 'chapel', x: -16, z: 12, turn: Math.PI, height: 12, footprint: HOUSE.chapel },
-  { model: 'house_tiny', x: -28, z: 9, turn: Math.PI, height: 6.9, footprint: HOUSE.tiny },
+  // Юго-запад: вдоль западной улицы, фасадом на север.
+  { model: 'village_house2', x: -27, z: 13, turn: Math.PI, height: 9, footprint: HOUSE.two },
   // Юго-запад: вдоль южной улицы, фасадом на восток.
-  { model: 'house_gable', x: -7.6, z: 26, turn: Math.PI / 2, height: 9, footprint: HOUSE.gable },
+  { model: 'village_house7', x: -13, z: 14, turn: Math.PI / 2, height: 7, footprint: HOUSE.seven },
+  { model: 'village_house1', x: -11.5, z: 28, turn: Math.PI / 2, height: 9, footprint: HOUSE.one },
 
   // Северо-запад, за таверной: вдоль северной улицы, фасадом на восток.
-  { model: 'house_narrow', x: -9.4, z: -30, turn: Math.PI / 2, height: 10.2, footprint: HOUSE.narrow },
-  // Тоже был на линии новой стены — отодвинут внутрь квартала.
-  { model: 'house_gable', x: -7.6, z: -36.5, turn: Math.PI / 2, height: 9, footprint: HOUSE.gable },
-  // Северо-запад: лавка на колёсах и дом вдоль западной улицы, фасадом на юг.
+  { model: 'village_house6', x: -11.5, z: -30, turn: Math.PI / 2, height: 7, footprint: HOUSE.six },
+  // Северо-запад, в глубине квартала за люком.
+  { model: 'village_house4', x: -29, z: -29, turn: 0, height: 9, footprint: HOUSE.four },
+
+  // Лавка на колёсах у люка — сюжетная, стоит там же, где стояла.
   { model: 'wagon', x: -30, z: -8, turn: Math.PI / 2, height: 3.6, footprint: HOUSE.wagon },
 ];
 
