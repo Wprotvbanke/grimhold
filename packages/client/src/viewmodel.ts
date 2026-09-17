@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   ACTIONS,
   ATTACK_COOLDOWN,
+  castTiming,
   FIST_STAMINA_SCALE,
   scaleTiming,
   isItemId,
@@ -15,7 +16,9 @@ import {
   WALK_SPEED,
   type ActionKind,
   type ActionPhase,
+  type ActionTiming,
   type Race,
+  type SpellId,
 } from '@grimhold/shared';
 
 /**
@@ -56,6 +59,7 @@ export type HandsClip =
   | 'punchRight'
   | 'punchLeft'
   | 'axeSwing'
+  | 'staffCast'
   | 'blockStart'
   | 'blockLoop'
   | 'blockStop'
@@ -73,6 +77,7 @@ const CLIP_NAMES: Record<HandsClip, string[]> = {
   punchRight: ['Punch_R', 'Punch'],
   punchLeft: ['Punch_L', 'Punch_2'],
   axeSwing: ['Sword_Slash'],
+  staffCast: ['Staff_Shot'],
   blockStart: ['Block_Start'],
   blockLoop: ['Block_Loop'],
   blockStop: ['Block_Stop'],
@@ -88,6 +93,7 @@ const ONCE: HandsClip[] = [
   'punchRight',
   'punchLeft',
   'axeSwing',
+  'staffCast',
   'blockStart',
   'blockStop',
   'takeStart',
@@ -95,6 +101,14 @@ const ONCE: HandsClip[] = [
 ];
 
 const MODEL_URL = '/models/hands.glb';
+
+/**
+ * Фазы чтения, когда свиток неизвестен.
+ *
+ * Так бывает, когда чтение начал не игрок: сервер сообщает только
+ * вид действия, без свитка. Руки всё равно обязаны отыграть жест.
+ */
+const CAST_FALLBACK: ActionTiming = { windup: 0.5, active: 0.1, recovery: 0.4 };
 
 /**
  * Вещи, которые видно в правом кулаке.
@@ -144,6 +158,15 @@ interface HeldSpec {
   pull?: number;
   /** Насколько притушить материал: у вещей текстуры темнее кожи. */
   tint: number;
+  /**
+   * Чем вещь машет в бою и при чтении свитка.
+   *
+   * У вещи, а не у действия: топор рубит и читать им нечего, посох
+   * бьёт свитком и не машет в ударе. Чего нет — играет обычное:
+   * кулак в ударе, стойка в чтении.
+   */
+  swings?: HandsClip;
+  cast?: HandsClip;
 }
 
 /**
@@ -236,6 +259,8 @@ const HELD: Record<string, HeldSpec> = {
      * силуэтом, неотличимым от столба за спиной.
      */
     tint: 0.8,
+    /** Рубит клипом владельца. Читать топором нечего. */
+    swings: 'axeSwing',
   },
   mage_staff: {
     url: '/models/staff.glb',
@@ -252,6 +277,11 @@ const HELD: Record<string, HeldSpec> = {
     /** И чуть ближе к экрану: древко стояло впереди кулака. */
     pull: 0.06,
     tint: 0.85,
+    /**
+     * Посох бьёт свитком, а не размахом: в ударе он играет обычный кулак.
+     * Клип выстрела снят владельцем на нашем риге — `Staff_Shot`.
+     */
+    cast: 'staffCast',
   },
 };
 
@@ -403,6 +433,14 @@ export class ViewModel {
   private palm: THREE.Object3D | null = null;
   /** Модель вещи в кулаке — топора или посоха. Одна за раз. */
   private held: THREE.Object3D | null = null;
+
+  /**
+   * Фазы начатого чтения: у каждого свитка свой замах.
+   *
+   * А если чтение пришло с сервера — свиток неизвестен, и остаётся
+   * короткий цикл: руки всё равно должны что-то сделать.
+   */
+  private casting: ActionTiming | null = null;
   /** Чья это модель: по ней считаются размер, посадка и доворот. */
   private heldSpec: HeldSpec | null = null;
   private heldLoading = false;
@@ -490,8 +528,16 @@ export class ViewModel {
    * Возвращает false, если действие всё равно не пройдёт: идёт другое или
    * не вышла пауза. Тогда не стоит ни махать руками, ни слать намерение.
    */
-  beginAction(kind: ActionKind): boolean {
+  beginAction(kind: ActionKind, spellId?: SpellId): boolean {
     if (!this.canBegin(kind)) return false;
+
+    /**
+     * Чтение длится столько, сколько сказано в самом свитке.
+     *
+     * Фазы те же, что у сервера (`castTiming`): считай их клиент по-своему,
+     * и посох бил бы раньше или позже, чем вылетает снаряд.
+     */
+    if (kind === 'cast') this.casting = spellId ? castTiming(spellId) : null;
 
     if (kind === 'attack' || kind === 'heavy') {
       this.swing++;
@@ -911,8 +957,9 @@ export class ViewModel {
 
     if (this.localAction) {
       this.localAction.elapsed += dt;
-      if (this.localAction.elapsed > totalDuration(this.localAction.kind, this.swingScale)) {
+      if (this.localAction.elapsed > this.durationOf(this.localAction.kind)) {
         this.localAction = null;
+        this.casting = null;
       }
     }
 
@@ -933,14 +980,26 @@ export class ViewModel {
     const action = this.localAction?.kind ?? null;
 
     /**
+     * Чтение свитка посохом — клип владельца вместо стойки.
+     *
+     * Клип берётся у того, что в руке: с топором и с пустой ладонью
+     * свиток читают без замаха. Махать посохом на любой каст нельзя:
+     * медитация и гашение света идут тем же нажатием, но замаха в них нет —
+     * о этом решает вызывающий код (`beginCast`).
+     */
+    const cast = this.heldSpec?.cast;
+    if (action === 'cast' && cast && this.actions.has(cast)) return cast;
+
+    /**
      * Замах топором — клип владельца вместо маха кулаком.
      *
-     * Условие `has('axeSwing')` обязательно по той же причине, что у лука:
+     * Условие `has(...)` обязательно по той же причине, что у лука:
      * клип живёт в модели, а модель пересобирается скриптами. Пропал —
      * бьём кулаком, и бой не ломается.
      */
-    if ((action === 'attack' || action === 'heavy') && this.held && this.actions.has('axeSwing')) {
-      return 'axeSwing';
+    const swings = this.heldSpec?.swings;
+    if ((action === 'attack' || action === 'heavy') && swings && this.actions.has(swings)) {
+      return swings;
     }
 
     // Удар. Правая и левая чередуются, тяжёлый всегда правой — он размашистее.
@@ -1030,6 +1089,18 @@ export class ViewModel {
      * правой — просто потому, что её растянули под лёгкий удар, а правую
      * под тяжёлый.
      */
+    /**
+     * Замах посоха растягивается на фазы свитка.
+     *
+     * Своёго темпа у клипа быть не должно: он трёхсекундный, а самый
+     * быстрый свиток читается полсекунды — посох бы ещё только поднимался,
+     * когда снаряд уже летит.
+     */
+    if (clip === this.heldSpec?.cast) {
+      const timing = this.casting ?? CAST_FALLBACK;
+      next.timeScale = next.getClip().duration / (timing.windup + timing.active);
+    }
+
     if (quick) {
       const kind = this.localAction?.kind === 'heavy' ? 'heavy' : 'attack';
       // Замах растягивается ровно на фазы удара — те же, что считает сервер.
@@ -1053,6 +1124,21 @@ export class ViewModel {
     this.holdFor = ONCE.includes(clip) ? this.lengthOf(clip) : 0;
     // Заминку внизу клип обязан пережить: иначе его перебьёт стойкой.
     if (clip === 'axeSwing') this.holdFor += SWING_PAUSE;
+  }
+
+  /**
+   * Сколько длится начатое действие.
+   *
+   * У чтения фазы свои у каждого свитка, поэтому методом, а не таблицей:
+   * с одной длительностью на все свитки долгое чтение обрывалось бы
+   * стойкой на полпути.
+   */
+  private durationOf(kind: ActionKind): number {
+    if (kind === 'cast') {
+      const timing = this.casting ?? CAST_FALLBACK;
+      return timing.windup + timing.active + timing.recovery;
+    }
+    return totalDuration(kind, this.swingScale);
   }
 
   private lengthOf(clip: HandsClip): number {
@@ -1371,6 +1457,6 @@ function timingFor(kind: ActionKind) {
   if (kind === 'attack') return ACTIONS.attack.timing;
   if (kind === 'heavy') return ACTIONS.heavy.timing;
   if (kind === 'dodge') return ACTIONS.dodge.timing;
-  // Блок и каст держатся сервером; для рук хватает короткого цикла.
-  return { windup: 0.5, active: 0.1, recovery: 0.4 };
+  // Блок держится сервером; для рук хватает короткого цикла.
+  return CAST_FALLBACK;
 }

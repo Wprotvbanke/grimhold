@@ -10,6 +10,7 @@
  *
  * Работает против запущенного `npm run dev` и входит тестовой учётной записью.
  */
+import type { KeyInput } from 'puppeteer';
 import puppeteer from 'puppeteer';
 
 const OUTPUT = process.argv[2] ?? 'screenshot.png';
@@ -893,6 +894,36 @@ try {
       await page.screenshot({ path: OUTPUT.replace(/\.png$/, `_${shot}.png`) });
     }
     console.log(`снимков по кругу: ${spin}`);
+  }
+
+  /**
+   * `GRIMHOLD_READ=мс` — прочесть свиток с панели и снять кадр посреди замаха.
+   *
+   * То же, что `GRIMHOLD_SWING`, но для посоха: чтение идёт секунду с небольшим,
+   * и без задержки кадр попадает либо до замаха, либо после него.
+   * Какую ячейку жать — `GRIMHOLD_SCROLL` (по умолчанию четвёртая, там стоит
+   * первый свиток новичка).
+   */
+  const read = Number(process.env.GRIMHOLD_READ ?? 0);
+  if (read > 0) {
+    /**
+     * Щёлкать здесь нельзя, хотя просится: мышь уже захвачена режимом,
+     * и лишний щелчок — это **удар**. Пока он идёт, чтение не начнётся
+     * ни на клиенте, ни на сервере — и на кадре окажется мах кулаком
+     * вместо замаха посоха. Час потерян именно на этом.
+     */
+    const cell = Number(process.env.GRIMHOLD_SCROLL ?? 4);
+    await page.keyboard.press(`Digit${cell}` as KeyInput);
+    await wait(read);
+
+    // Мана и последняя строка журнала: по ним видно, прочёлся ли свиток
+    // на самом деле или сервер отказал. Латиницей: консоль Windows в другой кодировке.
+    const after = await page.evaluate(() => {
+      const mana = document.querySelector('#barMana span')?.textContent ?? '?';
+      const refusal = document.getElementById('itemError')?.textContent ?? '';
+      return `mana ${mana} | otkaz: ${refusal || 'net'}`;
+    });
+    console.log(`chtenie: ${after}`);
   }
 
   const swing = Number(process.env.GRIMHOLD_SWING ?? 0);

@@ -24,6 +24,7 @@ import {
   NODES,
   RACES,
   SKILLS,
+  SPELLS,
   itemDef,
   type ItemId,
   TICK_MS,
@@ -592,6 +593,18 @@ const connection = new Connection(SERVER_URL, {
  */
 function useHotbar(index: number): void {
   if (!game || combatUi.dead) return;
+
+  /**
+   * Посох машет **по нажатию**, а не по ответу сервера — как и удар.
+   *
+   * Медитация сюда не идёт: ею садятся и встают тем же нажатием,
+   * и взмах посохом на «встать» выглядел бы кастом, которого нет.
+   * Свитка в клетках или маны может не хватить — решает всё равно сервер,
+   * и намерение уходит в любом случае: замах — это картинка, а не разрешение.
+   */
+  const spellId = inventoryUi.spellAt(index);
+  if (spellId && SPELLS[spellId].shape !== 'channel') game.hands.beginAction('cast', spellId);
+
   connection.send({ t: 'useHotbar', index, viewTick: viewTick() });
 }
 

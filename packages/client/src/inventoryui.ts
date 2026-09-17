@@ -16,6 +16,7 @@ import {
   SLOT_NAMES,
   countOf,
   itemAt,
+  isItemId,
   itemDef,
   sizeOf,
   type EquipSlot,
@@ -26,6 +27,7 @@ import {
   type TradeMessage,
   type InventoryMessage,
   type PlacedItem,
+  type SpellId,
 } from '@grimhold/shared';
 import { createPortrait } from './portrait.js';
 
@@ -237,6 +239,18 @@ export class InventoryUi {
 
   get open(): boolean {
     return !this.root.hidden;
+  }
+
+  /**
+   * Какой свиток лежит в ячейке панели — или `null`, если там не свиток.
+   *
+   * Рукам нужно начать замах посоха **по нажатию**, не дожидаясь ответа
+   * сервера: полпинга задержки в своих руках заметны сразу — так же
+   * сделан удар. А что в ячейке лежит, знает только панель.
+   */
+  spellAt(index: number): SpellId | null {
+    const defId = this.state?.hotbar[index];
+    return defId && isItemId(defId) ? (itemDef(defId).spellId ?? null) : null;
   }
 
   toggle(): void {

@@ -1,3 +1,4 @@
+import type { ActionTiming } from './combat.js';
 import type { SkillId } from './skills.js';
 
 /**
@@ -163,6 +164,26 @@ export const SPELLS: Record<SpellId, SpellProfile> = {
     manaPerSecond: 5,
   },
 };
+
+/**
+ * Вспышка заклинания: само попадание короткое, а рука потом опускается.
+ *
+ * Числа общие для всех свитков: разница между ними — в длине замаха
+ * (`castTime`), а не в том, сколько держится вспышка.
+ */
+const CAST_ACTIVE = 0.05;
+const CAST_RECOVERY = 0.3;
+
+/**
+ * Фазы чтения свитка — **одни на сервер и на руки**.
+ *
+ * Сервер по ним считает действие, клиент — растягивает на них замах посоха.
+ * Разойдись они — и посох бил бы раньше или позже, чем летит снаряд:
+ * тот самый разлад, который уже ловили на темпе удара топором.
+ */
+export function castTiming(spellId: SpellId): ActionTiming {
+  return { windup: SPELLS[spellId].castTime, active: CAST_ACTIVE, recovery: CAST_RECOVERY };
+}
 
 /** Все свитки разом — для перебора в интерфейсе и в проверках. */
 export const SPELL_IDS = Object.keys(SPELLS) as SpellId[];

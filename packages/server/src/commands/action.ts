@@ -2,6 +2,7 @@ import {
   SPELLS,
   beginAction,
   canDashAtWeight,
+  castTiming,
   itemDef,
   staminaScaleOf,
   swingScaleOf,
@@ -158,7 +159,8 @@ export function beginCast(
     {
       kind: 'cast',
       name: spell.name,
-      timing: { windup: spell.castTime, active: 0.05, recovery: 0.3 },
+      // Фазы берём из общего места: по ним же руки растягивают замах посоха.
+      timing: castTiming(spellId),
       staminaCost: 0,
       damageScale: 1,
       range: spell.range,
