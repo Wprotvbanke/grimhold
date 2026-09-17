@@ -139,6 +139,18 @@ const MODELS: ModelSpec[] = [
   // Казна: каменный ларец. Середина в нуле, половина под землёй — поднимаем;
   // чуть больше исходника, чтобы читался на площади.
   { source: `${DESKTOP}/bank/bank.glb`, output: 'bank.glb', normalize: { scale: 1.1 } },
+  /*
+   * Памятник на казне — каменный ангел.
+   *
+   * В выгрузке он семнадцатиметровый и стоит в трёх метрах от своего
+   * начала координат — на крышку ларца такой не поставишь. `normalize`
+   * ставит его серединой пятна в ноль и приводит к росту из `BANK_STATUE`.
+   */
+  {
+    source: `${DESKTOP}/Statue_Angel/Statue_Angel.glb`,
+    output: 'statue_angel.glb',
+    normalize: { height: 4 },
+  },
   // Городские стены: вышка, пролёт, арка и две створки — части ставит houses.ts
   // по именам, поэтому не сливаются.
   { source: `${DESKTOP}/walls/walls.glb`, output: 'walls.glb', keepParts: true },

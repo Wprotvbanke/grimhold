@@ -62,8 +62,17 @@ describe('шаг симуляции движения', () => {
 
   it('выходит из города через ворота, но не покидает мир', () => {
     const start = createMoveState(SPAWN_POINT);
-    // Достаточно долго, чтобы упереться в стену на краю мира.
-    const result = simulate(start, input({ forward: 1 }), 4000);
+    /**
+     * Путь из двух колен: сначала вбок, потом прямо.
+     *
+     * Прямо от точки появления до ворот больше не пройти: посреди
+     * площади стоит казна с памятником шириной в семь метров — её обходят.
+     * Проверяем то же, что и раньше: ворота пропускают, край мира — нет.
+     */
+    const aside = simulate(start, input({ right: 1 }), 150);
+    const past = simulate(aside, input({ forward: 1 }), 400);
+    const back = simulate(past, input({ right: -1 }), 150);
+    const result = simulate(back, input({ forward: 1 }), 4000);
 
     expect(insideGeometry(result)).toBe(false);
     // Ворота в городской стене есть, а край мира — глухой.

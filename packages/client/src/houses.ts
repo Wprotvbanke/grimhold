@@ -76,6 +76,8 @@ export function createHouses(scene: THREE.Scene): Houses {
       const model = gltf.scene;
       model.position.set(BANK.x, 0, BANK.z);
       model.rotation.y = Math.PI / 2;
+      // Втрое больше модели — как и коробка в `level.ts`: одно число на обоих.
+      model.scale.setScalar(BANK.scale);
       model.traverse((node) => {
         const mesh = node as THREE.Mesh;
         if (!mesh.isMesh) return;
@@ -86,6 +88,29 @@ export function createHouses(scene: THREE.Scene): Houses {
     },
     undefined,
     () => console.warn('[здания] не загрузилась /models/bank.glb'),
+  );
+
+  /**
+   * Памятник на крышке казны — по середине и на её высоте.
+   *
+   * Отдельной точки у него нет нарочно: двинется казна — памятник поедет
+   * за ней, и не останется стоять в воздухе посреди площади.
+   */
+  loader.load(
+    '/models/statue_angel.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      model.position.set(BANK.x, BANK.height, BANK.z);
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      });
+      group.add(model);
+    },
+    undefined,
+    () => console.warn('[здания] не загрузилась /models/statue_angel.glb'),
   );
 
   for (const house of TOWN_HOUSES) {
