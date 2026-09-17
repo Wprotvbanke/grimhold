@@ -416,7 +416,21 @@ const controls = new Controls(renderer.domElement, {
 });
 
 const connection = new Connection(SERVER_URL, {
-  onAuthenticated: (username, characters, max) => ui.showCharacters(username, characters, max),
+  onAuthenticated: (username, characters, max) => {
+    ui.showCharacters(username, characters, max);
+    /**
+     * Главная тема лобби.
+     *
+     * Ставится здесь, а не в `ui.ts`: об экранах знает интерфейс, о звуке —
+     * это место, и сводить их вместе ради одной мелодии незачем.
+     *
+     * Браузер пускает звук только после жеста, но жест уже был — вход
+     * по кнопке; контекст просыпается сам (`wake` в sound.ts). А если
+     * человек вошёл с клавиатуры и что-то пошло не так, музыка догонит
+     * при первом же нажатии: `blocked` для того и заведён.
+     */
+    music.setLobby(true);
+  },
   onAuthError: (message) => ui.showCharacterError(message),
   onWelcome: (message) => {
     // Частота тика нужна часам мира: время суток выводится из номера тика.
@@ -892,6 +906,8 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   lastSnapshotTick = -1;
 
   ui.enterGame();
+  // Тема лобби кончается вместе с лобби: дальше музыку выбирает место.
+  music.setLobby(false);
   combatUi.show(true);
   combatUi.hideDeath();
   ui.system(`Добро пожаловать, ${character.name}.`);

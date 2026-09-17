@@ -19,10 +19,10 @@ import { insideTavern, isDaylight, isSafe } from '@grimhold/shared';
  * Все треки — CC0, источники в docs/assets.md.
  */
 
-export type MusicScene = 'day' | 'night' | 'tavern';
+export type MusicScene = 'day' | 'night' | 'tavern' | 'lobby';
 
 /** Место в смысле музыки: смена места обрывает трек, смена дня и ночи — нет. */
-type Place = 'town' | 'tavern';
+type Place = 'town' | 'tavern' | 'lobby';
 
 const ROOT = '/music/';
 
@@ -33,6 +33,14 @@ export const PLAYLISTS: Record<MusicScene, readonly string[]> = {
   night: ['rising_moon.ogg', 'lament.ogg'],
   /** В таверне — весело: единственное тёплое место в мире. */
   tavern: ['old_tower_inn.ogg', 'minstrel_dance.ogg', 'kings_feast.ogg'],
+  /**
+   * Лобби — **главная тема**, одна и та же всегда.
+   *
+   * У игры должна быть мелодия, которую узнают с первой секунды; случайный
+   * трек из списка такой не станет. Играет кругом, без тишины между
+   * повторами: в лобби сидят минуту, и пауза съела бы половину этого.
+   */
+  lobby: ['main_theme.ogg'],
 };
 
 /** Громкость трека под общей и под ползунком «Музыка»: музыка — фон. */
@@ -63,12 +71,21 @@ export function musicSceneAt(
 
 function placeOf(scene: MusicScene | null): Place | null {
   if (scene === null) return null;
-  return scene === 'tavern' ? 'tavern' : 'town';
+  if (scene === 'tavern') return 'tavern';
+  if (scene === 'lobby') return 'lobby';
+  return 'town';
 }
 
 export interface Music {
   /** Каждый кадр: где слушатель и который час. */
   update(dt: number, x: number, z: number, underground: boolean, time: number): void;
+  /**
+   * Лобби открыто — играет главная тема, и мир на музыку не влияет.
+   *
+   * Отдельной ручкой, а не через `update`: лобби живёт до входа в мир,
+   * когда ни позиции, ни часов ещё нет.
+   */
+  setLobby(open: boolean): void;
 }
 
 export function createMusic(context: AudioContext, output: AudioNode): Music {
@@ -100,6 +117,8 @@ export function createMusic(context: AudioContext, output: AudioNode): Music {
   let silence = 0;
   /** Трек поставлен, но браузер ещё не дал играть — нет жеста. */
   let blocked = false;
+  /** Открыто ли лобби: пока открыто, играет главная тема. */
+  let lobby = false;
   const lastTrack: Partial<Record<MusicScene, string>> = {};
 
   function fadeOut(target: Voice): void {
@@ -122,15 +141,38 @@ export function createMusic(context: AudioContext, output: AudioNode): Music {
     const next = voices.find((candidateVoice) => candidateVoice !== playing) ?? voices[0]!;
     next.element.src = ROOT + track;
     next.element.currentTime = 0;
+    // Главная тема идёт кругом; треки мира — по разу, с тишиной между.
+    next.element.loop = scene === 'lobby';
     next.gain.gain.cancelScheduledValues(context.currentTime);
     next.gain.gain.value = 0;
     next.gain.gain.setTargetAtTime(TRACK_GAIN, context.currentTime, FADE / 3);
     if (playing) fadeOut(playing);
     playing = next;
     blocked = false;
-    next.element.play().catch(() => {
-      // Браузер не даёт играть до жеста — попробуем снова, когда контекст оживёт.
+    play(next);
+  }
+
+  /**
+   * Запустить голос, а при отказе — дождаться жеста и попробовать снова.
+   *
+   * Браузер не даёт играть, пока человек ничего не нажал. В мире это чинится
+   * само: `update` идёт каждый кадр и перезапускает трек, как только контекст
+   * оживёт. **В лобби кадров игры нет**, и без этой ловушки первый вход
+   * в игру проходил бы в тишине — до самого мира.
+   */
+  function play(voice: Voice): void {
+    voice.element.play().catch(() => {
       blocked = true;
+      const retry = (): void => {
+        removeEventListener('pointerdown', retry);
+        removeEventListener('keydown', retry);
+        // За время ожидания трек мог смениться — тогда пробовать нечего.
+        if (playing !== voice) return;
+        blocked = false;
+        play(voice);
+      };
+      addEventListener('pointerdown', retry, { once: true });
+      addEventListener('keydown', retry, { once: true });
     });
   }
 
@@ -140,8 +182,30 @@ export function createMusic(context: AudioContext, output: AudioNode): Music {
     blocked = false;
   }
 
+  /** Перейти на новую сцену: трек уходит, новый приходит. */
+  function goTo(next: MusicScene | null): void {
+    place = placeOf(next);
+    scene = next;
+    candidate = place;
+    settled = 0;
+    if (place === null) stop();
+    else start();
+  }
+
   return {
+    setLobby(open) {
+      if (open === lobby) return;
+      lobby = open;
+      // Вход в мир обрывает тему сразу: следующий кадр подберёт музыку
+      // по месту, а тянуть её в город незачем — она про ожидание.
+      if (open) goTo('lobby');
+      else goTo(null);
+    },
+
     update(dt, x, z, underground, time) {
+      // Пока открыто лобби, мир на музыку не влияет вовсе.
+      if (lobby) return;
+
       const wanted = musicSceneAt(x, z, underground, time);
       const wantedPlace = placeOf(wanted);
 
@@ -169,9 +233,7 @@ export function createMusic(context: AudioContext, output: AudioNode): Music {
 
       if (blocked && context.state === 'running' && playing) {
         blocked = false;
-        playing.element.play().catch(() => {
-          blocked = true;
-        });
+        play(playing);
       }
 
       if (playing && playing.element.ended) {
