@@ -177,6 +177,15 @@ const AXE_STAND = new THREE.Quaternion()
   );
 
 /**
+ * Доворот посоха вокруг древка, влево.
+ *
+ * Сперва решили, что вокруг своей оси у посоха крутить нечего: лезвия нет.
+ * Оказалось, что есть — древко витое, а кристалл наверху сидит с одной
+ * стороны, и разворот виден. Владелец довернул его влево, глядя в кадр.
+ */
+const STAFF_YAW = THREE.MathUtils.degToRad(15);
+
+/**
  * Насколько посох наклонён верхушкой вперёд, от экрана.
  *
  * Строго вертикальный посох читался палкой, приставленной к глазам: владелец
@@ -195,6 +204,7 @@ const STAFF_TILT = THREE.MathUtils.degToRad(5);
  */
 const STAFF_STAND = new THREE.Quaternion()
   .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -STAFF_TILT)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(ALONG, STAFF_YAW))
   .multiply(
     new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), ALONG, new THREE.Vector3(1, 0, 0)),
