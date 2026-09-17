@@ -132,8 +132,6 @@ const VILLAGE: ModelSpec[] = (
   source: VILLAGE_PACK,
   output,
   pick,
-  // Дома в паке завалены на градус-три — на мостовой это видно глазом.
-  upright: true,
   normalize: { height },
 }));
 
