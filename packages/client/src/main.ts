@@ -122,7 +122,7 @@ const scene = world.scene;
 const loading = createLoading();
 
 /** Пробная модель на площади — см. showcase.ts. */
-const showcase = createShowcase(scene);
+const showcase = createShowcase(scene, (x, z) => world.collidersAt(x, z));
 /** Крысы, бегущие в люк, — картинка города, см. vermin.ts. */
 const vermin = createVermin(scene);
 /** Человек и эльф на площади — модели будущих рас, см. exhibits.ts. */

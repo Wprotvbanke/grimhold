@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { segmentHitsAabb, type Aabb } from '@grimhold/shared';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RACES } from '@grimhold/shared';
@@ -85,7 +86,16 @@ export interface Showcase {
   update(dt: number, visible: boolean, camera: THREE.Camera): void;
 }
 
-export function createShowcase(scene: THREE.Scene): Showcase {
+/**
+ * Коробки, которые могут заслонить говорящего: дома, стены, казна.
+ *
+ * Берутся у мира по точке — те же, по которым ходит игрок. Второй список
+ * заводить нельзя: разойдись он с телесностью, облачко пряталось бы там,
+ * где стены нет, и висело сквозь ту, что есть.
+ */
+export type CollidersAt = (x: number, z: number) => readonly Aabb[];
+
+export function createShowcase(scene: THREE.Scene, collidersAt?: CollidersAt): Showcase {
   /**
    * Облачко реплики — DOM поверх кадра, как ники: текст в three пришлось бы
    * рисовать в текстуру, а здесь он чёткий на любом расстоянии.
@@ -114,14 +124,42 @@ export function createShowcase(scene: THREE.Scene): Showcase {
     }
 
     const far = Math.hypot(root.position.x - camera.position.x, root.position.z - camera.position.z) > BUBBLE_RANGE;
-    projected.set(root.position.x, root.position.y + BUBBLE_HEIGHT, root.position.z).project(camera);
-    if (!visible || silent || far || projected.z > 1) {
+    const mouth = {
+      x: root.position.x,
+      y: root.position.y + BUBBLE_HEIGHT,
+      z: root.position.z,
+    };
+    projected.set(mouth.x, mouth.y, mouth.z).project(camera);
+    if (!visible || silent || far || projected.z > 1 || hidden(camera.position, mouth)) {
       bubble.style.display = 'none';
       return;
     }
     bubble.style.display = 'block';
     bubble.style.left = `${((projected.x + 1) / 2) * innerWidth}px`;
     bubble.style.top = `${((1 - projected.y) / 2) * innerHeight}px`;
+  }
+
+  /**
+   * Заслоняет ли что-нибудь говорящего.
+   *
+   * Облачко — плоский DOM поверх кадра, глубины сцены оно не знает и потому
+   * видно сквозь стены: дворф кричал на весь город из-за трёх домов. Ведём
+   * отрезок от глаз к его макушке и спрашиваем те же коробки, по которым
+   * ходит игрок.
+   *
+   * Коробки берутся **по обоим концам отрезка**: они лежат по чанкам, и дом
+   * у дворфа может не попасть в чанк камеры.
+   */
+  function hidden(eye: THREE.Vector3, mouth: { x: number; y: number; z: number }): boolean {
+    if (!collidersAt) return false;
+    const from = { x: eye.x, y: eye.y, z: eye.z };
+    const here = collidersAt(eye.x, eye.z);
+    const there = collidersAt(mouth.x, mouth.z);
+    for (const box of here) if (segmentHitsAabb(from, mouth, box)) return true;
+    if (there !== here) {
+      for (const box of there) if (segmentHitsAabb(from, mouth, box)) return true;
+    }
+    return false;
   }
 
   const root = new THREE.Group();

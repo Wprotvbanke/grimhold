@@ -79,6 +79,15 @@ interface ModelSpec {
    */
   simplifyError?: number;
   /**
+   * Выпрямить модель относительно земли.
+   *
+   * Выгрузки из редактора приходят с небольшим завалом: у деревенского пака
+   * дома стоят криво на градус-три, и на ровной мостовой это видно глазом —
+   * дом будто оседает набок. Доворачиваем **минимально**: собственную
+   * вертикаль модели совмещаем с мировой, а разворот вокруг неё не трогаем.
+   */
+  upright?: boolean;
+  /**
    * Взять из файла один узел по имени и выбросить остальное.
    *
    * Нужно для паков: деревенские дома приехали восемью строениями в одной
@@ -123,6 +132,8 @@ const VILLAGE: ModelSpec[] = (
   source: VILLAGE_PACK,
   output,
   pick,
+  // Дома в паке завалены на градус-три — на мостовой это видно глазом.
+  upright: true,
   normalize: { height },
 }));
 
@@ -167,6 +178,36 @@ const MODELS: ModelSpec[] = [
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(2)} МБ`;
 
+/** Повернуть вектор кватернионом. */
+function rotate(q: number[] | Float32Array, v: [number, number, number]): [number, number, number] {
+  const [x, y, z, w] = [q[0]!, q[1]!, q[2]!, q[3]!];
+  const [vx, vy, vz] = v;
+  // t = 2 * (q.xyz × v), результат = v + w*t + q.xyz × t
+  const tx = 2 * (y * vz - z * vy);
+  const ty = 2 * (z * vx - x * vz);
+  const tz = 2 * (x * vy - y * vx);
+  return [
+    vx + w * tx + (y * tz - z * ty),
+    vy + w * ty + (z * tx - x * tz),
+    vz + w * tz + (x * ty - y * tx),
+  ];
+}
+
+/** Произведение кватернионов: сперва `b`, потом `a`. */
+function multiply(
+  a: [number, number, number, number],
+  b: number[] | Float32Array,
+): [number, number, number, number] {
+  const [ax, ay, az, aw] = a;
+  const [bx, by, bz, bw] = [b[0]!, b[1]!, b[2]!, b[3]!];
+  return [
+    aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw,
+    aw * bw - ax * bx - ay * by - az * bz,
+  ];
+}
+
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   'draco3d.encoder': await draco3d.createEncoderModule(),
   'draco3d.decoder': await draco3d.createDecoderModule(),
@@ -185,6 +226,7 @@ for (const {
   simplifyError,
   texture,
   pick,
+  upright,
 } of MODELS) {
   const input = source;
   const target = resolve(OUTPUT, output);
@@ -209,6 +251,57 @@ for (const {
     }
     scene.addChild(found);
     await document.transform(prune());
+  }
+
+  /**
+   * Выпрямление — до нормализации: она меряет габариты, а у заваленного
+   * дома они шире и выше настоящих.
+   */
+  if (upright) {
+    for (const node of root.listNodes()) {
+      const q = node.getRotation();
+      // Куда смотрит собственная вертикаль модели после её поворота.
+      const up = rotate(q, [0, 1, 0]);
+      /**
+       * Цель — **ближайшая** мировая вертикаль, а не всегда «вверх».
+       *
+       * У половины пака геометрия построена вверх ногами в своих осях:
+       * её ось Y смотрит вниз, а дом при этом стоит правильно. Тяни такую
+       * к (0, 1, 0) — и дом встанет на крышу.
+       */
+      const facing = up[1] >= 0 ? 1 : -1;
+      const dot = Math.min(1, Math.max(-1, up[1] * facing));
+      if (dot > 0.99999) continue;
+
+      const angle = Math.acos(dot);
+      const length = Math.hypot(up[0], up[2]);
+      if (length < 1e-9) continue;
+
+      /**
+       * Ось доворота берём **проверкой, а не выводом знака**.
+       *
+       * Направление зависит и от того, куда завалено, и от того, вверх или
+       * вниз смотрит собственная вертикаль модели; ошибиться в знаке легко,
+       * а ошибка бесшумная — дом остаётся кривым ровно настолько же.
+       * Поэтому считаем оба поворота и берём тот, после которого вертикаль
+       * ближе к мировой.
+       */
+      const half = Math.sin(angle / 2) / length;
+      const best = [1, -1]
+        .map((sign) => {
+          const fix: [number, number, number, number] = [
+            -up[2] * sign * half,
+            0,
+            up[0] * sign * half,
+            Math.cos(angle / 2),
+          ];
+          const next = multiply(fix, q);
+          return { next, straight: Math.abs(rotate(next, [0, 1, 0])[1]) };
+        })
+        .sort((a, b) => b.straight - a.straight)[0]!;
+
+      node.setRotation(best.next);
+    }
   }
 
   if (normalize) {

@@ -37,6 +37,43 @@ export function boxFromCenter(cx: number, cy: number, cz: number, sx: number, sy
   };
 }
 
+/**
+ * Пересекает ли отрезок коробку.
+ *
+ * Плитный тест (slab): по каждой оси считаем, на каком участке пути отрезок
+ * находится внутри полосы коробки, и смотрим, есть ли у трёх участков общая
+ * часть. Нужен, чтобы понять, **видно ли одно из другого** — стоит ли между
+ * ними стена.
+ */
+export function segmentHitsAabb(
+  from: Vec3,
+  to: Vec3,
+  box: Aabb,
+): boolean {
+  const axes: [number, number, number, number, number, number][] = [
+    [from.x, to.x, box.minX, box.maxX, 0, 0],
+    [from.y, to.y, box.minY, box.maxY, 0, 0],
+    [from.z, to.z, box.minZ, box.maxZ, 0, 0],
+  ];
+
+  let enter = 0;
+  let exit = 1;
+  for (const [start, end, low, high] of axes) {
+    const delta = end - start;
+    // Отрезок идёт поперёк этой оси: либо он весь внутри полосы, либо мимо.
+    if (Math.abs(delta) < 1e-9) {
+      if (start < low || start > high) return false;
+      continue;
+    }
+    const first = (low - start) / delta;
+    const second = (high - start) / delta;
+    enter = Math.max(enter, Math.min(first, second));
+    exit = Math.min(exit, Math.max(first, second));
+    if (enter > exit) return false;
+  }
+  return true;
+}
+
 export function aabbOverlap(a: Aabb, b: Aabb): boolean {
   return (
     a.minX < b.maxX &&
