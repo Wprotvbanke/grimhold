@@ -1,6 +1,13 @@
 import type { CharacterClass } from './classes.js';
 import { FIST_STAMINA_SCALE } from './combat.js';
-import { ITEMS, itemDef, spellPowerOf, type EquipSlot, type ItemId } from './items.js';
+import {
+  ITEMS,
+  itemDef,
+  spellPowerOf,
+  spellRangeOf,
+  type EquipSlot,
+  type ItemId,
+} from './items.js';
 
 /**
  * Инвентарь-сетка.
@@ -396,6 +403,15 @@ export function weaponDamageOf(equipment: Equipment): number {
  */
 export function spellFocusOf(equipment: Equipment): number {
   return spellPowerOf(equipment.mainHand?.defId ?? null);
+}
+
+/**
+ * Во сколько раз надетое удлиняет полёт заклинаний.
+ *
+ * Только полёт: кольцо вокруг себя остаётся тем же, с посохом и без.
+ */
+export function spellReachOf(equipment: Equipment): number {
+  return spellRangeOf(equipment.mainHand?.defId ?? null);
 }
 
 /**

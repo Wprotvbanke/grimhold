@@ -74,6 +74,15 @@ export interface ItemDef {
    * новые показатели, когда они появятся.
    */
   spellPower?: number;
+  /**
+   * Во сколько раз вещь удлиняет полёт заклинаний.
+   *
+   * Касается **только того, что летит вдаль** — шара и всего, что появится
+   * после него. Кольца вокруг себя (стужа, лечение, каменная кожа) посохом
+   * не ширятся: это решение владельца — восьмиметровое кольцо есть кольцо,
+   * а не дальнобойность.
+   */
+  spellRange?: number;
   /** Броня: складывается со всей надетой и режет урон в applyDamage. */
   armor?: number;
   toolKind?: ToolKind;
@@ -397,6 +406,8 @@ const ITEM_LIST: ItemDef[] = [
     swing: 2,
     /** Втрое к силе свитков — ради этого посох и носят. */
     spellPower: 3,
+    /** И вдвое к дальности полёта: без посоха шар летит вдвое ближе. */
+    spellRange: 2,
     description:
       'Древко в рост человека. Оружие из него дурное, зато заклинания с ним бьют втрое сильнее.',
   },
@@ -583,6 +594,12 @@ export function spellPowerOf(defId: string | null | undefined): number {
   return itemDef(defId).spellPower ?? BARE_SPELL_POWER;
 }
 
+/** Во сколько раз эта вещь удлиняет полёт заклинаний. */
+export function spellRangeOf(defId: string | null | undefined): number {
+  if (!defId || !isItemId(defId)) return BARE_SPELL_POWER;
+  return itemDef(defId).spellRange ?? BARE_SPELL_POWER;
+}
+
 /**
  * Характеристики вещи строками — для подсказки и любого будущего экрана.
  *
@@ -599,7 +616,10 @@ export function itemStats(id: ItemId): string[] {
     const gain = Math.round((def.spellPower / BARE_SPELL_POWER - 1) * 100);
     lines.push(`Урон магии: +${gain}%`);
   }
-  if (def.swing && def.swing > 1) lines.push(`Удар длиннее кулачного в ${def.swing} раза`);
+  if (def.spellRange && def.spellRange !== BARE_SPELL_POWER) {
+    const gain = Math.round((def.spellRange / BARE_SPELL_POWER - 1) * 100);
+    lines.push(`Дальность магии: +${gain}%`);
+  }
   if (def.armor) lines.push(`Броня: ${def.armor}`);
   if (def.restoreHealth) lines.push(`Жизнь: +${def.restoreHealth}`);
   if (def.restoreStamina) lines.push(`Стамина: +${def.restoreStamina}`);

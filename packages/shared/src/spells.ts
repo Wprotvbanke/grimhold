@@ -85,7 +85,8 @@ export const SPELLS: Record<SpellId, SpellProfile> = {
     castTime: 0.6,
     cooldown: 1.2,
     power: 9,
-    range: 40,
+    // Дальность тоже «без посоха»: с посохом шар снова летит на сорок.
+    range: 20,
     projectileSpeed: 28,
   },
   frost: {

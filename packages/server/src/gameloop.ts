@@ -31,6 +31,7 @@ import {
   step,
   weaponDamageOf,
   spellFocusOf,
+  spellReachOf,
   weightSpeedFactor,
   findByDefId,
   type CombatEvent,
@@ -563,6 +564,8 @@ function castSpell(world: World, caster: Player, spellId: SpellId, outbox: Outbo
    * со своей силой.
    */
   const focus = spellFocusOf(caster.equipment);
+  // И дальность полёта — только у того, что летит вдаль.
+  const reach = spellReachOf(caster.equipment);
 
   if (spell.shape === 'projectile') {
     world.projectiles.push(
@@ -573,6 +576,7 @@ function castSpell(world: World, caster: Player, spellId: SpellId, outbox: Outbo
         caster.pitch,
         skillLevel,
         focus,
+        reach,
       ),
     );
     return;

@@ -76,6 +76,7 @@ export function createProjectile(
   pitch: number,
   skillLevel: number,
   focus = 1,
+  reach = 1,
 ): Projectile {
   const spell = SPELLS[spellId];
   const speed = spell.projectileSpeed ?? 20;
@@ -106,7 +107,14 @@ export function createProjectile(
       z: owner.pos.z + dir.z * 0.6,
     },
     velocity: { x: dir.x * speed, y: dir.y * speed, z: dir.z * speed },
-    lifetime: spell.range / speed,
+    /**
+     * Живёт ровно столько, сколько летит на свою дальность.
+     *
+     * Дальность зависит от того, что в руке: без посоха шар гаснет вдвое
+     * ближе. Считается при вылете, как и сила: смена руки в полёте ничего
+     * уже не меняет.
+     */
+    lifetime: (spell.range * reach) / speed,
     skillLevel,
     casterAttributes: owner.attributes,
     casterFocus: focus,
