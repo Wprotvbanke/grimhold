@@ -229,15 +229,7 @@ function setBar(id: string, current: number, max: number): void {
   const fill = bar.querySelector('i') as HTMLElement;
   const text = bar.querySelector('span') as HTMLElement;
   const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
-  /**
-   * Двигаем **пустоту**, а не заливку.
-   *
-   * Полоса — картинка клинка целиком, и тянуть её по остатку значило бы
-   * растягивать рисунок. Вместо этого справа лежит затемнение шириной
-   * в недостающую часть: клинок остаётся собой, а пустой жёлоб выглядит
-   * так же, как на исходнике владельца.
-   */
-  fill.style.width = `${(1 - ratio) * 100}%`;
+  fill.style.transform = `scaleX(${ratio})`;
   text.textContent = `${Math.round(current)} / ${max}`;
 }
 
