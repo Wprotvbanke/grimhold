@@ -315,40 +315,51 @@
       }
 
       /* ---------- бой ---------- */
+      /*
+       * Полосы стоят там же, где стояли, — внизу по центру, под панелью.
+       * Ширина и высота держат пропорции клинка (примерно 9 к 1): сплющенный
+       * клинок читается полоской из старого интерфейса, а не оружием.
+       */
       #vitals {
-        position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
-        width: min(420px, 62vw); z-index: 7; pointer-events: none;
+        position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+        width: min(460px, 66vw); z-index: 7; pointer-events: none;
       }
+      /*
+       * Полосы — клинки: рисунок владельца, по клинку на каждую.
+       *
+       * Картинка всегда полная, а **пустоту рисует затемнение справа**
+       * (`.bar > i`): так нужен один кадр на полосу вместо двух, полного
+       * и пустого, и остриё с рисунком остаются авторскими на любом
+       * остатке. Затемнение обесцвечивает то, что под ним, — ровно как
+       * выглядит пустой жёлоб на исходнике.
+       */
       .bar {
-        position: relative; height: 13px; margin-bottom: 4px; border-radius: 2px;
-        background: rgba(6, 6, 8, 0.75); border: 1px solid #2b2721; overflow: hidden;
+        position: relative; height: 30px; margin-bottom: -2px;
+        background: center / 100% 100% no-repeat;
       }
       .bar > i {
-        display: block; height: 100%; width: 100%; transform-origin: left center;
-        transition: transform 0.12s linear;
+        position: absolute; right: 0; top: 0; height: 100%; width: 0;
+        display: block; transition: width 0.12s linear;
+        background: rgba(12, 9, 8, 0.55);
+        backdrop-filter: grayscale(1) brightness(0.5);
       }
       .bar > span {
-        position: absolute; inset: 0; text-align: center; font-size: 10px;
-        line-height: 13px; color: #e2d9c4; text-shadow: 0 1px 2px #000;
+        position: absolute; inset: 0; text-align: center; font-size: 11px;
+        line-height: 30px; color: #f1e7cf; text-shadow: 0 1px 3px #000, 0 0 6px #000;
       }
-      #barHealth > i { background: linear-gradient(90deg, #8d2f2a, #c14b3f); }
-      #barStamina > i { background: linear-gradient(90deg, #6f6321, #b6a244); }
-      #barMana > i { background: linear-gradient(90deg, #29497f, #4a7ec0); }
-      /* Идёт лечение: полоса жизни отзывается зелёным.
-         Свечение снаружи и лёгкая зелень внутри — чтобы было видно
-         и в бою, и когда полоса почти полна. */
+      #barHealth { background-image: url("/textures/bar_health.webp"); }
+      #barStamina { background-image: url("/textures/bar_stamina.webp"); }
+      #barMana { background-image: url("/textures/bar_mana.webp"); }
+      /* Идёт лечение: полоса жизни отзывается зелёным свечением вокруг
+         клинка — видно и в бою, и когда полоса почти полна. */
       #barHealth.healing {
-        border-color: #3f7a45;
-        box-shadow: 0 0 10px rgba(86, 196, 108, 0.55);
-      }
-      #barHealth.healing > i {
-        background: linear-gradient(90deg, #4f7a34, #7fc061);
+        filter: drop-shadow(0 0 8px rgba(86, 196, 108, 0.85));
       }
 
       /* Панель горячих клавиш висит поверх рюкзака: в неё кладут вещи
          перетаскиванием, и она обязана оставаться видимой. */
       #hotbar {
-        position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%);
+        position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%);
         display: flex; gap: 6px; z-index: 14;
       }
       .hot {
