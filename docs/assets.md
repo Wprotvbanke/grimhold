@@ -22,6 +22,7 @@
 | `public/textures/*_{normal,arm}.webp` | Poly Haven, те же ассеты: нормали (`nor_gl`) и ARM в 1K, собраны `scripts/prepare-surfaces.ts` | CC0 |
 | `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
 | `public/sounds/bow_shot_{1..4}.wav` · `bow_draw_{1,2}.wav` | «Medieval sound effects — Weapon Textures» (Ben Jaszczak, Brian Nelson; OpenGameArt): дубли «English Longbow Shoot», «Scythian Recurve Shoot» и отрывки «… Draw», вырезаны из 192 кГц/24 бит в моно 22 кГц скриптом без ffmpeg (`D:\Git\shots\snd\cutbow.cjs`). Заменили интерфейсный «щипок» Kenney (`pluck_*.ogg` удалены) | CC0 |
+| `public/sounds/blessing.wav` | «Magic Words + Healing Sound Effect» (Spring Spring / Julie Damsgaard, OpenGameArt) — `health_restore.wav`, арфа; первые 2 с, моно 22 кГц, скрипт `D:\Git\shots\snd\cutbless.cjs`; звук медитации | CC0 |
 | `public/sounds/spell_whisper_{1,2,3}.wav` | шёпот-заговор при касте: три отрывка по 1 с (были 1.7, владелец укоротил) из «Creepy Incoherent Chanting» (OwlishMedia, OpenGameArt), вырезаны и ужаты до моно 22 кГц скриптом без ffmpeg; 73 КБ каждый | CC0 |
 | `public/sounds/*.ogg` | Kenney: [Interface Sounds](https://kenney.nl/assets/interface-sounds), [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio); лицензии рядом, `LICENSE-kenney-*.txt` | CC0 |
 | `public/sounds/dungeon_ambient.ogg` | [Loopable Dungeon Ambience](https://opengameart.org/content/loopable-dungeon-ambience), OpenGameArt | CC0 |

@@ -94,6 +94,12 @@ export const SOUNDS = {
    * это не заклинание, а бормотание в пустоту, соседям слышать нечего.
    */
   manaEmpty: { files: ['spell_whisper_1.wav'], volume: 0.4, positional: false, detune: 0.04 },
+  /**
+   * Свиток медитации: благословение — короткий перебор арфы, спокойный,
+   * «звук чуда», как просил владелец (Spring Spring, OpenGameArt, CC0).
+   * Своё и плоское: медитацию соседи в снапшоте не видят.
+   */
+  blessing: { files: ['blessing.wav'], volume: 0.45, positional: false, detune: 0.03 },
   /** Попадание — удар кулака. Вдвое тише первоначального 0.8: глушил бой. */
   hit: { files: five('impactPunch_medium'), volume: 0.4, positional: true, near: 2, far: 25, detune: 0.08 },
 

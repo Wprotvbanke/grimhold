@@ -57,6 +57,14 @@ describe('звуки вылазки', () => {
     expect(heard.filter((id) => id === 'gong')).toHaveLength(1);
   });
 
+  it('благословение звучит один раз, когда сел медитировать', () => {
+    const { atmosphere, heard } = listen();
+    atmosphere.self(state({ meditating: false }), false);
+    for (let tick = 0; tick < 5; tick++) atmosphere.self(state({ meditating: true }), false);
+    atmosphere.self(state({ meditating: false }), false);
+    expect(heard.filter((id) => id === 'blessing')).toHaveLength(1);
+  });
+
   it('в зал с давно убитым хозяином гонг не звучит', () => {
     const { atmosphere, heard } = listen();
     atmosphere.moved();

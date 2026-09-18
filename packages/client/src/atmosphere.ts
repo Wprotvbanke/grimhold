@@ -79,11 +79,13 @@ export function createAtmosphere(sound: Sound): Atmosphere {
   let portalsOpen = false;
   let winded = false;
   let burning = false;
+  let meditating = false;
 
   function forget(): void {
     bossAlive = null;
     portalsOpen = false;
     winded = false;
+    meditating = false;
   }
 
   return {
@@ -117,6 +119,12 @@ export function createAtmosphere(sound: Sound): Atmosphere {
       const tired = state.exhausted > 0;
       if (tired && !winded) sound.play('breath');
       winded = tired;
+
+      // Сел медитировать — благословение. Звучит начало, а не состояние:
+      // медитация висит в снапшоте всё время, пока сидишь.
+      const calm = state.meditating === true;
+      if (calm && !meditating) sound.play('blessing');
+      meditating = calm;
 
       const lit = torchInHand && state.light > 0 && state.alive;
       if (lit && !burning) sound.startLoop('torch', 'torch');
