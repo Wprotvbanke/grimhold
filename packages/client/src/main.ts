@@ -86,6 +86,8 @@ import { ViewModel } from './viewmodel.js';
 const SERVER_URL = `ws://${location.hostname}:8080`;
 
 const hud = document.getElementById('hud')!;
+/** Своя мана по последнему снапшоту: по ней отказ свитка звучит сразу под пальцем. */
+let selfMana = Infinity;
 /**
  * Лицо в окне панели и компас в её правом камне.
  *
@@ -639,8 +641,17 @@ function useHotbar(index: number): void {
    * и намерение уходит в любом случае: замах — это картинка, а не разрешение.
    */
   const spellId = inventoryUi.spellAt(index);
-  // Шёпот заговора — вместе с руками: если замах не начался, молчим.
-  if (spellId && SPELLS[spellId].shape !== 'channel' && game.hands.beginAction('cast', spellId)) {
+  /**
+   * Маны нет — посох не машет, звучит отказ.
+   *
+   * Считается по свежему снапшоту, а не по ответу сервера: ответ придёт
+   * через полпинга, а бормотание должно быть сразу под пальцем. Сервер всё
+   * равно откажет сам — намерение уходит как обычно.
+   */
+  if (spellId && SPELLS[spellId].manaCost > 0 && selfMana < SPELLS[spellId].manaCost) {
+    cues.ownCastRefused();
+  } else if (spellId && SPELLS[spellId].shape !== 'channel' && game.hands.beginAction('cast', spellId)) {
+    // Шёпот заговора — вместе с руками: если замах не начался, молчим.
     cues.ownCast();
   }
 
@@ -1532,6 +1543,7 @@ function consumeSnapshot(): void {
 
   game.predictor.reconcile(newest.self, newest.ack);
   combatUi.updateVitals(newest.self);
+  selfMana = newest.self.mana;
   // Выработанные ноды: клиент знает про них всё, кроме того, взяли ли с них
   // урожай, — это единственное, что приходит с сервера.
   world.nodes.setDepleted(newest.depletedNodes);

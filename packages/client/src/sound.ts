@@ -78,7 +78,8 @@ export const SOUNDS = {
    * и по нему чужой замах звучит шёпотом, а не взмахом.
    */
   castWhisper: {
-    files: ['spell_whisper_1.wav', 'spell_whisper_2.wav', 'spell_whisper_3.wav'],
+    // Первый отрывок владелец отдал под «нет маны» (см. manaEmpty).
+    files: ['spell_whisper_2.wav', 'spell_whisper_3.wav'],
     // Было 0.5; владелец послушал и попросил на пятую часть тише.
     volume: 0.4,
     positional: true,
@@ -87,6 +88,12 @@ export const SOUNDS = {
     detune: 0.06,
     lowpass: 3800,
   },
+  /**
+   * Маны нет, а свиток жмут снова — так решил владелец: первый из трёх
+   * отрывков заговора звучит **отказом**, а не чтением. Своё и плоское:
+   * это не заклинание, а бормотание в пустоту, соседям слышать нечего.
+   */
+  manaEmpty: { files: ['spell_whisper_1.wav'], volume: 0.4, positional: false, detune: 0.04 },
   /** Попадание — удар кулака. Вдвое тише первоначального 0.8: глушил бой. */
   hit: { files: five('impactPunch_medium'), volume: 0.4, positional: true, near: 2, far: 25, detune: 0.08 },
 

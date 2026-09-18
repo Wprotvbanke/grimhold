@@ -46,6 +46,8 @@ export interface Cues {
   ownAction(kind: ActionKind, bowInHand: boolean): void;
   /** Своё заклинание началось — руки дёрнулись с посохом. Шёпот сразу, как и взмах. */
   ownCast(): void;
+  /** Свиток нажат, а маны нет: бормотание в пустоту вместо заговора. */
+  ownCastRefused(): void;
   combat(event: CombatEvent): void;
   /**
    * Чужие замахи — по свежему снапшоту. Сущности уже опознанные: вид моба
@@ -76,6 +78,10 @@ export function createCues(sound: Sound): Cues {
 
     ownCast() {
       sound.play('castWhisper');
+    },
+
+    ownCastRefused() {
+      sound.play('manaEmpty');
     },
 
     combat(event) {
