@@ -46,6 +46,7 @@ const FRAGMENT = /* glsl */ `
 uniform float curvature;
 uniform float vignette;
 uniform float scanroll;
+uniform float scanBase;
 uniform float wiggle;
 uniform float frame;
 uniform float motion;
@@ -115,8 +116,14 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 
   float st = t * scanroll;
 
-  /* Строки развёртки */
-  float scans = clamp(0.35 + 0.18 * sin(6.0 * st - curvedUv.y * resolution.y * 1.5), 0.0, 1.0);
+  /*
+   * Строки развёртки.
+   *
+   * В оригинале база 0.35: строки гасили кадр почти втрое, и ночью в городе
+   * не было видно ничего. Владелец попросил светлее — база поднята, размах
+   * оставлен: строки видны, но света не отнимают.
+   */
+  float scans = clamp(scanBase + 0.18 * sin(6.0 * st - curvedUv.y * resolution.y * 1.5), 0.0, 1.0);
   col *= pow(scans, 0.9);
 
   /* Маска: вертикальные полосы люминофора */
@@ -147,9 +154,14 @@ export interface CrtOptions {
   scanroll: number;
   /** Помехи (дрожание строк): 0 или 1. */
   wiggle: number;
+  /**
+   * Яркость между строками, 0…1. В оригинале 0.35 — и кадр гас почти втрое;
+   * владелец попросил светлее, ночью в городе не было видно ничего.
+   */
+  scanBase: number;
 }
 
-const DEFAULTS: CrtOptions = { curvature: 2, vignette: 1, scanroll: 1, wiggle: 0 };
+const DEFAULTS: CrtOptions = { curvature: 2, vignette: 1, scanroll: 1, wiggle: 0, scanBase: 0.65 };
 
 export class CrtEffect extends Effect {
   constructor(options: Partial<CrtOptions> = {}) {
@@ -169,6 +181,7 @@ export class CrtEffect extends Effect {
         ['curvature', new THREE.Uniform(settings.curvature)],
         ['vignette', new THREE.Uniform(settings.vignette)],
         ['scanroll', new THREE.Uniform(settings.scanroll)],
+        ['scanBase', new THREE.Uniform(settings.scanBase)],
         ['wiggle', new THREE.Uniform(settings.wiggle)],
         ['frame', new THREE.Uniform(0)],
         ['motion', new THREE.Uniform(still ? 0 : 1)],
