@@ -14,6 +14,7 @@
  * - текстуры: у дома девять по 1024 на 9.7 МБ, у ратуши одна 2048. Всё
  *   в webp не больше 1024.
  */
+import { BANK_STATUE } from '@grimhold/shared';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRMaterialsUnlit } from '@gltf-transform/extensions';
 import {
@@ -149,7 +150,7 @@ const MODELS: ModelSpec[] = [
   {
     source: `${DESKTOP}/Statue_Angel/Statue_Angel.glb`,
     output: 'statue_angel.glb',
-    normalize: { height: 4 },
+    normalize: { height: BANK_STATUE.height },
   },
   // Городские стены: вышка, пролёт, арка и две створки — части ставит houses.ts
   // по именам, поэтому не сливаются.
