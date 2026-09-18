@@ -397,6 +397,10 @@ const HOUSE = {
   seven: { minX: -6.9, maxX: 6.9, minZ: -5.2, maxZ: 5.2 },
   /** Двухэтажный с галереей, 8 м. */
   eight: { minX: -3.6, maxX: 3.6, minZ: -3.6, maxZ: 3.6 },
+  /** Жилой с деревянным вторым этажом, 9 м — отдельная модель владельца. */
+  nine: { minX: -3.7, maxX: 3.7, minZ: -3.9, maxZ: 3.9 },
+  /** Ратуша, 11 м — уже домов пака и выше всех их. */
+  hall: { minX: -2.9, maxX: 2.9, minZ: -2.5, maxZ: 2.5 },
   /** Лавка на колёсах у люка — сюжетная, осталась от прежней застройки. */
   wagon: { minX: -1.2, maxX: 1.2, minZ: -2.6, maxZ: 2.3 },
 } as const;
@@ -431,6 +435,8 @@ export const TOWN_HOUSES: readonly {
     | 'village_house6'
     | 'village_house7'
     | 'village_house8'
+    | 'village_house9'
+    | 'town_hall'
     | 'wagon';
   x: number;
   z: number;
@@ -472,7 +478,8 @@ export const TOWN_HOUSES: readonly {
   // Юго-восток: вдоль восточной улицы, фасадом на север.
   { model: 'village_house4', x: 25, z: 10.5, turn: Math.PI, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.four },
   // Юго-восток: вдоль южной улицы, фасадом на запад.
-  { model: 'village_house8', x: 11, z: 15, turn: -Math.PI / 2, height: 8, sink: VILLAGE_SINK, footprint: HOUSE.eight },
+  // Здесь стоял дом с галереей — владелец заменил его ратушей со своей моделью.
+  { model: 'town_hall', x: 11, z: 15, turn: -Math.PI / 2, height: 11, sink: VILLAGE_SINK, footprint: HOUSE.hall },
   { model: 'village_house5', x: 13, z: 29, turn: -Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.five },
 
   // Юго-запад: вдоль западной улицы, фасадом на север.
@@ -484,7 +491,8 @@ export const TOWN_HOUSES: readonly {
    * мостовой, и владелец поменял его местами с узким двухэтажным из
    * северо-западного квартала.
    */
-  { model: 'village_house4', x: -13, z: 14, turn: Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.four },
+  // И здесь — вместо узкого двухэтажного встал жилой из его же выгрузки.
+  { model: 'village_house9', x: -13, z: 14, turn: Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.nine },
   { model: 'village_house1', x: -11.5, z: 28, turn: Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.one },
 
   // Северо-запад, за таверной: вдоль северной улицы, фасадом на восток.

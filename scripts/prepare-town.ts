@@ -14,6 +14,28 @@
  * - текстуры: у дома девять по 1024 на 9.7 МБ, у ратуши одна 2048. Всё
  *   в webp не больше 1024.
  */
+/**
+ * Заглушка DOM — ради выгрузок FBX.
+ *
+ * `FBXLoader` заводит <img> под каждую зашитую текстуру, а `GLTFExporter`
+ * собирает GLB через Blob и FileReader — в node нет ни того, ни другого.
+ * Та же заглушка, что в `prepare-weapon.ts`.
+ */
+(globalThis as unknown as { document: unknown }).document = {
+  createElementNS: () => ({ addEventListener() {}, removeEventListener() {}, style: {} }),
+  createElement: () => ({ addEventListener() {}, removeEventListener() {}, style: {} }),
+};
+(globalThis as unknown as { FileReader: unknown }).FileReader = class {
+  result: ArrayBuffer | null = null;
+  onloadend: (() => void) | null = null;
+  readAsArrayBuffer(blob: Blob): void {
+    void blob.arrayBuffer().then((buffer) => {
+      this.result = buffer;
+      this.onloadend?.();
+    });
+  }
+};
+
 import { BANK_STATUE } from '@grimhold/shared';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRMaterialsUnlit } from '@gltf-transform/extensions';
@@ -32,7 +54,7 @@ import {
 import { MeshoptSimplifier } from 'meshoptimizer';
 import draco3d from 'draco3dgltf';
 import sharp from 'sharp';
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -152,6 +174,16 @@ const MODELS: ModelSpec[] = [
     output: 'statue_angel.glb',
     normalize: { height: BANK_STATUE.height },
   },
+  /*
+   * Два здания от владельца на смену двум домам пака — выгрузки FBX.
+   *
+   * Ратуша становится доминантой юго-восточного квартала, дом —
+   * обычный жилой на западе. Рост задан здесь, пятно считается
+   * по собранной модели и живёт в `HOUSE` (`shared/src/level.ts`).
+   */
+  { source: `${DESKTOP}/House_Village/TownHall.fbx`, output: 'town_hall.glb', normalize: { height: 11 } },
+  { source: `${DESKTOP}/House_Village/House.fbx`, output: 'village_house9.glb', normalize: { height: 9 } },
+
   // Городские стены: вышка, пролёт, арка и две створки — части ставит houses.ts
   // по именам, поэтому не сливаются.
   { source: `${DESKTOP}/walls/walls.glb`, output: 'walls.glb', keepParts: true },
@@ -186,6 +218,63 @@ const MODELS: ModelSpec[] = [
   // по росту босса (MOBS), здесь не трогаем.
   { source: `${DESKTOP}/Rat_Boss/rat.glb`, output: 'rat_king.glb', animated: true, simplifyTo: 0.2 },
 ];
+
+/** Картинка, зашитая в FBX: PNG или JPEG, по их собственным подписям. */
+function embeddedPicture(bytes: Buffer): Buffer {
+  const png = bytes.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (png >= 0) return bytes.subarray(png);
+  const jpeg = bytes.indexOf(Buffer.from([0xff, 0xd8, 0xff]));
+  if (jpeg >= 0) return bytes.subarray(jpeg);
+  throw new Error('в FBX нет зашитой картинки');
+}
+
+/**
+ * Выгрузка FBX → GLB в памяти.
+ *
+ * Владелец приносит здания и в FBX тоже, а весь остальной конвейер —
+ * сжатие текстур, слияние сеток, нормализация — умеет только glTF.
+ * Переводим на лету: промежуточный файл на диске однажды устареет
+ * и соберётся не тот дом.
+ *
+ * **Текстура идёт отдельно от геометрии.** `GLTFExporter` просит
+ * у текстуры настоящее <img> с пикселями, а в node его нет — экспорт
+ * падает на «No valid image data». Поэтому материалы здесь пересобираются
+ * без картинок, а саму картинку вынимаем из FBX и вкладываем уже в glTF
+ * — тот же путь, что у оружия (`prepare-weapon.ts`).
+ */
+async function fbxToGlb(path: string): Promise<{ glb: Uint8Array; picture: Buffer }> {
+  const THREE = await import('three');
+  const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
+  const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
+
+  const file = readFileSync(path);
+  const group = new FBXLoader().parse(
+    file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer,
+    path.slice(0, path.lastIndexOf('/') + 1),
+  );
+
+  group.traverse((node) => {
+    const mesh = node as unknown as { isMesh?: boolean; material?: unknown };
+    if (!mesh.isMesh) return;
+    const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const plain = list.map(
+      (material) =>
+        new THREE.MeshStandardMaterial({
+          name: (material as { name?: string }).name ?? 'building',
+          color: 0xffffff,
+          roughness: 0.9,
+          metalness: 0,
+        }),
+    );
+    mesh.material = plain.length === 1 ? plain[0]! : plain;
+  });
+
+  const scene = new THREE.Scene();
+  scene.add(group);
+
+  const glb = (await new GLTFExporter().parseAsync(scene, { binary: true })) as ArrayBuffer;
+  return { glb: new Uint8Array(glb), picture: embeddedPicture(file) };
+}
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(2)} МБ`;
 
@@ -241,7 +330,23 @@ for (const {
 } of MODELS) {
   const input = source;
   const target = resolve(OUTPUT, output);
-  const document = await io.read(input);
+  const fromFbx = input.toLowerCase().endsWith('.fbx') ? await fbxToGlb(input) : null;
+  const document = fromFbx ? await io.readBinary(fromFbx.glb) : await io.read(input);
+  if (fromFbx) {
+    /**
+     * У FBX начало развёртки внизу, у glTF — вверху: без переворота
+     * рисунок на стенах уезжает. То же самое было у топора.
+     */
+    const flipped = await sharp(fromFbx.picture).flip().png().toBuffer();
+    const skin = document
+      .createTexture(output.replace('.glb', ''))
+      .setImage(new Uint8Array(flipped))
+      .setMimeType('image/png');
+    for (const material of document.getRoot().listMaterials()) {
+      material.setBaseColorTexture(skin);
+      material.setBaseColorFactor([1, 1, 1, 1]);
+    }
+  }
   const root = document.getRoot();
   const before = root.listMeshes().length;
 
