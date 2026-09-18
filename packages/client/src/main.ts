@@ -111,7 +111,7 @@ const face = createPortrait(document.getElementById('faceCanvas') as HTMLCanvasE
   byRace: {
     // Человек подобран по дворфу, а не по кадру: за Ратмира играл владелец,
     // и второй вход скрипту не дался. Если в окне плечо — крутить здесь.
-    human: { shift: 0.01, aim: 0.88 },
+    human: { shift: 0.01, aim: 0.9, zoom: 1.35 },
     dwarf: { shift: -0.01, aim: 0.9 },
   },
 });
