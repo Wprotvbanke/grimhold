@@ -1,7 +1,8 @@
 /**
  * Подготовка зданий площади: ратуша и городской дом.
  *
- *   npx tsx scripts/prepare-town.ts
+ *   npx tsx scripts/prepare-town.ts            # все модели
+ *   npx tsx scripts/prepare-town.ts rain_cloud # только те, чьё имя файла так начинается
  *
  * Обе модели от владельца (выгрузки Sketchfab), уже в метрах и основанием
  * на нуле, фасадом с дверью в +Z. Но в игру как есть не годятся:
@@ -36,7 +37,7 @@
   }
 };
 
-import { BANK_STATUE } from '@grimhold/shared';
+import { BANK_STATUE, RAIN_CLOUD } from '@grimhold/shared';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRMaterialsUnlit } from '@gltf-transform/extensions';
 import {
@@ -229,7 +230,27 @@ const MODELS: ModelSpec[] = [
   // моба — в пять раз больше, чем нужно в полумраке зала. Размер задаёт игра
   // по росту босса (MOBS), здесь не трогаем.
   { source: `${DESKTOP}/Rat_Boss/rat.glb`, output: 'rat_king.glb', animated: true, simplifyTo: 0.2 },
+  /*
+   * Туча с дождём — проба над площадью (см. `RAIN_CLOUD` и docs/weather.md).
+   *
+   * Четыре облака, восемьдесят капель-треугольников и две молнии; всё это
+   * двигает один клип «Take 001» на 2.7 с — капли падают, облака плывут,
+   * молнии вспыхивают. Выгрузка в сотнях единиц: рост сводим к `RAIN_CLOUD`.
+   */
+  {
+    source: `${DESKTOP}/clouds_rain/Clouds_rain.glb`,
+    output: 'rain_cloud.glb',
+    normalize: { height: RAIN_CLOUD.height },
+    animated: true,
+  },
 ];
+
+/**
+ * Имена в командной строке — собрать только эти модели (по началу имени
+ * файла). Без них собирается всё: двадцать моделей и минуты ожидания ради
+ * одной новой тучи.
+ */
+const ONLY = process.argv.slice(2);
 
 /** Картинка, зашитая в FBX: PNG или JPEG, по их собственным подписям. */
 function embeddedPicture(bytes: Buffer): Buffer {
@@ -340,6 +361,7 @@ for (const {
   pick,
   upright,
 } of MODELS) {
+  if (ONLY.length && !ONLY.some((name) => output.startsWith(name))) continue;
   const input = source;
   const target = resolve(OUTPUT, output);
   const fromFbx = input.toLowerCase().endsWith('.fbx') ? await fbxToGlb(input) : null;

@@ -50,6 +50,7 @@
 | `public/models/human_exhibit.glb` · `elf_exhibit.glb` | от владельца проекта, персонажи и анимации из Mixamo (человек: стойка, ходьба, удар локтем, хип-хоп; эльф: стойка, бег, самба); собраны `scripts/prepare-exhibits.ts`, текстуры 2048 → 1024 webp, 825 и 524 КБ | со слов владельца; анимации Mixamo — по условиям Adobe |
 | `public/models/trapdoor.glb` | от владельца проекта, выгрузка Sketchfab — люк с крышкой и клипом открытия; 2.64 → 0.17 МБ, `scripts/prepare-town.ts` | CC, со слов владельца (вид не указан) |
 | `public/models/trapdoor_fog.glb` | от владельца проекта, выгрузка Sketchfab «new fog» — слои тумана; собран без слияния частей | CC, со слов владельца (вид не указан) |
+| `public/models/rain_cloud.glb` | от владельца проекта, выгрузка Sketchfab «Clouds rain» — туча с дождём и молниями, один клип; проба над площадью (docs/weather.md); 0.71 → 0.25 МБ, рост сведён к `RAIN_CLOUD.height`, `scripts/prepare-town.ts rain_cloud` | CC, со слов владельца (вид не указан) |
 | `public/models/rat_king.glb` | от владельца проекта, выгрузка Sketchfab — король крыс, облик хозяина глубины; 130 → 27 тыс. треугольников, 13.6 → 1.4 МБ | CC, со слов владельца (вид не указан) |
 | `public/models/gnome.glb` | от владельца проекта, собран `scripts/prepare-gnome.ts`; анимация — Mixamo | уточнить |
 | `public/models/dwarf_test.glb` | от владельца проекта, пробная модель на площади; собран `scripts/prepare-dwarf-test.ts`; модель и клипы — выгрузка Mixamo | уточнить |

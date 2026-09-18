@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BANK, DUNGEON_GATE, TAVERN, TOWN_HOUSES, TOWN_WALLS, townWallLayout } from '@grimhold/shared';
+import { BANK, DUNGEON_GATE, RAIN_CLOUD, TAVERN, TOWN_HOUSES, TOWN_WALLS, townWallLayout } from '@grimhold/shared';
 
 /**
  * Здания площади: ратуша и городской дом — готовые модели целиком.
@@ -18,7 +18,7 @@ import { BANK, DUNGEON_GATE, TAVERN, TOWN_HOUSES, TOWN_WALLS, townWallLayout } f
 export interface Houses {
   /** Уходит вместе с городом: см. `nearTown` в scene.ts. */
   readonly group: THREE.Group;
-  /** Каждый кадр у города: кружит туман над люком. */
+  /** Каждый кадр у города: кружит туман над люком, гонит дождь из тучи. */
   update(elapsed: number): void;
 }
 
@@ -55,8 +55,11 @@ export function createHouses(scene: THREE.Scene): Houses {
   scene.add(group);
   /** Слои тумана и скорость, с которой каждый кружит. */
   const fogLayers: { mesh: THREE.Object3D; speed: number }[] = [];
+  /** Клип тучи: капли, облака и молнии. Ставится по часам сцены, а не по шагу. */
+  let rain: { mixer: THREE.AnimationMixer; duration: number } | null = null;
   const update = (elapsed: number): void => {
     for (const { mesh, speed } of fogLayers) mesh.rotation.y = elapsed * speed;
+    if (rain) rain.mixer.setTime(elapsed % rain.duration);
   };
   if (typeof document === 'undefined') return { group, update };
 
@@ -111,6 +114,36 @@ export function createHouses(scene: THREE.Scene): Houses {
     },
     undefined,
     () => console.warn('[здания] не загрузилась /models/statue_angel.glb'),
+  );
+
+  /**
+   * Туча с дождём над площадью — проба владельца (`RAIN_CLOUD`).
+   *
+   * Клип у модели один и закольцован: капли падают, облака плывут, молнии
+   * вспыхивают. Тень кладут только облака: тень от капель и молний —
+   * мельтешение по мостовой, а не картинка.
+   */
+  loader.load(
+    '/models/rain_cloud.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      model.position.set(RAIN_CLOUD.x, RAIN_CLOUD.lift, RAIN_CLOUD.z);
+      const clip = gltf.animations[0];
+      if (clip) {
+        const mixer = new THREE.AnimationMixer(model);
+        mixer.clipAction(clip).play();
+        rain = { mixer, duration: clip.duration };
+      }
+      model.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = mesh.name.startsWith('cloud');
+        mesh.receiveShadow = false;
+      });
+      group.add(model);
+    },
+    undefined,
+    () => console.warn('[здания] не загрузилась /models/rain_cloud.glb'),
   );
 
   for (const house of TOWN_HOUSES) {

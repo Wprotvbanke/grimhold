@@ -96,7 +96,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | `npm run check` | тесты и типы всех пакетов и скриптов |
 | `npm test` · `npx vitest run <файл>` | юнит-тесты целиком или один файл |
 | `npm run e2e` · `combat` · `pvp` · `dungeon` · `inventory` · `harvest` · `craft` · `bank` · `trade` · `netcode` · `gate` | сквозные проверки |
-| `npx tsx scripts/prepare-*.ts` | пересобрать ассеты — см. [docs/assets.md](docs/assets.md) |
+| `npx tsx scripts/prepare-*.ts` | пересобрать ассеты — см. [docs/assets.md](docs/assets.md); `prepare-town.ts имя` — только названные модели |
 | `npx tsx scripts/screenshot.ts` | снимок игры браузером против запущенного `dev` |
 | `npm run roster` | сводка по населению мира |
 
@@ -154,7 +154,7 @@ npm run dev     # сервер ws://localhost:8080, клиент http://localhos
 | [docs/camera.md](docs/camera.md) | эффекты камеры: затемнения и вспышки поверх кадра, порядок слоёв |
 | [docs/crt.md](docs/crt.md) | эффект старого телевизора (F1, выключен по умолчанию): семь видов в коде, три предложены игроку; лицензии (GPL-шейдеры не берём), как переносить шейдер |
 | [docs/lobby.md](docs/lobby.md) | экран после входа: выбор персонажа, создание, фигура на заднике |
-| [docs/weather.md](docs/weather.md) | дождь, снег, времена года — чего ещё нет |
+| [docs/weather.md](docs/weather.md) | дождь, снег, времена года — чего ещё нет; пробная туча с дождём над площадью |
 | [docs/performance.md](docs/performance.md) | тормозит или дёргается; настройки картинки (F1); постобработка и свечение огня; добавляешь массовое |
 | [docs/sound.md](docs/sound.md) | звук: движок, пул голосов, громкость в F1, как добавить звук |
 | [docs/architecture.md](docs/architecture.md) | сеть, протокол, слой команд, пакеты, меню ведущего (F2) |
