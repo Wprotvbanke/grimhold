@@ -47,7 +47,6 @@ uniform float curvature;
 uniform float vignette;
 uniform float scanroll;
 uniform float scanBase;
-uniform float strength;
 uniform float wiggle;
 uniform float frame;
 uniform float motion;
@@ -141,15 +140,7 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
   col *= 1.0 - 0.004 * (sin(50.0 * t + curvedUv.y * 2.0) * 0.5 + 0.5);
 
   // Обратно в линейный: кодировать в sRGB будет сам проход.
-  vec3 effect = pow(max(col, 0.0), vec3(2.2));
-
-  /*
-   * Общая сила: смесь с чистым кадром **в той же выгнутой точке** — иначе
-   * два кадра расходятся по кривизне и двоятся. За краем экрана чисто чёрное.
-   */
-  vec3 clean = texture2D(inputBuffer, curvedUv).rgb;
-  if (curvedUv.x < 0.0 || curvedUv.x > 1.0 || curvedUv.y < 0.0 || curvedUv.y > 1.0) clean = vec3(0.0);
-  outputColor = vec4(mix(clean, effect, strength), inputColor.a);
+  outputColor = vec4(pow(max(col, 0.0), vec3(2.2)), inputColor.a);
 }
 `;
 
@@ -168,18 +159,9 @@ export interface CrtOptions {
    * владелец попросил светлее, ночью в городе не было видно ничего.
    */
   scanBase: number;
-  /** Общая сила, 0…1: смесь с чистым кадром. Владелец просил на четверть слабее. */
-  strength: number;
 }
 
-const DEFAULTS: CrtOptions = {
-  curvature: 2,
-  vignette: 1,
-  scanroll: 1,
-  wiggle: 0,
-  scanBase: 0.65,
-  strength: 0.75,
-};
+const DEFAULTS: CrtOptions = { curvature: 2, vignette: 1, scanroll: 1, wiggle: 0, scanBase: 0.65 };
 
 export class CrtEffect extends Effect {
   constructor(options: Partial<CrtOptions> = {}) {
@@ -200,7 +182,6 @@ export class CrtEffect extends Effect {
         ['vignette', new THREE.Uniform(settings.vignette)],
         ['scanroll', new THREE.Uniform(settings.scanroll)],
         ['scanBase', new THREE.Uniform(settings.scanBase)],
-        ['strength', new THREE.Uniform(settings.strength)],
         ['wiggle', new THREE.Uniform(settings.wiggle)],
         ['frame', new THREE.Uniform(0)],
         ['motion', new THREE.Uniform(still ? 0 : 1)],
