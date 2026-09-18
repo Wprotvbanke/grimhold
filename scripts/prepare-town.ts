@@ -181,7 +181,19 @@ const MODELS: ModelSpec[] = [
    * обычный жилой на западе. Рост задан здесь, пятно считается
    * по собранной модели и живёт в `HOUSE` (`shared/src/level.ts`).
    */
-  { source: `${DESKTOP}/House_Village/TownHall.fbx`, output: 'town_hall.glb', normalize: { height: 11 } },
+  {
+    source: `${DESKTOP}/House_Village/TownHall.fbx`,
+    output: 'town_hall.glb',
+    normalize: { height: 11 },
+    /**
+     * Текстура крупнее обычной — исключение для ратуши.
+     *
+     * В выгрузке она 4096, и весь рисунок — резьба, доски, переплёты окон —
+     * лежит в мелких деталях. На 512 она расползлась в кашу, и владелец забраковал.
+     * Здание одно на город, и лишние полтораста килобайт его стоят.
+     */
+    texture: 2048,
+  },
   { source: `${DESKTOP}/House_Village/House.fbx`, output: 'village_house9.glb', normalize: { height: 9 } },
 
   // Городские стены: вышка, пролёт, арка и две створки — части ставит houses.ts
