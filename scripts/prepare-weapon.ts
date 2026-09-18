@@ -62,6 +62,10 @@ const WEAPONS: WeaponSpec[] = [
   // Посох мага — вторая вещь в руке. Клип выстрела к нему лежит отдельно
   // и переносится в руки `prepare-sword.ts` (docs/hands.md).
   { source: `${DESKTOP}/Animacija_Staff/Staff.fbx`, output: 'staff.glb', material: 'Staff' },
+  // Охотничий лук — третья вещь, и первая в **левой** руке: в клипе владельца
+  // `Bow_Shot` лук держит левая, правая тянет тетиву. Модель 1.18 м, тетива
+  // в 18 см от рукояти по +X (это и есть высота базы настоящего лука).
+  { source: `${DESKTOP}/Bow/Bow.fbx`, output: 'bow.glb', material: 'Bow' },
 ];
 
 /** Картинка, зашитая в FBX: PNG сам себя обозначает подписью и меткой IEND. */

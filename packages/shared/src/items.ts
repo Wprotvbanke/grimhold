@@ -472,6 +472,8 @@ const ITEM_LIST: ItemDef[] = [
     slot: 'mainHand',
     damage: 18,
     skill: 'archery',
+    /** Натянуть и отпустить — вдвое дольше удара кулаком, как замах посоха. */
+    swing: 2,
     description: 'Бьёт издали. Требует стрел.',
   },
   { id: 'leather_cap', name: 'Кожаный шлем', kind: 'armor', width: 2, height: 2, weight: 0.8, stack: 1, tier: 2, slot: 'head', armor: 5 },

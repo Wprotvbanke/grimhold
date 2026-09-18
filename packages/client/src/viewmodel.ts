@@ -60,6 +60,7 @@ export type HandsClip =
   | 'punchLeft'
   | 'axeSwing'
   | 'staffCast'
+  | 'bowShot'
   | 'blockStart'
   | 'blockLoop'
   | 'blockStop'
@@ -78,6 +79,7 @@ const CLIP_NAMES: Record<HandsClip, string[]> = {
   punchLeft: ['Punch_L', 'Punch_2'],
   axeSwing: ['Sword_Slash'],
   staffCast: ['Staff_Shot'],
+  bowShot: ['Bow_Shot'],
   blockStart: ['Block_Start'],
   blockLoop: ['Block_Loop'],
   blockStop: ['Block_Stop'],
@@ -94,6 +96,7 @@ const ONCE: HandsClip[] = [
   'punchLeft',
   'axeSwing',
   'staffCast',
+  'bowShot',
   'blockStart',
   'blockStop',
   'takeStart',
@@ -121,6 +124,13 @@ const CAST_FALLBACK: ActionTiming = { windup: 0.5, active: 0.1, recovery: 0.4 };
  * **в предплечьях**, посадка считается каждый кадр, а на время замаха
  * запоминается.
  */
+/** Кости одной руки, нужные хвату. */
+interface Grip {
+  palm: THREE.Object3D;
+  hand: THREE.Bone;
+  knuckles: { index: THREE.Bone; pinky: THREE.Bone };
+}
+
 interface HeldSpec {
   /** Модель, собранная `prepare-weapon.ts`. */
   url: string;
@@ -158,6 +168,12 @@ interface HeldSpec {
   pull?: number;
   /** Насколько притушить материал: у вещей текстуры темнее кожи. */
   tint: number;
+  /**
+   * Какая рука держит. По умолчанию правая — топор и посох; лук держит
+   * левая, правая у него тянет тетиву. Хват, кость и поза пальцев берутся
+   * по этой стороне (см. `grips` и `fists`).
+   */
+  hand?: Side;
   /**
    * Чем вещь машет в бою и при чтении свитка.
    *
@@ -234,6 +250,17 @@ const STAFF_STAND = new THREE.Quaternion()
     ),
   );
 
+/**
+ * Как стоит лук: плечи по вертикали, тетива к стрелку.
+ *
+ * В модели тетива лежит по +X в 18 см от рукояти (высота базы настоящего
+ * лука), рукоять в начале координат. К стрелку — это +Z кадра, поэтому
+ * X модели ложится на +Z, а толщина (Z модели) — поперёк, на −X.
+ */
+const BOW_STAND = new THREE.Quaternion().setFromRotationMatrix(
+  new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), ALONG, new THREE.Vector3(-1, 0, 0)),
+);
+
 const HELD: Record<string, HeldSpec> = {
   crude_axe: {
     url: '/models/axe.glb',
@@ -287,6 +314,22 @@ const HELD: Record<string, HeldSpec> = {
      */
     swings: 'axeSwing',
     cast: 'staffCast',
+  },
+  hunting_bow: {
+    url: '/models/bow.glb',
+    model: 1.18,
+    /** В рост посоха: лук чуть длиннее, но в кадре держат его на вытянутой. */
+    forearms: 3.0,
+    /** Рукоять в начале координат модели — держат её середину. */
+    grip: new THREE.Vector3(0, 0, 0),
+    stand: BOW_STAND,
+    /** Левая рука: сдвиг внутрь кадра — вправо, плюс. Первая проба. */
+    shift: 0.1,
+    tint: 0.85,
+    /** Лук держит левая: в клипе владельца правая тянет тетиву. */
+    hand: 'L',
+    /** ЛКМ — выстрел клипом владельца; читать луком нечего. */
+    swings: 'bowShot',
   },
 };
 
@@ -342,13 +385,21 @@ const HANDS_TINT = 0.35;
  * оружие по-своему, и топор уходил наискось через весь кадр. Обхват берём
  * у владельца, а кисть доворачиваем под рукоять сами — см. holdAxe.
  */
-const FIST_BONES = /^DEF-(palm0[1234]R|f_(index|middle|ring|pinky)0[123]R|thumb0[123]R)(?!_end)/i;
+const fistBones = (side: Side): RegExp =>
+  new RegExp(`^DEF-(palm0[1234]${side}|f_(index|middle|ring|pinky)0[123]${side}|thumb0[123]${side})(?!_end)`, 'i');
 
-/** Клип, из которого берётся хват: стойка с оружием, сделанная владельцем. */
-const GRIP_CLIP = 'Sword_Idle';
+type Side = 'L' | 'R';
 
-/** В какой доле клипа берём позу: к середине стойка успевает устояться. */
-const FIST_MOMENT = 0.5;
+/**
+ * Откуда берётся хват каждой руки: клип владельца и доля клипа.
+ *
+ * Правая — стойка с мечом посередине. Левая — первый кадр выстрела из лука:
+ * это единственный клип, где левая что-то держит, и держит она там как раз лук.
+ */
+const GRIP_SOURCE: Record<Side, { clip: string; moment: number }> = {
+  R: { clip: 'Sword_Idle', moment: 0.5 },
+  L: { clip: 'Bow_Shot', moment: 0 },
+};
 
 /** В какой доле замаха топор внизу — там и заминка удара. */
 const SWING_HIT = 0.72;
@@ -395,7 +446,8 @@ export class ViewModel {
    * суставов рядом с ней выглядит сломанной — на этом уже обожглись
    * (см. docs/hands.md, «Тупики»).
    */
-  private readonly fist = new Map<THREE.Bone, THREE.Quaternion>();
+  /** Поза хвата каждой руки: пясти и фаланги из клипа владельца. */
+  private readonly fists: Record<Side, Map<THREE.Bone, THREE.Quaternion>> = { L: new Map(), R: new Map() };
 
   /** Кости плеч: ими руки разводятся в стороны поверх анимации. */
   private shoulders: { bone: THREE.Bone; axis: THREE.Vector3 }[] = [];
@@ -434,8 +486,16 @@ export class ViewModel {
   /** Уровень уклонения — приходит с прокачкой, см. `setEvasion`. */
   private evasion = 0;
   /** Лук в руке: с ним выстрел отыгрывается своим клипом, а не ударом. */
-  /** Кость ладони правой руки: к ней крепится то, что в руке. */
-  private palm: THREE.Object3D | null = null;
+  /** Кости хвата обеих рук: ладонь (подвес), кисть (доворот), костяшки (трубка). */
+  private readonly grips: Record<Side, Grip | null> = { L: null, R: null };
+  /** Ладонь той руки, что держит вещь сейчас. */
+  private get palm(): THREE.Object3D | null {
+    return this.grips[this.side]?.palm ?? null;
+  }
+  /** Какая рука держит текущую вещь. */
+  private get side(): Side {
+    return this.heldSpec?.hand ?? 'R';
+  }
   /** Модель вещи в кулаке — топора или посоха. Одна за раз. */
   private held: THREE.Object3D | null = null;
 
@@ -490,11 +550,6 @@ export class ViewModel {
 
   private swingPause = 0;
 
-  /** Кисть целиком: её доворачиваем под рукоять поверх позы хвата. */
-  private hand: THREE.Bone | null = null;
-
-  /** Основания указательного и мизинца — по ним считается трубка кулака. */
-  private knuckles: { index: THREE.Bone; pinky: THREE.Bone } | null = null;
 
   /** Был ли игрок на земле в прошлом кадре — по смене ловим прыжок. */
   private grounded = true;
@@ -717,10 +772,10 @@ export class ViewModel {
   private holdWeapon(dt: number): void {
     const held = this.held;
     const spec = this.heldSpec;
-    const palm = this.palm;
-    const knuckles = this.knuckles;
-    const hand = this.hand;
-    if (!held || !spec || !palm || this.forearm <= 0 || !knuckles) return;
+    const grip = spec ? this.grips[spec.hand ?? 'R'] : null;
+    if (!held || !spec || !grip || this.forearm <= 0) return;
+    const { palm, hand, knuckles } = grip;
+    const fist = this.fists[spec.hand ?? 'R'];
 
     /**
      * В замахе рукой распоряжается клип, а не мы.
@@ -731,13 +786,15 @@ export class ViewModel {
      * Поэтому добавка гаснет и возвращается **плавно**: мгновенное снятие
      * дёргает кисть на первом кадре удара.
      */
-    const wanted = this.current === 'axeSwing' ? 0 : 1;
+    // Отпускаем на клипе замаха этой вещи: у топора и посоха это рубка,
+    // у лука — выстрел, где левая кисть живёт по клипу владельца.
+    const wanted = this.current === spec.swings ? 0 : 1;
     this.gripBlend += Math.sign(wanted - this.gripBlend) * Math.min(dt * GRIP_FADE, 1);
     this.gripBlend = Math.min(1, Math.max(0, this.gripBlend));
     const blend = this.gripBlend;
 
     if (blend > 0) {
-      for (const [bone, pose] of this.fist) bone.quaternion.slerp(pose, blend);
+      for (const [bone, pose] of fist) bone.quaternion.slerp(pose, blend);
       this.rig?.updateMatrixWorld(true);
 
       /**
@@ -748,7 +805,7 @@ export class ViewModel {
        * значит доворачивать надо кисть: ищем поворот, который кладёт ось
        * трубки на вертикаль, и досылаем его кисти в пространстве родителя.
        */
-      if (hand) {
+      {
         const start = knuckles.index.getWorldPosition(this.size);
         const end = knuckles.pinky.getWorldPosition(this.reach);
         const line = this.along.copy(end).sub(start).normalize();
@@ -1256,26 +1313,29 @@ export class ViewModel {
       this.shoulders.push({ bone: found, axis });
     }
 
-    // Кость ладони правой руки — точка подвеса топора. Имя без номера:
-    // экспортёр дописывает номер, и он меняется от сборки к сборке.
-    this.palm = null;
-    this.hand = null;
-    let index: THREE.Bone | null = null;
-    let pinky: THREE.Bone | null = null;
-    rig.traverse((node) => {
-      // Кость ладони одна на все вещи: к ней крепится и топор, и посох.
-      if (!this.palm && /^DEF-palm02R/i.test(node.name)) this.palm = node;
-      const bone = node as THREE.Bone;
-      if (!bone.isBone) return;
-      // Имена без номеров: у Rigify номер кости меняется от сборки к сборке.
-      if (!this.hand && /^DEF-handR/i.test(bone.name)) this.hand = bone;
-      if (!index && /^DEF-f_index01R/i.test(bone.name)) index = bone;
-      if (!pinky && /^DEF-f_pinky01R/i.test(bone.name)) pinky = bone;
-    });
-    this.knuckles = index && pinky ? { index, pinky } : null;
+    /**
+     * Кости хвата обеих рук: ладонь — подвес, кисть — доворот под рукоять,
+     * костяшки — трубка кулака. Имена без номеров: экспортёр дописывает
+     * номер, и он меняется от сборки к сборке.
+     */
+    for (const side of ['L', 'R'] as const) {
+      let palm: THREE.Object3D | null = null;
+      let hand: THREE.Bone | null = null;
+      let index: THREE.Bone | null = null;
+      let pinky: THREE.Bone | null = null;
+      rig.traverse((node) => {
+        if (!palm && new RegExp(`^DEF-palm02${side}`, 'i').test(node.name)) palm = node;
+        const bone = node as THREE.Bone;
+        if (!bone.isBone) return;
+        if (!hand && new RegExp(`^DEF-hand${side}`, 'i').test(bone.name)) hand = bone;
+        if (!index && new RegExp(`^DEF-f_index01${side}`, 'i').test(bone.name)) index = bone;
+        if (!pinky && new RegExp(`^DEF-f_pinky01${side}`, 'i').test(bone.name)) pinky = bone;
+      });
+      this.grips[side] = palm && hand && index && pinky ? { palm, hand, knuckles: { index, pinky } } : null;
+    }
     if (this.held) this.attachHeld();
 
-    this.learnFist(rig, clips);
+    for (const side of ['L', 'R'] as const) this.learnFist(rig, clips, side);
     this.anchor(rig, this.race);
     this.needsAnchor = true;
 
@@ -1311,8 +1371,9 @@ export class ViewModel {
    * Замер идёт тем же порядком, что и посадка рук: остановить микшер,
    * проиграть нужный клип в нужный миг, снять кости, вернуть, что играло.
    */
-  private learnFist(rig: THREE.Object3D, clips: THREE.AnimationClip[]): void {
-    const clip = findClip(clips, GRIP_CLIP);
+  private learnFist(rig: THREE.Object3D, clips: THREE.AnimationClip[], side: Side): void {
+    const source = GRIP_SOURCE[side];
+    const clip = findClip(clips, source.clip);
     if (!clip || !this.mixer) return;
     const grip = this.mixer.clipAction(clip);
 
@@ -1320,13 +1381,15 @@ export class ViewModel {
     this.unspreadArms();
     this.mixer.stopAllAction();
     grip.reset().play();
-    this.mixer.setTime(clip.duration * FIST_MOMENT);
+    this.mixer.setTime(clip.duration * source.moment);
     rig.updateMatrixWorld(true);
 
-    this.fist.clear();
+    const fist = this.fists[side];
+    const bones = fistBones(side);
+    fist.clear();
     rig.traverse((node) => {
       const bone = node as THREE.Bone;
-      if (bone.isBone && FIST_BONES.test(bone.name)) this.fist.set(bone, bone.quaternion.clone());
+      if (bone.isBone && bones.test(bone.name)) fist.set(bone, bone.quaternion.clone());
     });
 
     this.mixer.stopAllAction();

@@ -45,6 +45,8 @@ const MODEL = resolve(ROOT, 'packages/client/public/models/hands.glb');
 const SOURCES: { file: string; clips: string[] }[] = [
   { file: `${DESKTOP}/Animacija_Sword/SwordAnims.fbx`, clips: ['Sword_Idle', 'Sword_Slash'] },
   { file: `${DESKTOP}/Animacija_Staff/StaffAnim.fbx`, clips: ['Staff_Shot'] },
+  // Выстрел из лука: левая держит лук, правая тянет тетиву — обе ветки рук.
+  { file: `${DESKTOP}/Bow/BowAnim.fbx`, clips: ['Bow_Shot'] },
 ];
 
 /**
