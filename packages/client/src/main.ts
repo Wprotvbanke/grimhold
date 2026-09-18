@@ -37,6 +37,8 @@ import {
   type ProjectileSnapshot,
 } from '@grimhold/shared';
 import { CombatUi } from './combatui.js';
+import { createCompass } from './compass.js';
+import { createPortrait } from './portrait.js';
 import { Controls } from './controls.js';
 import { EntityInterpolator, type InterpolatedPose } from './interpolation.js';
 import {
@@ -83,6 +85,19 @@ import { ViewModel } from './viewmodel.js';
 const SERVER_URL = `ws://${location.hostname}:8080`;
 
 const hud = document.getElementById('hud')!;
+/**
+ * Лицо в окне панели и компас в её правом камне.
+ *
+ * Лицо — тот же живой портрет, что в рюкзаке, только кадр взят по голове:
+ * три десятых роста в высоту, взгляд камеры в лицо. Дышит всегда, пока
+ * игрок в мире: окно маленькое, рендер его дешевле одного фонаря.
+ */
+const face = createPortrait(document.getElementById('faceCanvas') as HTMLCanvasElement, {
+  frame: 0.32,
+  aim: 0.78,
+  turn: -0.35,
+});
+const compass = createCompass(document.getElementById('compass') as HTMLCanvasElement);
 const labels = document.getElementById('labels')!;
 
 /**
@@ -894,6 +909,8 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   // к классу. Рюкзак об этом не знает — он приходит без персонажа. Заодно
   // окно рюкзака получает карточку персонажа и модель расы для куклы.
   inventoryUi.setCharacter(character);
+  face.setRace(character.race);
+  face.start();
 
   game?.hands.dispose();
 
@@ -991,6 +1008,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     camera.position.set(renderPos.x, renderPos.y + game.eye, renderPos.z);
     camera.rotation.y = controls.yaw;
     camera.rotation.x = controls.pitch;
+    compass.update(controls.yaw);
 
     // 4. Чужие рисуются в прошлом, плавно между снапшотами.
     updateAvatars(now, dt);

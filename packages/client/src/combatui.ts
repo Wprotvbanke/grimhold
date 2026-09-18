@@ -28,7 +28,8 @@ const MAX_DAMAGE_LABELS = 24;
 const HEAL_GLOW = 700;
 
 export class CombatUi {
-  private readonly vitals = el<HTMLDivElement>('vitals');
+  /** Панель внизу экрана целиком: полосы, портрет, ячейки, компас. Видна только в мире. */
+  private readonly vitals = el<HTMLDivElement>('panel');
 
   /** Здоровье с прошлого снапшота: по нему видно, что оно прибывает. */
   private lastHealth = 0;
@@ -229,8 +230,11 @@ function setBar(id: string, current: number, max: number): void {
   const fill = bar.querySelector('i') as HTMLElement;
   const text = bar.querySelector('span') as HTMLElement;
   const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
-  fill.style.transform = `scaleX(${ratio})`;
+  // Полосы стоят вертикально в щелях панели: наполнение растёт снизу.
+  fill.style.transform = `scaleY(${ratio})`;
   text.textContent = `${Math.round(current)} / ${max}`;
+  // В щель шириной в десяток пикселей числа не влезают — они в подсказке.
+  bar.title = text.textContent;
 }
 
 function labelClass(event: CombatEvent, incoming: boolean): string {
