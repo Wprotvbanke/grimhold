@@ -32,6 +32,8 @@ export const PANEL_FX = {
   /** Мерцание и бегущая полоса — движение; гасится при prefers-reduced-motion. */
   flicker: 0.025,
   roll: 0.06,
+  /** Яркость плиты целиком: 1 — как в файле. Владелец просил немного темнее. */
+  brightness: 0.85,
 };
 
 const VERTEX = /* glsl */ `
@@ -54,6 +56,7 @@ uniform float grain;
 uniform float flicker;
 uniform float roll;
 uniform float motion;
+uniform float brightness;
 varying vec2 vUv;
 
 float hash(vec2 p) {
@@ -68,7 +71,7 @@ void main() {
   float fringe = 0.0012 * strength;
   float r = texture2D(map, uv + vec2(fringe, 0.0)).r;
   float b = texture2D(map, uv - vec2(fringe, 0.0)).b;
-  vec3 col = mix(base.rgb, vec3(r, base.g, b), strength);
+  vec3 col = mix(base.rgb, vec3(r, base.g, b), strength) * brightness;
 
   // Строки развёртки: одна тёмная на два пикселя холста.
   float line = 0.5 + 0.5 * sin(uv.y * size.y * 3.14159265);
@@ -120,6 +123,7 @@ export function createPanelFx(canvas: HTMLCanvasElement, url: string): PanelFx {
     grain: { value: PANEL_FX.grain },
     flicker: { value: PANEL_FX.flicker },
     roll: { value: PANEL_FX.roll },
+    brightness: { value: PANEL_FX.brightness },
     motion: { value: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1 },
   };
   const material = new THREE.ShaderMaterial({
