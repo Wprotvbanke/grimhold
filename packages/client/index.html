@@ -344,14 +344,15 @@
          плитой (z 0): серый задник, дымка и картинка настроения (face.ts). */
       #faceWindow {
         left: 20.6%; top: 35.8%; width: 11.9%; height: 53.7%; z-index: 0;
-        overflow: hidden; background: radial-gradient(ellipse at 60% 40%, #6a6660, #3a3835 85%);
+        /* Чёрный: портрет выплывает из темноты — так попросил владелец. */
+        overflow: hidden; background: radial-gradient(ellipse at 60% 40%, #1a1917, #000 85%);
       }
       /* Дымка: два пятна тумана медленно плывут по заднику. */
       #faceWindow .haze {
         position: absolute; inset: -40%;
         background:
-          radial-gradient(ellipse at 30% 40%, rgba(220, 216, 205, 0.35), transparent 55%),
-          radial-gradient(ellipse at 70% 65%, rgba(200, 196, 188, 0.28), transparent 50%);
+          radial-gradient(ellipse at 30% 40%, rgba(170, 166, 158, 0.22), transparent 55%),
+          radial-gradient(ellipse at 70% 65%, rgba(150, 146, 140, 0.18), transparent 50%);
         animation: hazeDrift 14s ease-in-out infinite alternate;
         pointer-events: none;
       }
@@ -362,9 +363,10 @@
       @media (prefers-reduced-motion: reduce) {
         #faceWindow .haze { animation: none; }
       }
-      /* Картинка — по вырезу окна: x 390…514 от 330…520, y 137…292 от 120…300. */
+      /* Картинка в полтора раза больше выреза и сдвинута влево — под голову
+         горгульи (плита сверху её прячет, так и задумано владельцем). */
       #faceWindow img {
-        position: absolute; left: 31.6%; top: 9.4%; width: 65.3%; height: 86.1%;
+        position: absolute; left: 0; top: -12%; width: 98%; height: 112%;
         object-fit: contain; object-position: center bottom; display: block;
         filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
       }
