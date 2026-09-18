@@ -35,7 +35,15 @@ art games. Please take and use, change, or whatever."
 ------------------------------------------------------------------------------
 */
 
-const FRAGMENT = /* glsl */ `
+/**
+ * Общая часть шейдера Лоттеса: ручки и функции без \`main\`.
+ *
+ * Вынесена, потому что многопроходный вид (lottes-multi.ts) считает свечение
+ * тем же кодом, но отдельным проходом в свой буфер. Здесь нет объявлений
+ * \`inputBuffer\` и \`resolution\`: внутри \`EffectPass\` их даёт библиотека, а свой
+ * материал объявляет их сам.
+ */
+export const LOTTES_COMMON = /* glsl */ `
 uniform float pixel;
 uniform float strength;
 uniform float hardScan;
@@ -196,6 +204,10 @@ vec3 Mask(vec2 pos) {
 
   return mask;
 }
+`;
+
+const FRAGMENT = /* glsl */ `
+${LOTTES_COMMON}
 
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
   vec2 pos = Warp(uv);
@@ -246,7 +258,7 @@ export interface LottesOptions {
   shape: number;
 }
 
-const DEFAULTS: LottesOptions = {
+export const LOTTES_DEFAULTS: LottesOptions = {
   pixel: 3,
   strength: 0.8,
   hardScan: -8,
@@ -262,27 +274,31 @@ const DEFAULTS: LottesOptions = {
   shape: 2,
 };
 
+/** Uniform-ы общей части — одни на все виды Лоттеса. */
+export function lottesUniforms(s: LottesOptions): Map<string, THREE.Uniform> {
+  return new Map<string, THREE.Uniform>([
+    ['pixel', new THREE.Uniform(s.pixel)],
+    ['strength', new THREE.Uniform(s.strength)],
+    ['hardScan', new THREE.Uniform(s.hardScan)],
+    ['hardPix', new THREE.Uniform(s.hardPix)],
+    ['curveAmount', new THREE.Uniform(new THREE.Vector2(s.warp[0], s.warp[1]))],
+    ['maskDark', new THREE.Uniform(s.maskDark)],
+    ['maskLight', new THREE.Uniform(s.maskLight)],
+    ['shadowMask', new THREE.Uniform(s.shadowMask)],
+    ['brightBoost', new THREE.Uniform(s.brightBoost)],
+    ['hardBloomPix', new THREE.Uniform(s.hardBloomPix)],
+    ['hardBloomScan', new THREE.Uniform(s.hardBloomScan)],
+    ['bloomAmount', new THREE.Uniform(s.bloomAmount)],
+    ['shape', new THREE.Uniform(s.shape)],
+  ]);
+}
+
 export class LottesEffect extends Effect {
   constructor(options: Partial<LottesOptions> = {}) {
-    const s = { ...DEFAULTS, ...options };
     super('LottesEffect', FRAGMENT, {
       // Читает кадр не в своей точке: в один проход с другими эффектами не смешивать.
       attributes: EffectAttribute.CONVOLUTION,
-      uniforms: new Map<string, THREE.Uniform>([
-        ['pixel', new THREE.Uniform(s.pixel)],
-        ['strength', new THREE.Uniform(s.strength)],
-        ['hardScan', new THREE.Uniform(s.hardScan)],
-        ['hardPix', new THREE.Uniform(s.hardPix)],
-        ['curveAmount', new THREE.Uniform(new THREE.Vector2(s.warp[0], s.warp[1]))],
-        ['maskDark', new THREE.Uniform(s.maskDark)],
-        ['maskLight', new THREE.Uniform(s.maskLight)],
-        ['shadowMask', new THREE.Uniform(s.shadowMask)],
-        ['brightBoost', new THREE.Uniform(s.brightBoost)],
-        ['hardBloomPix', new THREE.Uniform(s.hardBloomPix)],
-        ['hardBloomScan', new THREE.Uniform(s.hardBloomScan)],
-        ['bloomAmount', new THREE.Uniform(s.bloomAmount)],
-        ['shape', new THREE.Uniform(s.shape)],
-      ]),
+      uniforms: lottesUniforms({ ...LOTTES_DEFAULTS, ...options }),
     });
   }
 }

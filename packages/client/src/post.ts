@@ -14,6 +14,7 @@ import {
 import { CrtEffect } from './crt.js';
 import { LottesEffect } from './lottes.js';
 import { MoireEffect } from './moire.js';
+import { createLottesMultipass } from './lottes-multi.js';
 
 /**
  * Постобработка: свечение огня, мрачный цвет, тёмные края кадра.
@@ -50,7 +51,7 @@ export interface PostSettings {
   crt: CrtKind;
 }
 
-export type CrtKind = 'off' | 'newpixie' | 'lottes' | 'moire';
+export type CrtKind = 'off' | 'newpixie' | 'lottes' | 'moire' | 'lottes2';
 
 export interface PostProcessing {
   configure(settings: PostSettings): void;
@@ -135,12 +136,17 @@ export function createPost(
    * тонмаппинг и ждёт готовую картинку. Поставить его до ACES значило бы
    * сжечь цвета дважды.
    */
-  const tubes: Record<Exclude<CrtKind, 'off'>, EffectPass> = {
-    newpixie: new EffectPass(camera, new CrtEffect()),
-    lottes: new EffectPass(camera, new LottesEffect()),
-    moire: new EffectPass(camera, new MoireEffect()),
+  /**
+   * Каждый вид — один или несколько проходов; у многопроходного Лоттеса
+   * свечение считается отдельным проходом в свой буфер.
+   */
+  const tubes: Record<Exclude<CrtKind, 'off'>, Pass[]> = {
+    newpixie: [new EffectPass(camera, new CrtEffect())],
+    lottes: [new EffectPass(camera, new LottesEffect())],
+    moire: [new EffectPass(camera, new MoireEffect())],
+    lottes2: createLottesMultipass(camera),
   };
-  for (const pass of Object.values(tubes)) composer.addPass(pass);
+  for (const passes of Object.values(tubes)) for (const pass of passes) composer.addPass(pass);
 
   let enabled = true;
   /**
@@ -161,9 +167,11 @@ export function createPost(
       composer.multisampling = antialias ? SAMPLES : 0;
       // На экран рисует тот, кто стоит последним из включённых: включён
       // самое большее один кинескоп, остальные выключены целиком.
-      for (const [kind, pass] of Object.entries(tubes)) {
-        pass.enabled = kind === tube;
-        pass.renderToScreen = pass.enabled;
+      for (const [kind, passes] of Object.entries(tubes)) {
+        for (const [index, pass] of passes.entries()) {
+          pass.enabled = kind === tube;
+          pass.renderToScreen = pass.enabled && index === passes.length - 1;
+        }
       }
       grading.renderToScreen = tube === 'off';
     },
