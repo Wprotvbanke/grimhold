@@ -8,6 +8,7 @@ import {
   type EquipSlot,
   type ItemId,
 } from './items.js';
+import type { ActionTiming } from './combat.js';
 
 /**
  * Инвентарь-сетка.
@@ -423,6 +424,15 @@ export function spellReachOf(equipment: Equipment): number {
 export function swingScaleOf(equipment: Equipment): number {
   const weapon = equipment.mainHand;
   return weapon ? (itemDef(weapon.defId).swing ?? 1) : 1;
+}
+
+/**
+ * Свои фазы удара у оружия в руке, если оно их задаёт (лук). Иначе null —
+ * и обе стороны считают удар множителем `swingScaleOf`.
+ */
+export function attackTimingOf(equipment: Equipment): ActionTiming | null {
+  const weapon = equipment.mainHand;
+  return weapon ? (itemDef(weapon.defId).attackTiming ?? null) : null;
 }
 
 /**

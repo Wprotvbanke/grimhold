@@ -322,9 +322,24 @@ export interface ActionState {
    * замах, а сам удар оставался кулачным.
    */
   scale?: number;
+  /**
+   * Свои фазы оружия (лук) — перебивают `scale`. Тоже едут в действии:
+   * сменил оружие посреди выстрела — выстрел дойдёт по своим фазам.
+   */
+  timing?: ActionTiming;
 }
 
-export function beginAction(profile: ActionProfile, spellId?: string, scale?: number): ActionState {
+/** Фазы действия: свои у оружия, иначе профиль, растянутый темпом. */
+export function actionTiming(state: ActionState): ActionTiming {
+  return state.timing ?? scaleTiming(timingOf(state.kind), state.scale ?? 1);
+}
+
+export function beginAction(
+  profile: ActionProfile,
+  spellId?: string,
+  scale?: number,
+  timing?: ActionTiming | null,
+): ActionState {
   return {
     kind: profile.kind,
     phase: 'windup',
@@ -332,6 +347,7 @@ export function beginAction(profile: ActionProfile, spellId?: string, scale?: nu
     resolved: false,
     spellId,
     scale: scale === 1 ? undefined : scale,
+    ...(timing ? { timing } : {}),
   };
 }
 

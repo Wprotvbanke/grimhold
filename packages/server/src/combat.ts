@@ -1,4 +1,5 @@
 import {
+  type ActionTiming,
   ATTACK_COOLDOWN,
   scaleTiming,
   ACTIONS,
@@ -77,6 +78,8 @@ export function startAttack(
   kind: 'attack' | 'heavy' | 'dodge',
   swingScale = 1,
   staminaScale = 1,
+  /** Свои фазы оружия (лук): перебивают множитель. */
+  attackTiming: ActionTiming | null = null,
 ): boolean {
   if (!canAct(attacker)) return false;
 
@@ -101,7 +104,8 @@ export function startAttack(
       : {
           ...base,
           // Тяжёлое оружие бьёт реже: фазы растягиваются под него целиком.
-          timing: scaleTiming(base.timing, swingScale),
+          // У лука фазы свои — долгий замах и короткий хвост.
+          timing: attackTiming ?? scaleTiming(base.timing, swingScale),
           // А голыми руками бьют дешевле: цена зависит от того, что в руке.
           staminaCost: base.staminaCost * staminaScale,
         };
@@ -111,7 +115,12 @@ export function startAttack(
   if (kind === 'dodge') attacker.dodgeCooldown = dodgeCooldown(attacker.evasionSkill);
   else attacker.swingCooldown = ATTACK_COOLDOWN + profile.timing.windup + profile.timing.active;
 
-  attacker.action = beginAction(profile, undefined, kind === 'dodge' ? 1 : swingScale);
+  attacker.action = beginAction(
+    profile,
+    undefined,
+    kind === 'dodge' ? 1 : swingScale,
+    kind === 'dodge' ? null : attackTiming,
+  );
   // Блок и удар несовместимы: щит опускается.
   attacker.blocking = false;
   return true;

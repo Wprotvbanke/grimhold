@@ -181,6 +181,11 @@ interface HeldSpec {
    */
   swingPull?: number;
   /**
+   * Клип замаха идёт на всё действие, включая хвост, а не только на замах
+   * и удар. У лука так: стрела сходит за хвост до конца клипа.
+   */
+  swingFull?: boolean;
+  /**
    * Чем вещь машет в бою и при чтении свитка.
    *
    * У вещи, а не у действия: топор рубит и читать им нечего, посох
@@ -342,6 +347,8 @@ const HELD: Record<string, HeldSpec> = {
     swings: 'bowShot',
     /** На выстреле правая шла слишком вправо — владелец просил к центру. Первая проба. */
     swingPull: 4,
+    /** Клип на всё действие: стрела сходит за полсекунды до его конца. */
+    swingFull: true,
   },
 };
 
@@ -497,6 +504,8 @@ export class ViewModel {
 
   /** Во сколько раз удар в руке длиннее удара кулаком: топор тяжёл. */
   private swingScale = 1;
+  /** Свои фазы удара у оружия в руке (лук); null — профиль с темпом. */
+  private swingTiming: ActionTiming | null = null;
 
   /** Во сколько раз он дешевле по стамине: голыми руками — вдвое. */
   private staminaScale = FIST_STAMINA_SCALE;
@@ -619,7 +628,7 @@ export class ViewModel {
 
     if (kind === 'attack' || kind === 'heavy') {
       this.swing++;
-      const timing = scaleTiming(ACTIONS[kind].timing, this.swingScale);
+      const timing = this.attackTiming(kind);
       this.swingCooldown = ATTACK_COOLDOWN + timing.windup + timing.active;
     }
     if (kind === 'dodge') this.dodgeCooldown = dodgeCooldown(this.evasion);
@@ -709,6 +718,7 @@ export class ViewModel {
   setWeapon(defId: string | null): void {
     // Темп удара задаёт оружие — тот же множитель, что у сервера.
     this.swingScale = defId && isItemId(defId) ? (itemDef(defId).swing ?? 1) : 1;
+    this.swingTiming = defId && isItemId(defId) ? (itemDef(defId).attackTiming ?? null) : null;
     // И цена: голыми руками бьют дешевле.
     this.staminaScale = defId ? 1 : FIST_STAMINA_SCALE;
 
@@ -1198,8 +1208,16 @@ export class ViewModel {
       // Замах растягивается ровно на фазы удара — те же, что считает сервер.
       // Темп задаёт оружие: у топора фазы вдвое длиннее, и клип идёт медленнее
       // сам собой, без отдельного множителя.
-      const timing = scaleTiming(ACTIONS[kind].timing, this.swingScale);
-      next.timeScale = next.getClip().duration / (timing.windup + timing.active);
+      const timing = this.attackTiming(kind);
+      /**
+       * Обычно клип ложится на замах и удар, а на хвосте стоит последним
+       * кадром: топор «вязнет». Лук иначе: клип идёт на всё действие целиком,
+       * и стрела сходит на границе замаха и удара — за хвост до конца клипа.
+       */
+      const span = this.heldSpec?.swingFull
+        ? timing.windup + timing.active + timing.recovery
+        : timing.windup + timing.active;
+      next.timeScale = next.getClip().duration / span;
     }
 
     next.reset().fadeIn(fade).play();
@@ -1230,7 +1248,14 @@ export class ViewModel {
       const timing = this.casting ?? CAST_FALLBACK;
       return timing.windup + timing.active + timing.recovery;
     }
-    return totalDuration(kind, this.swingScale);
+    const timing = this.attackTiming(kind);
+    return timing.windup + timing.active + timing.recovery;
+  }
+
+  /** Фазы удара с тем, что в руке — те же, что считает сервер. */
+  private attackTiming(kind: ActionKind): ActionTiming {
+    if ((kind === 'attack' || kind === 'heavy') && this.swingTiming) return this.swingTiming;
+    return scaleTiming(timingFor(kind), this.swingScale);
   }
 
   private lengthOf(clip: HandsClip): number {
@@ -1546,10 +1571,6 @@ function findClip(clips: THREE.AnimationClip[], name: string): THREE.AnimationCl
   );
 }
 
-function totalDuration(kind: ActionKind, scale = 1): number {
-  const timing = scaleTiming(timingFor(kind), scale);
-  return timing.windup + timing.active + timing.recovery;
-}
 
 function timingFor(kind: ActionKind) {
   if (kind === 'attack') return ACTIONS.attack.timing;

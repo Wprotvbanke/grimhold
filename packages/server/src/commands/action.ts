@@ -4,6 +4,7 @@ import {
   canDashAtWeight,
   castTiming,
   itemDef,
+  attackTimingOf,
   staminaScaleOf,
   swingScaleOf,
   type ActionMessage,
@@ -47,6 +48,7 @@ export const handleAction: CommandHandler<ActionMessage> = (ctx, payload) => {
     payload.kind,
     swingScaleOf(actor.equipment),
     staminaScaleOf(actor.equipment),
+    attackTimingOf(actor.equipment),
   );
   return [];
 };

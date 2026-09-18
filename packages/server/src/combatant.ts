@@ -6,8 +6,7 @@ import {
   blockedShare,
   staminaRegen,
   manaRegen,
-  scaleTiming,
-  timingOf,
+  actionTiming,
   type ActionState,
   type Attributes,
   type Vec3,
@@ -192,11 +191,7 @@ export function tickCombatant(
   if (combatant.action) {
     const before = combatant.action.phase;
     // Темп оружия едет в самом действии: у топора фазы вдвое длиннее.
-    const next = advanceAction(
-      combatant.action,
-      scaleTiming(timingOf(combatant.action.kind), combatant.action.scale ?? 1),
-      dt,
-    );
+    const next = advanceAction(combatant.action, actionTiming(combatant.action), dt);
     if (!next) {
       combatant.action = null;
       finished = true;
