@@ -37,6 +37,7 @@ art games. Please take and use, change, or whatever."
 
 const FRAGMENT = /* glsl */ `
 uniform float pixel;
+uniform float strength;
 uniform float hardScan;
 uniform float hardPix;
 /*
@@ -153,7 +154,9 @@ vec3 Bloom(vec2 pos) {
 /* Кривизна экрана. */
 vec2 Warp(vec2 pos) {
   pos = pos * 2.0 - 1.0;
-  pos *= vec2(1.0 + (pos.y * pos.y) * curveAmount.x, 1.0 + (pos.x * pos.x) * curveAmount.y);
+  // Кривизна тоже слабеет вместе с общей силой эффекта.
+  vec2 amount = curveAmount * strength;
+  pos *= vec2(1.0 + (pos.y * pos.y) * amount.x, 1.0 + (pos.x * pos.x) * amount.y);
   return pos * 0.5 + 0.5;
 }
 
@@ -200,6 +203,14 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 
   if (shadowMask > 0.0) col *= Mask(uv * resolution * 1.000001);
 
+  /*
+   * Общая сила эффекта: пиксели, строки, маска и свечение подмешиваются
+   * к чистому кадру. Чистый кадр берётся **в той же выгнутой точке** —
+   * смешай его с прямым, и по краям проступит второй, ровный контур.
+   */
+  vec3 plain = max(texture2D(inputBuffer, pos).rgb, 0.0);
+  col = mix(plain, col, strength);
+
   // За выгнутым краем экрана — чёрное.
   if (pos.x <= 0.0001 || pos.x >= 0.9999 || pos.y <= 0.0001 || pos.y >= 0.9999) col = vec3(0.0);
 
@@ -211,6 +222,11 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 export interface LottesOptions {
   /** Размер эмулируемого пикселя в экранных пикселях. Наша ручка, у автора источник и так низкий. */
   pixel: number;
+  /**
+   * Общая сила эффекта, 0…1. Наша ручка: 1 — как у автора, 0 — чистый кадр.
+   * Владелец попросил ослабить всё на пятую часть — отсюда 0.8.
+   */
+  strength: number;
   /** Резкость строк: −8 мягко … −20 жёстко. */
   hardScan: number;
   /** Резкость пикселей по горизонтали. */
@@ -232,6 +248,7 @@ export interface LottesOptions {
 
 const DEFAULTS: LottesOptions = {
   pixel: 3,
+  strength: 0.8,
   hardScan: -8,
   hardPix: -3,
   warp: [0.031, 0.041],
@@ -253,6 +270,7 @@ export class LottesEffect extends Effect {
       attributes: EffectAttribute.CONVOLUTION,
       uniforms: new Map<string, THREE.Uniform>([
         ['pixel', new THREE.Uniform(s.pixel)],
+        ['strength', new THREE.Uniform(s.strength)],
         ['hardScan', new THREE.Uniform(s.hardScan)],
         ['hardPix', new THREE.Uniform(s.hardPix)],
         ['curveAmount', new THREE.Uniform(new THREE.Vector2(s.warp[0], s.warp[1]))],
