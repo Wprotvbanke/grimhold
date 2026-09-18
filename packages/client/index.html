@@ -1288,12 +1288,13 @@
         Старый телевизор
         <select id="setCrt">
           <option value="off">Выключен</option>
+          <!--
+            Видов в коде семь (docs/crt.md), игроку предложены три — так решил
+            владелец, посмотрев все. Остальные включаются служебно
+            (GRIMHOLD_CRT у скрипта снимков) и живут в post.ts.
+          -->
           <option value="newpixie">Телевизор: кривизна, строки, шум</option>
-          <option value="lottes">Аркадный монитор: пиксели, маска, мягкие строки</option>
           <option value="moire">Монитор без муара: маска и дрожание точки</option>
-          <option value="lottes2">Аркадный монитор, мягкое свечение (два прохода)</option>
-          <option value="geom">Геометрия: выпуклый экран, углы, точечная маска</option>
-          <option value="hyllian">Монитор Хиллиана: без кривизны, резкие строки</option>
           <option value="grits">Строки по таблице: только строки, самый лёгкий</option>
         </select>
       </label>

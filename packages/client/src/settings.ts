@@ -173,6 +173,18 @@ export function createSettings(
   shadows.value = current.shadows;
   smoothing.value = current.antialias ? 'on' : 'off';
   effects.value = current.effects;
+  /**
+   * Игроку предложены три вида из семи. Скрытый вид приходит только из
+   * хранилища, выставленного служебно (скрипт снимков): чтобы список не
+   * показывал пустоту, такой вид добавляется в него спрятанным пунктом.
+   */
+  if (![...crt.options].some((option) => option.value === current.crt)) {
+    const hidden = document.createElement('option');
+    hidden.value = current.crt;
+    hidden.hidden = true;
+    hidden.textContent = `Служебный вид: ${current.crt}`;
+    crt.append(hidden);
+  }
   crt.value = current.crt;
   volume.value = String(Math.round(current.volume * 100));
   ambience.value = String(Math.round(current.ambience * 100));
