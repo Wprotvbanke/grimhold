@@ -639,7 +639,10 @@ function useHotbar(index: number): void {
    * и намерение уходит в любом случае: замах — это картинка, а не разрешение.
    */
   const spellId = inventoryUi.spellAt(index);
-  if (spellId && SPELLS[spellId].shape !== 'channel') game.hands.beginAction('cast', spellId);
+  // Шёпот заговора — вместе с руками: если замах не начался, молчим.
+  if (spellId && SPELLS[spellId].shape !== 'channel' && game.hands.beginAction('cast', spellId)) {
+    cues.ownCast();
+  }
 
   connection.send({ t: 'useHotbar', index, viewTick: viewTick() });
 }

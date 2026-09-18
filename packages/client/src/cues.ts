@@ -44,6 +44,8 @@ export interface Cues {
    * звучит на полпинга позже, чем виден, и ощущается вязким.
    */
   ownAction(kind: ActionKind, bowInHand: boolean): void;
+  /** Своё заклинание началось — руки дёрнулись с посохом. Шёпот сразу, как и взмах. */
+  ownCast(): void;
   combat(event: CombatEvent): void;
   /**
    * Чужие замахи — по свежему снапшоту. Сущности уже опознанные: вид моба
@@ -68,6 +70,10 @@ export function createCues(sound: Sound): Cues {
       if (kind === 'dodge') sound.play('dodge');
       // С луком удар — это выстрел: звучит тетива, когда стрела появится.
       else if (!bowInHand) sound.play('swing');
+    },
+
+    ownCast() {
+      sound.play('castWhisper');
     },
 
     combat(event) {

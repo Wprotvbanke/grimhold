@@ -21,6 +21,7 @@
 | `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com), какой ассет — в `public/textures/LICENSE.txt` | CC0 |
 | `public/textures/*_{normal,arm}.webp` | Poly Haven, те же ассеты: нормали (`nor_gl`) и ARM в 1K, собраны `scripts/prepare-surfaces.ts` | CC0 |
 | `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |
+| `public/sounds/spell_whisper_{1,2,3}.wav` | шёпот-заговор при касте: три отрывка по 1.7 с из «Creepy Incoherent Chanting» (OwlishMedia, OpenGameArt), вырезаны и ужаты до моно 22 кГц скриптом без ffmpeg; 73 КБ каждый | CC0 |
 | `public/sounds/*.ogg` | Kenney: [Interface Sounds](https://kenney.nl/assets/interface-sounds), [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio); лицензии рядом, `LICENSE-kenney-*.txt` | CC0 |
 | `public/sounds/dungeon_ambient.ogg` | [Loopable Dungeon Ambience](https://opengameart.org/content/loopable-dungeon-ambience), OpenGameArt | CC0 |
 | `public/sounds/wind_loop.ogg` | [wind whoosh loop](https://opengameart.org/content/wind-whoosh-loop), OpenGameArt | CC0 |
