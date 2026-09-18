@@ -49,13 +49,14 @@ export interface Settings {
   crt: CrtKind;
 }
 
-export type CrtKind = 'off' | 'newpixie' | 'lottes';
+export type CrtKind = 'off' | 'newpixie' | 'lottes' | 'moire';
+
+const CRT_KINDS: readonly CrtKind[] = ['off', 'newpixie', 'lottes', 'moire'];
 
 /** Что в хранилище считать видом кинескопа. `on` — со времён, когда вид был один. */
 function crtKind(value: unknown): CrtKind {
-  if (value === 'on' || value === 'newpixie') return 'newpixie';
-  if (value === 'lottes') return 'lottes';
-  return 'off';
+  if (value === 'on') return 'newpixie';
+  return CRT_KINDS.find((kind) => kind === value) ?? 'off';
 }
 
 const STORAGE_KEY = 'grimhold.settings';

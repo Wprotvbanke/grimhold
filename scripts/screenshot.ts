@@ -52,10 +52,10 @@ try {
     });
   }
 
-  // `GRIMHOLD_CRT=newpixie|lottes` — снять с кинескопом (docs/crt.md); `1` — newpixie.
+  // `GRIMHOLD_CRT=вид` — снять с кинескопом нужного вида (docs/crt.md); `1` — newpixie.
   const tube = process.env.GRIMHOLD_CRT;
   if (tube) {
-    const kind = tube === 'lottes' ? 'lottes' : 'newpixie';
+    const kind = tube === '1' ? 'newpixie' : tube;
     await page.evaluateOnNewDocument((crt: string) => {
       localStorage.setItem('grimhold.settings', JSON.stringify({ effects: 'on', crt }));
     }, kind);

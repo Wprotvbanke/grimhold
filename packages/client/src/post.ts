@@ -13,6 +13,7 @@ import {
 } from 'postprocessing';
 import { CrtEffect } from './crt.js';
 import { LottesEffect } from './lottes.js';
+import { MoireEffect } from './moire.js';
 
 /**
  * Постобработка: свечение огня, мрачный цвет, тёмные края кадра.
@@ -49,7 +50,7 @@ export interface PostSettings {
   crt: CrtKind;
 }
 
-export type CrtKind = 'off' | 'newpixie' | 'lottes';
+export type CrtKind = 'off' | 'newpixie' | 'lottes' | 'moire';
 
 export interface PostProcessing {
   configure(settings: PostSettings): void;
@@ -137,6 +138,7 @@ export function createPost(
   const tubes: Record<Exclude<CrtKind, 'off'>, EffectPass> = {
     newpixie: new EffectPass(camera, new CrtEffect()),
     lottes: new EffectPass(camera, new LottesEffect()),
+    moire: new EffectPass(camera, new MoireEffect()),
   };
   for (const pass of Object.values(tubes)) composer.addPass(pass);
 
