@@ -21,8 +21,14 @@ describe('удержание лука', () => {
   it('после отпускания стрела сходит через остаток замаха', () => {
     const start = { ...beginAction(LIGHT_ATTACK, undefined, 1, BOW), remaining: BOW.windup };
     const held = tick(start, 2)!;
-    const released = tick(releaseAction(held), 0.55);
+    const released = tick(releaseAction(held, BOW)!, 0.55);
     expect(released?.phase).toBe('active');
+  });
+
+  it('отпустил раньше точки — замах отменён, стрелы нет', () => {
+    const start = { ...beginAction(LIGHT_ATTACK, undefined, 1, BOW), remaining: BOW.windup };
+    const early = tick(start, 0.4)!;
+    expect(releaseAction(early, BOW)).toBeNull();
   });
 
   it('удержание отпускается само по пределу', () => {

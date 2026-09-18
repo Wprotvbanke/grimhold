@@ -1270,9 +1270,23 @@ export class ViewModel {
     return timing.windup + timing.active + timing.recovery;
   }
 
-  /** Игрок отжал кнопку: удержание снято, замах доигрывается. */
+  /**
+   * Игрок отжал кнопку: дотянул до точки — замах доигрывается; не дотянул —
+   * лук опускается, действие отменено (так решил владелец, быстрый щелчок
+   * не стреляет). Перезарядка снимается: сервер тоже её не считает.
+   */
   release(): void {
-    if (this.localAction) this.localAction.released = true;
+    const action = this.localAction;
+    if (!action) return;
+    const hold = this.holdPoint(action.kind);
+    if (hold !== null && action.elapsed + 1e-6 < hold) {
+      this.holdClip(false);
+      this.localAction = null;
+      this.holdFor = 0;
+      this.swingCooldown = 0;
+      return;
+    }
+    action.released = true;
   }
 
   /** Где в замахе стоит удержание, секунды от начала; null — его нет. */

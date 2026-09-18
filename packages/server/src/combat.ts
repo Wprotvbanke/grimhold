@@ -111,6 +111,7 @@ export function startAttack(
         };
 
   if (!spendStamina(attacker, profile.staminaCost)) return false;
+  const paid = profile.staminaCost;
 
   if (kind === 'dodge') attacker.dodgeCooldown = dodgeCooldown(attacker.evasionSkill);
   else attacker.swingCooldown = ATTACK_COOLDOWN + profile.timing.windup + profile.timing.active;
@@ -121,6 +122,8 @@ export function startAttack(
     kind === 'dodge' ? 1 : swingScale,
     kind === 'dodge' ? null : attackTiming,
   );
+  // Запомним цену: отменённый замах лука её возвращает.
+  attacker.action.paid = paid;
   // Блок и удар несовместимы: щит опускается.
   attacker.blocking = false;
   return true;

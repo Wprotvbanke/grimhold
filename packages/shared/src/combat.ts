@@ -334,10 +334,12 @@ export interface ActionState {
   timing?: ActionTiming;
   /**
    * Удержание отпущено (лук): игрок отжал кнопку. Пока не отпущено, замах
-   * стоит на точке `hold` фаз и ждёт. Быстрый щелчок отпускает раньше
-   * точки — тогда замах идёт без остановки, как обычный выстрел.
+   * стоит на точке `hold` фаз и ждёт. Отпустил **раньше точки** — замах
+   * отменяется целиком: лук стреляет только из натянутого положения.
    */
   released?: boolean;
+  /** Сколько стамины взято за действие — вернуть, если замах отменён. */
+  paid?: number;
   /** Сколько секунд действие простояло на удержании — для предела. */
   heldFor?: number;
 }
@@ -350,9 +352,20 @@ export interface ActionState {
  */
 export const HOLD_LIMIT = 10;
 
-/** Игрок отпустил кнопку: удержание снято, замах доигрывается. */
-export function releaseAction(state: ActionState): ActionState {
-  return state.released ? state : { ...state, released: true };
+/**
+ * Игрок отпустил кнопку.
+ *
+ * Дошёл до точки удержания — замах доигрывается и стреляет. Не дошёл —
+ * действие отменяется (`null`): так решил владелец, лук стреляет только
+ * после того, как его натянули и отпустили; быстрый щелчок — ничего.
+ */
+export function releaseAction(state: ActionState, timing: ActionTiming): ActionState | null {
+  if (state.released) return state;
+  if (timing.hold !== undefined && state.phase === 'windup') {
+    const stop = Math.max(0, timing.windup - timing.hold);
+    if (state.remaining > stop + 1e-6) return null;
+  }
+  return { ...state, released: true };
 }
 
 /** Фазы действия: свои у оружия, иначе профиль, растянутый темпом. */

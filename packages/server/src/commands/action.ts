@@ -1,5 +1,6 @@
 import {
   type ReleaseMessage,
+  actionTiming,
   releaseAction,
   SPELLS,
   beginAction,
@@ -60,12 +61,26 @@ function dashDirection(intent: { forward: number; right: number; jump: boolean }
   return intent.forward !== 0 || intent.right !== 0 || intent.jump;
 }
 
-/** Отпустил кнопку: натянутый лук стреляет. Без удержания — ничего. */
+/**
+ * Отпустил кнопку: натянутый лук стреляет, недотянутый — опускается.
+ *
+ * Отмена возвращает стамину и снимает перезарядку: игрок ничего не сделал,
+ * и платить ему не за что. Без удержания сообщение пустое.
+ */
 export const handleRelease: CommandHandler<ReleaseMessage> = (ctx) => {
   const combat = ctx.actor.combat;
-  if (combat.action && (combat.action.kind === 'attack' || combat.action.kind === 'heavy')) {
-    combat.action = releaseAction(combat.action);
+  const action = combat.action;
+  if (!action || (action.kind !== 'attack' && action.kind !== 'heavy')) return [];
+  const timing = actionTiming(action);
+  if (timing.hold === undefined) return [];
+  const next = releaseAction(action, timing);
+  if (next === null) {
+    combat.vitals.stamina = Math.min(ctx.actor.maxima.stamina, combat.vitals.stamina + (action.paid ?? 0));
+    combat.swingCooldown = 0;
+    combat.action = null;
+    return [];
   }
+  combat.action = next;
   return [];
 };
 
