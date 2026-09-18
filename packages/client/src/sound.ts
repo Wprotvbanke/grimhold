@@ -79,7 +79,8 @@ export const SOUNDS = {
    */
   castWhisper: {
     files: ['spell_whisper_1.wav', 'spell_whisper_2.wav', 'spell_whisper_3.wav'],
-    volume: 0.5,
+    // Было 0.5; владелец послушал и попросил на пятую часть тише.
+    volume: 0.4,
     positional: true,
     near: 3,
     far: 30,
