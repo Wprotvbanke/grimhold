@@ -3,6 +3,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   ACTIONS,
+  HOLD_LIMIT,
   ATTACK_COOLDOWN,
   castTiming,
   FIST_STAMINA_SCALE,
@@ -489,7 +490,8 @@ export class ViewModel {
   private queued: HandsClip | null = null;
 
   /** Локальная фаза действия: анимация стартует по клику, не дожидаясь сервера. */
-  private localAction: { kind: ActionKind; elapsed: number } | null = null;
+  private localAction: { kind: ActionKind; elapsed: number; released?: boolean; heldFor?: number } | null =
+    null;
   private lastServerAction: ActionKind | null = null;
   /** Серия ударов чередует руки, иначе выглядит механической. */
   private swing = 0;
@@ -506,6 +508,8 @@ export class ViewModel {
   private swingScale = 1;
   /** Свои фазы удара у оружия в руке (лук); null — профиль с темпом. */
   private swingTiming: ActionTiming | null = null;
+  /** Клип замаха стоит на удержании: его отсчёт не тает. */
+  private clipHeld = false;
 
   /** Во сколько раз он дешевле по стамине: голыми руками — вдвое. */
   private staminaScale = FIST_STAMINA_SCALE;
@@ -941,7 +945,7 @@ export class ViewModel {
     this.scene.visible = state.alive;
     if (!this.mixer) return;
 
-    this.holdFor = Math.max(0, this.holdFor - dt);
+    if (!this.clipHeld) this.holdFor = Math.max(0, this.holdFor - dt);
     this.taking = Math.max(0, this.taking - dt);
 
     const wanted = this.choose(dt, state);
@@ -1058,10 +1062,24 @@ export class ViewModel {
     this.grounded = state.onGround;
 
     if (this.localAction) {
-      this.localAction.elapsed += dt;
-      if (this.localAction.elapsed > this.durationOf(this.localAction.kind)) {
-        this.localAction = null;
-        this.casting = null;
+      const action = this.localAction;
+      const hold = this.holdPoint(action.kind);
+      /**
+       * Удержание лука: на точке `hold` замах стоит, пока кнопка зажата.
+       * Тот же предел, что у сервера (`HOLD_LIMIT`), — отпускается сам.
+       */
+      if (hold !== null && !action.released && action.elapsed + dt >= hold) {
+        action.heldFor = (action.heldFor ?? 0) + Math.max(0, action.elapsed + dt - hold);
+        action.elapsed = hold;
+        if (action.heldFor >= HOLD_LIMIT) action.released = true;
+        this.holdClip(true);
+      } else {
+        this.holdClip(false);
+        action.elapsed += dt;
+        if (action.elapsed > this.durationOf(action.kind)) {
+          this.localAction = null;
+          this.casting = null;
+        }
       }
     }
 
@@ -1250,6 +1268,29 @@ export class ViewModel {
     }
     const timing = this.attackTiming(kind);
     return timing.windup + timing.active + timing.recovery;
+  }
+
+  /** Игрок отжал кнопку: удержание снято, замах доигрывается. */
+  release(): void {
+    if (this.localAction) this.localAction.released = true;
+  }
+
+  /** Где в замахе стоит удержание, секунды от начала; null — его нет. */
+  private holdPoint(kind: ActionKind): number | null {
+    if (kind !== 'attack' && kind !== 'heavy') return null;
+    return this.attackTiming(kind).hold ?? null;
+  }
+
+  /**
+   * Ставит клип замаха на паузу и снимает с неё — вместе с удержанием.
+   * Пока стоим, клип не идёт и его отсчёт (`holdFor`) не тает.
+   */
+  private holdClip(held: boolean): void {
+    const swings = this.heldSpec?.swings;
+    const action = swings ? this.actions.get(swings) : undefined;
+    if (!action || this.current !== swings) return;
+    if (action.paused !== held) action.paused = held;
+    this.clipHeld = held;
   }
 
   /** Фазы удара с тем, что в руке — те же, что считает сервер. */

@@ -963,12 +963,21 @@ try {
   }
 
   const swing = Number(process.env.GRIMHOLD_SWING ?? 0);
-  if (swing > 0) {
+  /**
+   * `GRIMHOLD_HOLD=мс` — зажать ЛКМ и снять кадр, не отпуская: лук стоит
+   * натянутым, пока кнопка держится (docs/bow.md). Со `GRIMHOLD_SWING`
+   * вместе: сперва держим, потом отпускаем и ждём ещё столько.
+   */
+  const hold = Number(process.env.GRIMHOLD_HOLD ?? 0);
+  if (swing > 0 || hold > 0) {
     await page.mouse.click(800, 450);
     await wait(600);
     await page.mouse.down();
-    await page.mouse.up();
-    await wait(swing);
+    if (hold > 0) await wait(hold);
+    if (swing > 0 || hold === 0) {
+      await page.mouse.up();
+      await wait(swing);
+    }
   }
 
   await page.screenshot({ path: OUTPUT });

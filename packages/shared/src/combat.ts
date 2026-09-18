@@ -20,6 +20,11 @@ export interface ActionTiming {
   windup: number;
   active: number;
   recovery: number;
+  /**
+   * Точка удержания в замахе, секунды от его начала (лук): здесь замах
+   * стоит, пока игрок держит кнопку. Нет — действие идёт без остановок.
+   */
+  hold?: number;
 }
 
 export interface ActionProfile {
@@ -327,6 +332,27 @@ export interface ActionState {
    * сменил оружие посреди выстрела — выстрел дойдёт по своим фазам.
    */
   timing?: ActionTiming;
+  /**
+   * Удержание отпущено (лук): игрок отжал кнопку. Пока не отпущено, замах
+   * стоит на точке `hold` фаз и ждёт. Быстрый щелчок отпускает раньше
+   * точки — тогда замах идёт без остановки, как обычный выстрел.
+   */
+  released?: boolean;
+  /** Сколько секунд действие простояло на удержании — для предела. */
+  heldFor?: number;
+}
+
+/**
+ * Дольше этого удержание не длится: отпускается само.
+ *
+ * Иначе один зажатый лук вечно висел бы в замахе — и в бою, и когда игрок
+ * ушёл от компьютера с зажатой кнопкой.
+ */
+export const HOLD_LIMIT = 10;
+
+/** Игрок отпустил кнопку: удержание снято, замах доигрывается. */
+export function releaseAction(state: ActionState): ActionState {
+  return state.released ? state : { ...state, released: true };
 }
 
 /** Фазы действия: свои у оружия, иначе профиль, растянутый темпом. */
@@ -360,6 +386,22 @@ export function advanceAction(
   timing: ActionTiming,
   dt: number,
 ): ActionState | null {
+  /**
+   * Удержание: в замахе на точке `hold` действие стоит, пока не отпустят.
+   *
+   * Точка задана от начала замаха; стоим на ней ровно, не проскакивая:
+   * лишний шаг `dt` уходит в счётчик удержания, а не в фазу. Предел
+   * `HOLD_LIMIT` отпускает сам.
+   */
+  if (state.phase === 'windup' && timing.hold !== undefined && !state.released) {
+    const stop = Math.max(0, timing.windup - timing.hold);
+    if (state.remaining - dt <= stop) {
+      const heldFor = (state.heldFor ?? 0) + Math.max(0, dt - (state.remaining - stop));
+      if (heldFor >= HOLD_LIMIT) return { ...state, remaining: stop, heldFor, released: true };
+      return { ...state, remaining: stop, heldFor };
+    }
+  }
+
   let remaining = state.remaining - dt;
   let phase = state.phase;
 

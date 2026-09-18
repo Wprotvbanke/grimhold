@@ -25,6 +25,8 @@ export interface ControlsHooks {
   onAction(kind: 'attack' | 'heavy' | 'dodge'): void;
   /** Щит поднят или опущен. */
   onBlock(active: boolean): void;
+  /** Отжал ЛКМ: натянутый лук стреляет. */
+  onRelease(): void;
   /** Нажата ячейка панели горячих клавиш, индекс 0..5. */
   onHotbar(index: number): void;
   /** Удар по ресурсной ноде, на которую смотрит игрок. */
@@ -152,6 +154,10 @@ export class Controls {
     });
 
     window.addEventListener('mouseup', (event) => {
+      if (event.button === 0) {
+        this.hooks.onRelease();
+        return;
+      }
       if (event.button !== 2 || !this.blocking) return;
       this.blocking = false;
       this.hooks.onBlock(false);

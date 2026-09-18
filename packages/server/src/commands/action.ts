@@ -1,4 +1,6 @@
 import {
+  type ReleaseMessage,
+  releaseAction,
   SPELLS,
   beginAction,
   canDashAtWeight,
@@ -57,6 +59,15 @@ export const handleAction: CommandHandler<ActionMessage> = (ctx, payload) => {
 function dashDirection(intent: { forward: number; right: number; jump: boolean }): boolean {
   return intent.forward !== 0 || intent.right !== 0 || intent.jump;
 }
+
+/** Отпустил кнопку: натянутый лук стреляет. Без удержания — ничего. */
+export const handleRelease: CommandHandler<ReleaseMessage> = (ctx) => {
+  const combat = ctx.actor.combat;
+  if (combat.action && (combat.action.kind === 'attack' || combat.action.kind === 'heavy')) {
+    combat.action = releaseAction(combat.action);
+  }
+  return [];
+};
 
 export const handleBlock: CommandHandler<BlockMessage> = (ctx, payload) => {
   const { actor } = ctx;

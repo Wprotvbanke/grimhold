@@ -70,7 +70,7 @@ export interface ItemDef {
    * сходить за полсекунды до конца клипа, так решил владелец. Секунды,
    * как у `ActionTiming`; действует на лёгкий и тяжёлый удар.
    */
-  attackTiming?: { windup: number; active: number; recovery: number };
+  attackTiming?: { windup: number; active: number; recovery: number; hold?: number };
   /**
    * Во сколько раз эта вещь усиливает заклинания, пока она в руке.
    *
@@ -485,7 +485,12 @@ const ITEM_LIST: ItemDef[] = [
      * Натянуть — полторы секунды, выстрел, и короткий хвост: стрела сходит
      * за полсекунды до конца клипа выстрела (2.2 с, растянут на всё действие).
      */
-    attackTiming: { windup: 1.5, active: 0.1, recovery: 0.4 },
+    /**
+     * Удержание на секунде: зажал ЛКМ — тянешь, на секунде замах встаёт
+     * и стоит, отпустил — доигрывает последние полсекунды замаха и стреляет.
+     * Так просил владелец: стрела только по отпусканию.
+     */
+    attackTiming: { windup: 1.5, active: 0.1, recovery: 0.4, hold: 1.0 },
     description: 'Бьёт издали. Требует стрел.',
   },
   { id: 'leather_cap', name: 'Кожаный шлем', kind: 'armor', width: 2, height: 2, weight: 0.8, stack: 1, tier: 2, slot: 'head', armor: 5 },

@@ -21,7 +21,7 @@ import type { SkillId } from './skills.js';
  * Бинарный формат появится, когда состав пакетов устоится.
  */
 
-export const PROTOCOL_VERSION = 31;
+export const PROTOCOL_VERSION = 32;
 export const TICK_RATE = 20;
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -126,6 +126,14 @@ export const ActionSchema = z.object({
 export const BlockSchema = z.object({
   t: z.literal('block'),
   active: z.boolean(),
+});
+
+/**
+ * Отпустил кнопку удара. Нужно только луку: он стоит натянутым, пока
+ * кнопка зажата, и стреляет по отпусканию. Без удержания — пустое.
+ */
+export const ReleaseSchema = z.object({
+  t: z.literal('release'),
 });
 
 export const CastSchema = z.object({
@@ -449,6 +457,7 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   InputSchema,
   ActionSchema,
   BlockSchema,
+  ReleaseSchema,
   CastSchema,
   RespawnSchema,
   SpendPointSchema,
@@ -489,6 +498,7 @@ export type ChatMessage = z.infer<typeof ChatSchema>;
 export type InputMessage = z.infer<typeof InputSchema>;
 export type ActionMessage = z.infer<typeof ActionSchema>;
 export type BlockMessage = z.infer<typeof BlockSchema>;
+export type ReleaseMessage = z.infer<typeof ReleaseSchema>;
 export type CastMessage = z.infer<typeof CastSchema>;
 export type MoveItemMessage = z.infer<typeof MoveItemSchema>;
 export type EquipMessage = z.infer<typeof EquipSchema>;

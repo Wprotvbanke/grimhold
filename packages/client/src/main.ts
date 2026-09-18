@@ -390,6 +390,17 @@ const controls = new Controls(renderer.domElement, {
     if (!game) return;
     connection.send({ t: 'block', active });
   },
+  /**
+   * Отжал ЛКМ. Руки отпускают удержание сразу, серверу — намерение.
+   * Шлём только с луком: остальным удержание не знакомо, и слать нечего.
+   */
+  onRelease: () => {
+    if (!game) return;
+    const bowInHand = mainHandItem !== null && itemDef(mainHandItem as ItemId).skill === 'archery';
+    if (!bowInHand) return;
+    game.hands.release();
+    connection.send({ t: 'release' });
+  },
   onHotbar: (index) => useHotbar(index),
   onHarvest: () => {
     if (!game || combatUi.dead) return;
