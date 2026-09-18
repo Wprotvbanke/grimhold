@@ -333,9 +333,10 @@
       #panel > * { pointer-events: auto; position: absolute; z-index: 2; }
       /* Сама плита — слой между лицом и остальным: лицо лежит **под** ней
          и видно сквозь прозрачное окно, а голова левой горгульи заходит
-         на портрет, как задумал владелец. */
+         на портрет, как задумал владелец. Это холст со своим шейдером
+         (panelfx.ts); фон CSS — запас на случай, если WebGL не завёлся. */
       #panelPlate {
-        inset: 0; z-index: 1; pointer-events: none;
+        inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; display: block;
         background: url("/ui/panel.webp") center / 100% 100% no-repeat;
       }
       /* Холст лица шире окна (x 330…520, y 120…300 картинки): лишнее слева
@@ -1059,7 +1060,7 @@
          Картинка владельца; раскладка по её вырезам — docs/panel.md. -->
     <div id="panel" hidden>
       <canvas id="faceCanvas"></canvas>
-      <div id="panelPlate"></div>
+      <canvas id="panelPlate"></canvas>
       <div id="vitals">
         <div class="bar" id="barHealth"><i></i><span></span></div>
         <div class="bar" id="barStamina"><i></i><span></span></div>

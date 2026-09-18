@@ -38,6 +38,7 @@ import {
 } from '@grimhold/shared';
 import { CombatUi } from './combatui.js';
 import { createCompass } from './compass.js';
+import { createPanelFx } from './panelfx.js';
 import { createPortrait } from './portrait.js';
 import { Controls } from './controls.js';
 import { EntityInterpolator, type InterpolatedPose } from './interpolation.js';
@@ -116,6 +117,8 @@ const face = createPortrait(document.getElementById('faceCanvas') as HTMLCanvasE
   },
 });
 const compass = createCompass(document.getElementById('compass') as HTMLCanvasElement);
+/** Плита панели со своим шейдером — строки, люминофор, зерно (panelfx.ts). */
+const panelFx = createPanelFx(document.getElementById('panelPlate') as HTMLCanvasElement, '/ui/panel.webp');
 const labels = document.getElementById('labels')!;
 
 /**
@@ -1027,6 +1030,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     camera.rotation.y = controls.yaw;
     camera.rotation.x = controls.pitch;
     compass.update(controls.yaw);
+    panelFx.update(now);
 
     // 4. Чужие рисуются в прошлом, плавно между снапшотами.
     updateAvatars(now, dt);
