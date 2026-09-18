@@ -37,6 +37,12 @@ describe('звуки боя', () => {
     expect(played).toEqual(['swing', 'swing']);
   });
 
+  it('чужой каст звучит шёпотом заговора, а не взмахом', () => {
+    const { cues, played } = listen();
+    cues.entities([{ ...entity('m1', 'windup'), action: 'cast' }], 'me');
+    expect(played).toEqual(['castWhisper']);
+  });
+
   it('свой замах из снапшота не звучит — он уже прозвучал по нажатию', () => {
     const { cues, played } = listen();
     cues.entities([entity('me', 'windup')], 'me');

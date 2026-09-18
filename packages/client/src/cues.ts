@@ -97,7 +97,8 @@ export function createCues(sound: Sound): Cues {
         windingNow.add(entity.id);
         if (winding.has(entity.id)) continue;
         if (!boss) {
-          sound.play('swing', entity);
+          // Каст чужого — шёпот заговора из его точки, а не взмах.
+          sound.play(entity.action === 'cast' ? 'castWhisper' : 'swing', entity);
           continue;
         }
         sound.play('bossAttack', entity);
