@@ -49,9 +49,26 @@ export interface Settings {
   crt: CrtKind;
 }
 
-export type CrtKind = 'off' | 'newpixie' | 'lottes' | 'moire' | 'lottes2' | 'geom' | 'hyllian';
+export type CrtKind =
+  | 'off'
+  | 'newpixie'
+  | 'lottes'
+  | 'moire'
+  | 'lottes2'
+  | 'geom'
+  | 'hyllian'
+  | 'grits';
 
-const CRT_KINDS: readonly CrtKind[] = ['off', 'newpixie', 'lottes', 'moire', 'lottes2', 'geom', 'hyllian'];
+const CRT_KINDS: readonly CrtKind[] = [
+  'off',
+  'newpixie',
+  'lottes',
+  'moire',
+  'lottes2',
+  'geom',
+  'hyllian',
+  'grits',
+];
 
 /** Что в хранилище считать видом кинескопа. `on` — со времён, когда вид был один. */
 function crtKind(value: unknown): CrtKind {

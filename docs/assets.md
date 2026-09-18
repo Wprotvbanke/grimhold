@@ -12,6 +12,10 @@
 | Что | Откуда | Лицензия |
 |---|---|---|
 | `public/models/dwarf.glb` | [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 |
+| `src/moire.ts`, `src/lottes-multi.ts` | moire-resolve и crt-lottes-multipass хантерка по Лоттесу из `libretro/slang-shaders` и `libretro/glsl-shaders`, см. [crt.md](crt.md) | Public Domain |
+| `src/geom.ts` | [crt-geom-mini](https://github.com/libretro/glsl-shaders/blob/master/crt/shaders/crt-geom-mini.glsl) DariusG — реплика crt-geom | MIT, шапка в файле |
+| `src/hyllian.ts` | [crt-hyllian](https://github.com/tyrells/dosbox-svn-shaders/blob/master/crt/crt-hyllian.glsl) Хиллиана | MIT, шапка в файле |
+| `src/grits.ts` | [GritsScanlines](https://github.com/libretro/glsl-shaders/tree/master/crt/shaders/GritsScanlines) torridgristle; таблица 4×4 записана числами | Public Domain, по слову автора |
 | `src/lottes.ts` (шейдер «аркадного монитора») | [crt-lottes](https://github.com/tyrells/dosbox-svn-shaders/blob/master/crt/crt-lottes.glsl) Тимоти Лоттеса; перенесён руками в GLSL ES, см. [crt.md](crt.md) | Public Domain, по слову автора в шапке файла |
 | `src/crt.ts` (шейдер кинескопа) | [newpixie](https://github.com/libretro/slang-shaders/tree/master/crt/shaders/newpixie) Маттиаса Густавссона, перенос в slang — hunterk; у нас перенесён руками в GLSL ES, см. [crt.md](crt.md) | MIT или Public Domain на выбор — шапка сохранена в файле |
 | `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com), какой ассет — в `public/textures/LICENSE.txt` | CC0 |
