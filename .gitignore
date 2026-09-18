@@ -17,3 +17,8 @@ assets/source/
 # Мусор отладки: снимки экрана и временные скрипты.
 scripts/tmp-*
 screenshot*.png
+
+# Служебные файлы своего сервера разработки (docs/git.md)
+dev.pid
+dev.log
+dev.err.log
