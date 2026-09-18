@@ -175,6 +175,12 @@ interface HeldSpec {
    */
   hand?: Side;
   /**
+   * Насколько на замахе свести плечо держащей руки к центру — в долях
+   * разведения рук (`HANDS_SPREAD`): 1 снимает разведение, больше — тянет
+   * внутрь. У лука клип владельца уводит правую за край кадра.
+   */
+  swingPull?: number;
+  /**
    * Чем вещь машет в бою и при чтении свитка.
    *
    * У вещи, а не у действия: топор рубит и читать им нечего, посох
@@ -334,6 +340,8 @@ const HELD: Record<string, HeldSpec> = {
     hand: 'R',
     /** ЛКМ — выстрел клипом владельца; читать луком нечего. */
     swings: 'bowShot',
+    /** На выстреле правая шла слишком вправо — владелец просил к центру. Первая проба. */
+    swingPull: 4,
   },
 };
 
@@ -454,7 +462,13 @@ export class ViewModel {
   private readonly fists: Record<Side, Map<THREE.Bone, THREE.Quaternion>> = { L: new Map(), R: new Map() };
 
   /** Кости плеч: ими руки разводятся в стороны поверх анимации. */
-  private shoulders: { bone: THREE.Bone; axis: THREE.Vector3 }[] = [];
+  private shoulders: { bone: THREE.Bone; axis: THREE.Vector3; side: Side; applied: number }[] = [];
+  /**
+   * Насколько плечо держащей руки сведено к центру: 0 — как всегда,
+   * 1 — на полную `swingPull` вещи. Растёт на клипе замаха и гаснет после,
+   * плавно, тем же темпом, что хват (`GRIP_FADE`).
+   */
+  private pullBlend = 0;
   /** Лежит ли сейчас на плечах наша добавка. Снимается перед каждым микшером. */
   private spreadApplied = false;
   /** Посадка ещё не считалась при известном соотношении сторон. */
@@ -923,6 +937,11 @@ export class ViewModel {
     const wanted = this.choose(dt, state);
     if (wanted) this.play(wanted);
 
+    // Сведение плеча к центру на замахе — плавно, как хват.
+    const pullWanted = this.heldSpec?.swingPull && this.current === this.heldSpec.swings ? 1 : 0;
+    this.pullBlend += Math.sign(pullWanted - this.pullBlend) * Math.min(dt * GRIP_FADE, 1);
+    this.pullBlend = Math.min(1, Math.max(0, this.pullBlend));
+
     // Микшер обязан писать в чистую кость, поэтому добавку снимаем до него
     // и возвращаем после.
     this.unspreadArms();
@@ -948,8 +967,14 @@ export class ViewModel {
    */
   private spreadArms(): void {
     if (this.spreadApplied) return;
-    for (const { bone, axis } of this.shoulders) {
-      bone.position.addScaledVector(axis, HANDS_SPREAD);
+    const spec = this.heldSpec;
+    for (const shoulder of this.shoulders) {
+      // Плечо держащей руки на замахе сводится к центру: у лука клип уводит
+      // его вправо за кадр, и владелец просил держать ближе к середине.
+      const pull =
+        spec?.swingPull && shoulder.side === (spec.hand ?? 'R') ? spec.swingPull * this.pullBlend : 0;
+      shoulder.applied = HANDS_SPREAD * (1 - pull);
+      shoulder.bone.position.addScaledVector(shoulder.axis, shoulder.applied);
     }
     this.spreadApplied = true;
   }
@@ -968,8 +993,9 @@ export class ViewModel {
    */
   private unspreadArms(): void {
     if (!this.spreadApplied) return;
-    for (const { bone, axis } of this.shoulders) {
-      bone.position.addScaledVector(axis, -HANDS_SPREAD);
+    // Снимаем ровно столько, сколько положили: на замахе добавка другая.
+    for (const shoulder of this.shoulders) {
+      shoulder.bone.position.addScaledVector(shoulder.axis, -shoulder.applied);
     }
     this.spreadApplied = false;
   }
@@ -1314,7 +1340,7 @@ export class ViewModel {
       rig.updateMatrixWorld(true);
 
       if (after < before) axis.negate();
-      this.shoulders.push({ bone: found, axis });
+      this.shoulders.push({ bone: found, axis, side, applied: 0 });
     }
 
     /**

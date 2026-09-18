@@ -15,6 +15,29 @@ import puppeteer from 'puppeteer';
 
 const OUTPUT = process.argv[2] ?? 'screenshot.png';
 
+/**
+ * Открыть меню ведущего — F2 с повтором.
+ *
+ * Нажатие иногда теряется: в безголовом браузере с четырьмя холстами
+ * (мир, плита панели, лицо, компас) кадр идёт триста миллисекунд, и первое
+ * F2 порой уходит в пустоту. Жмём, ждём факта, не дождались — жмём снова.
+ */
+async function openAdmin(page: import('puppeteer').Page): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.keyboard.press('F2');
+    try {
+      await page.waitForFunction(
+        () => document.getElementById('admin')?.hasAttribute('hidden') === false,
+        { timeout: 5000 },
+      );
+      return;
+    } catch {
+      // ещё раз
+    }
+  }
+  throw new Error('меню ведущего (F2) не открылось');
+}
+
 const browser = await puppeteer.launch({
   headless: true,
   // Без этих флагов WebGL в headless не поднимается: нужен программный вывод.
@@ -31,6 +54,7 @@ const browser = await puppeteer.launch({
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1600, height: 900 });
+  page.on('pageerror', (error) => console.log('  [страница]', String(error).slice(0, 600)));
   page.on('console', (message) => {
     const text = message.text();
     // Ошибка шейдера — это длинный лог с номером строки в самом конце;
@@ -228,13 +252,7 @@ try {
   };
   const hour = HOURS[process.env.GRIMHOLD_HOUR ?? ''];
   if (hour) {
-    await page.keyboard.press('F2');
-    // Ждём факта, а не паузы: меню доходит до игры не всегда за полсекунды,
-    // и клик по кнопке часов уходил в пустоту — время оставалось прежним.
-    await page.waitForFunction(
-      () => document.getElementById('admin')?.hasAttribute('hidden') === false,
-      { timeout: 10000 },
-    );
+    await openAdmin(page);
     const clicked = await page.evaluate((label: string) => {
       const buttons = [...document.querySelectorAll('#adminHours button')] as HTMLButtonElement[];
       const wanted = buttons.find((button) => button.textContent === label);
@@ -404,11 +422,7 @@ try {
    * `bank` — открыть казну: там окно шире обычного, и раскладку видно только так.
    */
   if (open === 'bank') {
-    await page.keyboard.press('F2');
-    await page.waitForFunction(
-      () => document.getElementById('admin')?.hasAttribute('hidden') === false,
-      { timeout: 10000 },
-    );
+    await openAdmin(page);
     await page.evaluate(() => {
       (document.getElementById('adminTeleport') as HTMLInputElement).value = '';
     });
@@ -441,8 +455,7 @@ try {
         id,
       );
 
-    await page.keyboard.press('F2');
-    await shown('admin');
+    await openAdmin(page);
     // Две выдачи подряд: первая заполнит стопку, вторая ляжет рядом.
     for (let round = 0; round < 2; round++) {
       await page.evaluate(() => {
@@ -511,8 +524,7 @@ try {
         id,
       );
 
-    await page.keyboard.press('F2');
-    await shown('admin');
+    await openAdmin(page);
     // Все три разряда сразу: смысл ряда умений в том, что цвета разные.
     await page.evaluate(() => {
       const wanted = ['Огненный шар', 'Заморозка', 'Заживление ран'];
@@ -619,8 +631,7 @@ try {
       if (!(await inserted())) {
         await page.keyboard.press('Tab');
         await wait(300);
-        await page.keyboard.press('F2');
-        await shown('admin');
+        await openAdmin(page);
         await page.evaluate(() => {
           const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
           buttons.find((button) => button.textContent === 'Медитация')?.click();
@@ -717,8 +728,7 @@ try {
         id,
       );
 
-    await page.keyboard.press('F2');
-    await shown('admin');
+    await openAdmin(page);
     await page.evaluate(() => {
       const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
       buttons.find((button) => button.textContent === 'Зелье лечения')?.click();
@@ -760,8 +770,7 @@ try {
     await wait(400);
     // Сперва ранимся: на полном здоровье лечение не покажет себя ничем.
     if (process.env.GRIMHOLD_HURT === '1') {
-      await page.keyboard.press('F2');
-      await shown('admin');
+      await openAdmin(page);
       await page.evaluate(() => {
         const buttons = [...document.querySelectorAll('#adminHours button')] as HTMLButtonElement[];
         buttons.find((button) => button.textContent === 'Ранить')?.click();
@@ -814,8 +823,7 @@ try {
         id,
       );
 
-    await page.keyboard.press('F2');
-    await shown('admin');
+    await openAdmin(page);
     // Имя передаём в страницу: замыкания скрипта внутри браузера не видно.
     await page.evaluate((name: string) => {
       const buttons = [...document.querySelectorAll('#adminItems button')] as HTMLButtonElement[];
