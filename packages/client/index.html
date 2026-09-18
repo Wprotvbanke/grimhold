@@ -325,7 +325,8 @@
          Лежит поверх рюкзака (z 14): в ячейки кладут вещи перетаскиванием. */
       #panel {
         position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
-        width: min(1200px, 100vw); aspect-ratio: 1600 / 335;
+        /* Была 1200 px во всю ширину; владелец попросил на пятую часть меньше. */
+        width: min(960px, 80vw); aspect-ratio: 1600 / 335;
         background: url("/ui/panel.webp") center / 100% 100% no-repeat;
         z-index: 14; pointer-events: none;
       }
