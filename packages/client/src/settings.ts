@@ -41,12 +41,21 @@ export interface Settings {
   /** Постобработка: свечение огня, цвет, тёмные края кадра. См. post.ts. */
   effects: 'on' | 'off';
   /**
-   * Кинескоп — картинка как на старом телевизоре. См. crt.ts и docs/crt.md.
+   * Кинескоп — картинка как на старом телевизоре, двух видов. См. docs/crt.md.
    *
    * По умолчанию выключен и включаться всем не должен: у людей с тонким
    * зрением от строк и мерцания болит голова. Это выбор игрока.
    */
-  crt: 'on' | 'off';
+  crt: CrtKind;
+}
+
+export type CrtKind = 'off' | 'newpixie' | 'lottes';
+
+/** Что в хранилище считать видом кинескопа. `on` — со времён, когда вид был один. */
+function crtKind(value: unknown): CrtKind {
+  if (value === 'on' || value === 'newpixie') return 'newpixie';
+  if (value === 'lottes') return 'lottes';
+  return 'off';
 }
 
 const STORAGE_KEY = 'grimhold.settings';
@@ -102,7 +111,7 @@ export function loadSettings(): Settings {
       ambience: level(parsed.ambience, DEFAULTS.ambience),
       music: level(parsed.music, DEFAULTS.music),
       effects: parsed.effects === 'on' || parsed.effects === 'off' ? parsed.effects : DEFAULTS.effects,
-      crt: parsed.crt === 'on' || parsed.crt === 'off' ? parsed.crt : DEFAULTS.crt,
+      crt: crtKind(parsed.crt),
     };
   } catch {
     // Хранилище может быть недоступно (приватное окно) — это не повод падать.
@@ -183,10 +192,10 @@ export function createSettings(
     save();
   });
   crt.addEventListener('change', () => {
-    current.crt = crt.value === 'on' ? 'on' : 'off';
+    current.crt = crtKind(crt.value);
     save();
     // Кинескоп — проход постобработки: без неё ему негде рисоваться.
-    if (current.crt === 'on' && current.effects === 'off') {
+    if (current.crt !== 'off' && current.effects === 'off') {
       readout.textContent = 'Старый телевизор работает только при включённых эффектах.';
     }
   });

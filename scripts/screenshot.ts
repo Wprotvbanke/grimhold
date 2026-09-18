@@ -33,7 +33,10 @@ try {
   await page.setViewport({ width: 1600, height: 900 });
   page.on('console', (message) => {
     const text = message.text();
-    if (/ошибк|error|\[sky\]/i.test(text)) console.log('  [браузер]', text.slice(0, 200));
+    // Ошибка шейдера — это длинный лог с номером строки в самом конце;
+    // двести символов от неё оставляют одно «VALIDATE_STATUS false».
+    const keep = /Shader Error/.test(text) ? 4000 : 200;
+    if (/ошибк|error|\[sky\]/i.test(text)) console.log('  [браузер]', text.slice(0, keep));
   });
 
   /**
@@ -49,11 +52,13 @@ try {
     });
   }
 
-  // `GRIMHOLD_CRT=1` — снять с кинескопом (docs/crt.md). По умолчанию он выключен.
-  if (process.env.GRIMHOLD_CRT === '1') {
-    await page.evaluateOnNewDocument(() => {
-      localStorage.setItem('grimhold.settings', JSON.stringify({ effects: 'on', crt: 'on' }));
-    });
+  // `GRIMHOLD_CRT=newpixie|lottes` — снять с кинескопом (docs/crt.md); `1` — newpixie.
+  const tube = process.env.GRIMHOLD_CRT;
+  if (tube) {
+    const kind = tube === 'lottes' ? 'lottes' : 'newpixie';
+    await page.evaluateOnNewDocument((crt: string) => {
+      localStorage.setItem('grimhold.settings', JSON.stringify({ effects: 'on', crt }));
+    }, kind);
   }
 
   /**

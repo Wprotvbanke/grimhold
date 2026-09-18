@@ -12,6 +12,7 @@ import {
   VignetteEffect,
 } from 'postprocessing';
 import { CrtEffect } from './crt.js';
+import { LottesEffect } from './lottes.js';
 
 /**
  * Постобработка: свечение огня, мрачный цвет, тёмные края кадра.
@@ -41,9 +42,14 @@ import { CrtEffect } from './crt.js';
 export interface PostSettings {
   effects: 'on' | 'off';
   antialias: boolean;
-  /** Кинескоп поверх всего — см. crt.ts и docs/crt.md. Работает только при включённых эффектах. */
-  crt: 'on' | 'off';
+  /**
+   * Кинескоп поверх всего — см. docs/crt.md. Работает только при включённых
+   * эффектах. Видов два: `newpixie` (crt.ts) и `lottes` (lottes.ts).
+   */
+  crt: CrtKind;
 }
+
+export type CrtKind = 'off' | 'newpixie' | 'lottes';
 
 export interface PostProcessing {
   configure(settings: PostSettings): void;
@@ -128,8 +134,11 @@ export function createPost(
    * тонмаппинг и ждёт готовую картинку. Поставить его до ACES значило бы
    * сжечь цвета дважды.
    */
-  const crt = new EffectPass(camera, new CrtEffect());
-  composer.addPass(crt);
+  const tubes: Record<Exclude<CrtKind, 'off'>, EffectPass> = {
+    newpixie: new EffectPass(camera, new CrtEffect()),
+    lottes: new EffectPass(camera, new LottesEffect()),
+  };
+  for (const pass of Object.values(tubes)) composer.addPass(pass);
 
   let enabled = true;
   /**
@@ -148,10 +157,13 @@ export function createPost(
       // Сглаживание рендерера до буфера не доходит — у буфера оно своё,
       // и его, в отличие от рендерера, можно менять на ходу.
       composer.multisampling = antialias ? SAMPLES : 0;
-      // На экран рисует тот, кто стоит последним из включённых.
-      crt.enabled = tube === 'on';
-      crt.renderToScreen = crt.enabled;
-      grading.renderToScreen = !crt.enabled;
+      // На экран рисует тот, кто стоит последним из включённых: включён
+      // самое большее один кинескоп, остальные выключены целиком.
+      for (const [kind, pass] of Object.entries(tubes)) {
+        pass.enabled = kind === tube;
+        pass.renderToScreen = pass.enabled;
+      }
+      grading.renderToScreen = tube === 'off';
     },
 
     render(draw) {
