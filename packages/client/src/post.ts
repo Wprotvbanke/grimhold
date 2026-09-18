@@ -15,6 +15,8 @@ import { CrtEffect } from './crt.js';
 import { LottesEffect } from './lottes.js';
 import { MoireEffect } from './moire.js';
 import { createLottesMultipass } from './lottes-multi.js';
+import { GeomEffect } from './geom.js';
+import { HyllianEffect } from './hyllian.js';
 
 /**
  * Постобработка: свечение огня, мрачный цвет, тёмные края кадра.
@@ -51,7 +53,7 @@ export interface PostSettings {
   crt: CrtKind;
 }
 
-export type CrtKind = 'off' | 'newpixie' | 'lottes' | 'moire' | 'lottes2';
+export type CrtKind = 'off' | 'newpixie' | 'lottes' | 'moire' | 'lottes2' | 'geom' | 'hyllian';
 
 export interface PostProcessing {
   configure(settings: PostSettings): void;
@@ -145,6 +147,8 @@ export function createPost(
     lottes: [new EffectPass(camera, new LottesEffect())],
     moire: [new EffectPass(camera, new MoireEffect())],
     lottes2: createLottesMultipass(camera),
+    geom: [new EffectPass(camera, new GeomEffect())],
+    hyllian: [new EffectPass(camera, new HyllianEffect())],
   };
   for (const passes of Object.values(tubes)) for (const pass of passes) composer.addPass(pass);
 
