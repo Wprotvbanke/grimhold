@@ -49,10 +49,11 @@ describe('звуки боя', () => {
     expect(played).toEqual([]);
   });
 
-  it('с луком удар звучит тетивой, а не взмахом', () => {
+  it('с луком удар звучит натяжкой и тетивой, а не взмахом', () => {
     const { cues, played } = listen();
     cues.ownAction('attack', true);
-    expect(played).toEqual([]);
+    expect(played).toEqual(['bowDraw']);
+    played.length = 0;
 
     cues.projectiles([arrow('a1')]);
     cues.projectiles([arrow('a1')]);

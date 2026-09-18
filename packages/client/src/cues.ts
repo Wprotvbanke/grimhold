@@ -68,8 +68,10 @@ export function createCues(sound: Sound): Cues {
   return {
     ownAction(kind, bowInHand) {
       if (kind === 'dodge') sound.play('dodge');
-      // С луком удар — это выстрел: звучит тетива, когда стрела появится.
-      else if (!bowInHand) sound.play('swing');
+      // С луком удар — это выстрел: сейчас скрипит натяжка, а спуск тетивы
+      // прозвучит, когда стрела появится.
+      else if (bowInHand) sound.play('bowDraw');
+      else sound.play('swing');
     },
 
     ownCast() {
