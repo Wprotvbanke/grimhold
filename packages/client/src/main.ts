@@ -93,9 +93,16 @@ const hud = document.getElementById('hud')!;
  * игрок в мире: окно маленькое, рендер его дешевле одного фонаря.
  */
 const face = createPortrait(document.getElementById('faceCanvas') as HTMLCanvasElement, {
-  frame: 0.32,
-  aim: 0.78,
-  turn: -0.35,
+  frame: 0.27,
+  aim: 0.77,
+  turn: 0.15,
+  /**
+   * Голова в стойке стоит правее середины фигуры, а кадр увеличен вчетверо
+   * против рюкзака — и смещение растёт вчетверо же. Фигура сдвинута влево,
+   * чтобы лицо встало посреди окна (окно — правые две трети холста,
+   * левую треть прячет горгулья).
+   */
+  shift: -0.11,
 });
 const compass = createCompass(document.getElementById('compass') as HTMLCanvasElement);
 const labels = document.getElementById('labels')!;

@@ -54,6 +54,17 @@ export function createCompass(canvas: HTMLCanvasElement): Compass {
     context.strokeStyle = '#6e6656';
     context.stroke();
 
+    // Фосфор: тусклое зелёное свечение изнутри, гуще к середине —
+    // как у старого циферблата в темноте. Владелец просил «совсем немного».
+    const glow = context.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    glow.addColorStop(0, 'rgba(110, 220, 130, 0.22)');
+    glow.addColorStop(0.7, 'rgba(90, 190, 110, 0.1)');
+    glow.addColorStop(1, 'rgba(60, 140, 80, 0)');
+    context.beginPath();
+    context.arc(cx, cy, radius, 0, Math.PI * 2);
+    context.fillStyle = glow;
+    context.fill();
+
     context.save();
     context.translate(cx, cy);
     /**
@@ -101,6 +112,9 @@ export function createCompass(canvas: HTMLCanvasElement): Compass {
       context.translate(Math.sin(angle) * radius * 0.55, -Math.cos(angle) * radius * 0.55);
       context.rotate(-yaw);
       context.fillStyle = letter === 'С' ? '#f2c66d' : '#ddd3ba';
+      // Буквы чуть светятся тем же фосфором.
+      context.shadowColor = 'rgba(120, 230, 140, 0.55)';
+      context.shadowBlur = radius * 0.12;
       context.fillText(letter, 0, 0);
       context.restore();
     }

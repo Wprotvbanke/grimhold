@@ -327,19 +327,26 @@
         position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
         /* Была 1200 px во всю ширину; владелец попросил на пятую часть меньше. */
         width: min(960px, 80vw); aspect-ratio: 1600 / 335;
-        background: url("/ui/panel.webp") center / 100% 100% no-repeat;
         z-index: 14; pointer-events: none;
       }
       #panel[hidden] { display: none; }
-      #panel > * { pointer-events: auto; }
-      /* Окно портрета: x 390…514, y 137…292 картинки. */
+      #panel > * { pointer-events: auto; position: absolute; z-index: 2; }
+      /* Сама плита — слой между лицом и остальным: лицо лежит **под** ней
+         и видно сквозь прозрачное окно, а голова левой горгульи заходит
+         на портрет, как задумал владелец. */
+      #panelPlate {
+        inset: 0; z-index: 1; pointer-events: none;
+        background: url("/ui/panel.webp") center / 100% 100% no-repeat;
+      }
+      /* Холст лица шире окна (x 330…520, y 120…300 картинки): лишнее слева
+         прячет горгулья, сквозь окно 390…514 виден центр лица. */
       #faceCanvas {
-        position: absolute; left: 24.375%; top: 40.9%; width: 7.8125%; height: 46.57%;
-        display: block; background: radial-gradient(ellipse at 50% 30%, #3a3632, #141312 80%);
+        left: 20.6%; top: 35.8%; width: 11.9%; height: 53.7%; z-index: 0;
+        display: block; background: radial-gradient(ellipse at 60% 30%, #3a3632, #141312 80%);
       }
       /* Три щели полосок: x 544, 573, 601 (по 12 px), y 136…292. Стоят
          вертикально, наполнение растёт снизу вверх. */
-      #vitals { position: absolute; left: 34%; top: 40.6%; width: 4.4%; height: 46.87%; }
+      #vitals { left: 34%; top: 40.6%; width: 4.4%; height: 46.87%; }
       .bar {
         position: absolute; top: 0; width: 17.1%; height: 100%;
         background: rgba(6, 6, 8, 0.8); overflow: hidden;
@@ -369,7 +376,7 @@
       /* Панель быстрого доступа — десять камней в два ряда: x 626…1089,
          y 120…300 картинки, швы по 3–4 px. Верхний ряд — 1…5, нижний — 6…0. */
       #hotbar {
-        position: absolute; left: 39.125%; top: 35.82%; width: 28.94%; height: 53.73%;
+        left: 39.125%; top: 35.82%; width: 28.94%; height: 53.73%;
         display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: 1fr 1fr;
         gap: 2.2% 0.65%;
       }
@@ -411,9 +418,10 @@
       #hotbar.editing .hot.filled:hover {
         border-color: #a8554a; background: rgba(58, 29, 26, 0.85); color: #d8a89e;
       }
-      /* Компас — большой правый камень: x 1092…1215, y 120…300 картинки. */
+      /* Компас — большой правый камень: x 1092…1215, y 120…300 картинки;
+         владелец попросил чуть правее середины камня. */
       #compass {
-        position: absolute; left: 68.25%; top: 35.82%; width: 7.69%; height: 53.73%;
+        left: 69%; top: 35.82%; width: 7.69%; height: 53.73%;
         display: block; pointer-events: none;
       }
 
@@ -1051,6 +1059,7 @@
          Картинка владельца; раскладка по её вырезам — docs/panel.md. -->
     <div id="panel" hidden>
       <canvas id="faceCanvas"></canvas>
+      <div id="panelPlate"></div>
       <div id="vitals">
         <div class="bar" id="barHealth"><i></i><span></span></div>
         <div class="bar" id="barStamina"><i></i><span></span></div>
