@@ -339,11 +339,34 @@
         inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; display: block;
         background: url("/ui/panel.webp") center / 100% 100% no-repeat;
       }
-      /* Холст лица шире окна (x 330…520, y 120…300 картинки): лишнее слева
-         прячет горгулья, сквозь окно 390…514 виден центр лица. */
-      #faceCanvas {
+      /* Окно лица шире выреза (x 330…520, y 120…300 картинки): лишнее слева
+         прячет горгулья, сквозь вырез 390…514 видна картинка. Лежит под
+         плитой (z 0): серый задник, дымка и картинка настроения (face.ts). */
+      #faceWindow {
         left: 20.6%; top: 35.8%; width: 11.9%; height: 53.7%; z-index: 0;
-        display: block; background: radial-gradient(ellipse at 60% 30%, #3a3632, #141312 80%);
+        overflow: hidden; background: radial-gradient(ellipse at 60% 40%, #6a6660, #3a3835 85%);
+      }
+      /* Дымка: два пятна тумана медленно плывут по заднику. */
+      #faceWindow .haze {
+        position: absolute; inset: -40%;
+        background:
+          radial-gradient(ellipse at 30% 40%, rgba(220, 216, 205, 0.35), transparent 55%),
+          radial-gradient(ellipse at 70% 65%, rgba(200, 196, 188, 0.28), transparent 50%);
+        animation: hazeDrift 14s ease-in-out infinite alternate;
+        pointer-events: none;
+      }
+      @keyframes hazeDrift {
+        from { transform: translate(-6%, -4%) rotate(-3deg); }
+        to { transform: translate(6%, 5%) rotate(3deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #faceWindow .haze { animation: none; }
+      }
+      /* Картинка — по вырезу окна: x 390…514 от 330…520, y 137…292 от 120…300. */
+      #faceWindow img {
+        position: absolute; left: 31.6%; top: 9.4%; width: 65.3%; height: 86.1%;
+        object-fit: contain; object-position: center bottom; display: block;
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
       }
       /* Три щели полосок: x 544, 573, 601 (по 12 px), y 136…292. Стоят
          вертикально, наполнение растёт снизу вверх. */
@@ -1059,7 +1082,7 @@
     <!-- Панель внизу экрана: портрет, полосы, ячейки быстрого доступа, компас.
          Картинка владельца; раскладка по её вырезам — docs/panel.md. -->
     <div id="panel" hidden>
-      <canvas id="faceCanvas"></canvas>
+      <div id="faceWindow"><div class="haze"></div><img id="faceMood" alt="" src="/ui/face/full.webp"></div>
       <canvas id="panelPlate"></canvas>
       <div id="vitals">
         <div class="bar" id="barHealth"><i></i><span></span></div>

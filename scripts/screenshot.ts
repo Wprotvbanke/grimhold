@@ -980,6 +980,14 @@ try {
     }
   }
 
+  // Лицо в панели и здоровье — по ним видно, сработала ли вспышка (docs/panel.md).
+  console.log(
+    '  [face]',
+    await page.evaluate(() => ({
+      mood: (document.getElementById('faceMood') as HTMLImageElement | null)?.src.split('/').pop(),
+      health: document.getElementById('barHealth')?.title,
+    })),
+  );
   await page.screenshot({ path: OUTPUT });
   console.log(`снимок сохранён: ${OUTPUT}`);
 } finally {

@@ -39,7 +39,7 @@ import {
 import { CombatUi } from './combatui.js';
 import { createCompass } from './compass.js';
 import { createPanelFx } from './panelfx.js';
-import { createPortrait } from './portrait.js';
+import { createFace } from './face.js';
 import { Controls } from './controls.js';
 import { EntityInterpolator, type InterpolatedPose } from './interpolation.js';
 import {
@@ -89,35 +89,10 @@ const hud = document.getElementById('hud')!;
 /** Своя мана по последнему снапшоту: по ней отказ свитка звучит сразу под пальцем. */
 let selfMana = Infinity;
 /**
- * Лицо в окне панели и компас в её правом камне.
- *
- * Лицо — тот же живой портрет, что в рюкзаке, только кадр взят по голове:
- * три десятых роста в высоту, взгляд камеры в лицо. Дышит всегда, пока
- * игрок в мире: окно маленькое, рендер его дешевле одного фонаря.
+ * Лицо в окне панели — картинки настроения (face.ts) — и компас в её
+ * правом камне.
  */
-const face = createPortrait(document.getElementById('faceCanvas') as HTMLCanvasElement, {
-  frame: 0.27,
-  aim: 0.77,
-  turn: 0.15,
-  /**
-   * Голова в стойке стоит правее середины фигуры, а кадр увеличен вчетверо
-   * против рюкзака — и смещение растёт вчетверо же. Фигура сдвинута влево,
-   * чтобы лицо встало посреди окна (окно — правые две трети холста,
-   * левую треть прячет горгулья).
-   */
-  shift: -0.11,
-  /**
-   * Поправки по расам — по кадрам за каждую: у человека и дворфа голова
-   * в стойке стоит ближе к оси и выше, чем у эльфа, и с эльфийскими
-   * мерками в окне были плечо и рука.
-   */
-  byRace: {
-    // Человек подобран по дворфу, а не по кадру: за Ратмира играл владелец,
-    // и второй вход скрипту не дался. Если в окне плечо — крутить здесь.
-    human: { shift: 0.01, aim: 0.9, zoom: 1.35 },
-    dwarf: { shift: -0.01, aim: 0.9 },
-  },
-});
+const face = createFace(document.getElementById('faceMood') as HTMLImageElement);
 const compass = createCompass(document.getElementById('compass') as HTMLCanvasElement);
 /** Плита панели со своим шейдером — строки, люминофор, зерно (panelfx.ts). */
 const panelFx = createPanelFx(document.getElementById('panelPlate') as HTMLCanvasElement, '/ui/panel.webp');
@@ -383,6 +358,8 @@ const controls = new Controls(renderer.domElement, {
     // удар. Отказанный удар молчит так же, как молчат руки.
     const bowInHand = mainHandItem !== null && itemDef(mainHandItem as ItemId).skill === 'archery';
     cues.ownAction(kind, bowInHand);
+    // Лицо в панели: начал бой.
+    if (kind !== 'dodge') face.fight();
 
     connection.send({ t: 'action', kind, seq: actionSeq++, viewTick: viewTick() });
   },
@@ -547,6 +524,7 @@ const connection = new Connection(SERVER_URL, {
   },
   onTrade: (message) => {
     tradeOpen = message.stage === 'open' || message.stage === 'invited';
+    face.trade(message.stage);
     if (tradeOpen) openInventory();
     inventoryUi.setTrade(message);
     if (message.note) ui.system(message.note);
@@ -664,6 +642,7 @@ function useHotbar(index: number): void {
   } else if (spellId && SPELLS[spellId].shape !== 'channel' && game.hands.beginAction('cast', spellId)) {
     // Шёпот заговора — вместе с руками: если замах не начался, молчим.
     cues.ownCast();
+    face.fight();
   }
 
   connection.send({ t: 'useHotbar', index, viewTick: viewTick() });
@@ -955,8 +934,7 @@ function startGame(character: CharacterSummary, spawn: { x: number; y: number; z
   // к классу. Рюкзак об этом не знает — он приходит без персонажа. Заодно
   // окно рюкзака получает карточку персонажа и модель расы для куклы.
   inventoryUi.setCharacter(character);
-  face.setRace(character.race);
-  face.start();
+  face.reset();
 
   game?.hands.dispose();
 
@@ -1055,6 +1033,7 @@ renderer.setAnimationLoop((frameTime: number) => {
     camera.rotation.y = controls.yaw;
     camera.rotation.x = controls.pitch;
     compass.update(controls.yaw);
+    face.update(now);
     panelFx.update(now);
 
     // 4. Чужие рисуются в прошлом, плавно между снапшотами.
@@ -1555,6 +1534,7 @@ function consumeSnapshot(): void {
   game.predictor.reconcile(newest.self, newest.ack);
   combatUi.updateVitals(newest.self);
   selfMana = newest.self.mana;
+  face.vitals(newest.self.health, newest.self.maxHealth);
   // Выработанные ноды: клиент знает про них всё, кроме того, взяли ли с них
   // урожай, — это единственное, что приходит с сервера.
   world.nodes.setDepleted(newest.depletedNodes);
