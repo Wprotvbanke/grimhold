@@ -103,6 +103,17 @@ const face = createPortrait(document.getElementById('faceCanvas') as HTMLCanvasE
    * левую треть прячет горгулья).
    */
   shift: -0.11,
+  /**
+   * Поправки по расам — по кадрам за каждую: у человека и дворфа голова
+   * в стойке стоит ближе к оси и выше, чем у эльфа, и с эльфийскими
+   * мерками в окне были плечо и рука.
+   */
+  byRace: {
+    // Человек подобран по дворфу, а не по кадру: за Ратмира играл владелец,
+    // и второй вход скрипту не дался. Если в окне плечо — крутить здесь.
+    human: { shift: -0.02, aim: 0.88 },
+    dwarf: { shift: -0.01, aim: 0.9 },
+  },
 });
 const compass = createCompass(document.getElementById('compass') as HTMLCanvasElement);
 const labels = document.getElementById('labels')!;
