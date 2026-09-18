@@ -44,6 +44,7 @@ uniform float shadowMask;
 uniform float thickness;
 uniform float darkness;
 uniform float scanlines;
+uniform float strength;
 uniform float frame;
 uniform float motion;
 
@@ -132,6 +133,10 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
   if (scanlines > 0.5 && mod(fragCoord.y, thickness * 2.0) < thickness) col *= 1.0 - darkness;
   if (shadowMask > 0.0) col *= Mask(cc * resolution * 1.000001);
 
+  // Общая сила: смесь с чистым кадром в той же выгнутой точке.
+  vec3 clean = max(texture2D(inputBuffer, cc).rgb, 0.0);
+  col = mix(clean, col, strength);
+
   // За выгнутым краем — чёрное.
   if (cc.x <= 0.0001 || cc.x >= 0.9999 || cc.y <= 0.0001 || cc.y >= 0.9999) col = vec3(0.0);
 
@@ -154,6 +159,8 @@ export interface MoireOptions {
   darkness: number;
   /** Строки выключены у автора по умолчанию. */
   scanlines: number;
+  /** Общая сила, 0…1: смесь с чистым кадром. Владелец просил на четверть слабее. */
+  strength: number;
 }
 
 const DEFAULTS: MoireOptions = {
@@ -165,6 +172,7 @@ const DEFAULTS: MoireOptions = {
   thickness: 2,
   darkness: 0.35,
   scanlines: 0,
+  strength: 0.75,
 };
 
 export class MoireEffect extends Effect {
@@ -184,6 +192,7 @@ export class MoireEffect extends Effect {
         ['thickness', new THREE.Uniform(s.thickness)],
         ['darkness', new THREE.Uniform(s.darkness)],
         ['scanlines', new THREE.Uniform(s.scanlines)],
+        ['strength', new THREE.Uniform(s.strength)],
         ['frame', new THREE.Uniform(0)],
         ['motion', new THREE.Uniform(still ? 0 : 1)],
       ]),

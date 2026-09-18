@@ -64,7 +64,8 @@ export interface GritsOptions {
   opacity: number;
 }
 
-const DEFAULTS: GritsOptions = { pixel: 4, opacity: 0.9 };
+// Была 0.9; владелец просил телевизор на четверть слабее — 0.9 × 0.75.
+const DEFAULTS: GritsOptions = { pixel: 4, opacity: 0.675 };
 
 export class GritsEffect extends Effect {
   constructor(options: Partial<GritsOptions> = {}) {
