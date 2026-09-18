@@ -479,7 +479,17 @@ export const TOWN_HOUSES: readonly {
   { model: 'village_house4', x: 25, z: 10.5, turn: Math.PI, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.four },
   // Юго-восток: вдоль южной улицы, фасадом на запад.
   // Здесь стоял дом с галереей — владелец заменил его ратушей со своей моделью.
-  { model: 'town_hall', x: 11, z: 15, turn: -Math.PI / 2, height: 11, sink: VILLAGE_SINK, footprint: HOUSE.hall },
+  // Довёрнута на 35° вправо от ряда — владелец решил так, глядя на квартал.
+  // Коробка считается из пятна той же формулой поворота и едет за фасадом.
+  {
+    model: 'town_hall',
+    x: 11,
+    z: 15,
+    turn: -Math.PI / 2 - (35 * Math.PI) / 180,
+    height: 11,
+    sink: VILLAGE_SINK,
+    footprint: HOUSE.hall,
+  },
   { model: 'village_house5', x: 13, z: 29, turn: -Math.PI / 2, height: 9, sink: VILLAGE_SINK, footprint: HOUSE.five },
 
   // Юго-запад: вдоль западной улицы, фасадом на север.
