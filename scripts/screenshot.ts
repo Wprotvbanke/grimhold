@@ -49,6 +49,13 @@ try {
     });
   }
 
+  // `GRIMHOLD_CRT=1` — снять с кинескопом (docs/crt.md). По умолчанию он выключен.
+  if (process.env.GRIMHOLD_CRT === '1') {
+    await page.evaluateOnNewDocument(() => {
+      localStorage.setItem('grimhold.settings', JSON.stringify({ effects: 'on', crt: 'on' }));
+    });
+  }
+
   /**
    * `GRIMHOLD_SLOW=мбит` — придушить канал.
    *

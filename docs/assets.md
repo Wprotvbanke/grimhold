@@ -12,6 +12,7 @@
 | Что | Откуда | Лицензия |
 |---|---|---|
 | `public/models/dwarf.glb` | [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 |
+| `src/crt.ts` (шейдер кинескопа) | [newpixie](https://github.com/libretro/slang-shaders/tree/master/crt/shaders/newpixie) Маттиаса Густавссона, перенос в slang — hunterk; у нас перенесён руками в GLSL ES, см. [crt.md](crt.md) | MIT или Public Domain на выбор — шапка сохранена в файле |
 | `public/textures/*.jpg` | [Poly Haven](https://polyhaven.com), какой ассет — в `public/textures/LICENSE.txt` | CC0 |
 | `public/textures/*_{normal,arm}.webp` | Poly Haven, те же ассеты: нормали (`nor_gl`) и ARM в 1K, собраны `scripts/prepare-surfaces.ts` | CC0 |
 | `public/textures/buildings/*.png` | [Kenney](https://kenney.nl) | CC0 |

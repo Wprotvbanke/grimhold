@@ -40,6 +40,13 @@ export interface Settings {
   music: number;
   /** Постобработка: свечение огня, цвет, тёмные края кадра. См. post.ts. */
   effects: 'on' | 'off';
+  /**
+   * Кинескоп — картинка как на старом телевизоре. См. crt.ts и docs/crt.md.
+   *
+   * По умолчанию выключен и включаться всем не должен: у людей с тонким
+   * зрением от строк и мерцания болит голова. Это выбор игрока.
+   */
+  crt: 'on' | 'off';
 }
 
 const STORAGE_KEY = 'grimhold.settings';
@@ -53,6 +60,7 @@ const DEFAULTS: Settings = {
   ambience: 0.6,
   music: 0.5,
   effects: 'on',
+  crt: 'off',
 };
 
 function el<T extends HTMLElement>(id: string): T {
@@ -94,6 +102,7 @@ export function loadSettings(): Settings {
       ambience: level(parsed.ambience, DEFAULTS.ambience),
       music: level(parsed.music, DEFAULTS.music),
       effects: parsed.effects === 'on' || parsed.effects === 'off' ? parsed.effects : DEFAULTS.effects,
+      crt: parsed.crt === 'on' || parsed.crt === 'off' ? parsed.crt : DEFAULTS.crt,
     };
   } catch {
     // Хранилище может быть недоступно (приватное окно) — это не повод падать.
@@ -129,6 +138,7 @@ export function createSettings(
   const ambience = el<HTMLInputElement>('setAmbience');
   const music = el<HTMLInputElement>('setMusic');
   const effects = el<HTMLSelectElement>('setFx');
+  const crt = el<HTMLSelectElement>('setCrt');
   const readout = el<HTMLParagraphElement>('setStats');
 
   fps.value = String(current.fpsCap);
@@ -136,6 +146,7 @@ export function createSettings(
   shadows.value = current.shadows;
   smoothing.value = current.antialias ? 'on' : 'off';
   effects.value = current.effects;
+  crt.value = current.crt;
   volume.value = String(Math.round(current.volume * 100));
   ambience.value = String(Math.round(current.ambience * 100));
   music.value = String(Math.round(current.music * 100));
@@ -170,6 +181,14 @@ export function createSettings(
   effects.addEventListener('change', () => {
     current.effects = effects.value === 'off' ? 'off' : 'on';
     save();
+  });
+  crt.addEventListener('change', () => {
+    current.crt = crt.value === 'on' ? 'on' : 'off';
+    save();
+    // Кинескоп — проход постобработки: без неё ему негде рисоваться.
+    if (current.crt === 'on' && current.effects === 'off') {
+      readout.textContent = 'Старый телевизор работает только при включённых эффектах.';
+    }
   });
 
   /**

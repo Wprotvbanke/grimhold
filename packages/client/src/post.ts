@@ -11,6 +11,7 @@ import {
   ToneMappingMode,
   VignetteEffect,
 } from 'postprocessing';
+import { CrtEffect } from './crt.js';
 
 /**
  * Постобработка: свечение огня, мрачный цвет, тёмные края кадра.
@@ -40,6 +41,8 @@ import {
 export interface PostSettings {
   effects: 'on' | 'off';
   antialias: boolean;
+  /** Кинескоп поверх всего — см. crt.ts и docs/crt.md. Работает только при включённых эффектах. */
+  crt: 'on' | 'off';
 }
 
 export interface PostProcessing {
@@ -100,21 +103,33 @@ export function createPost(
     frameBufferType: THREE.HalfFloatType,
     multisampling: 0,
   });
-  composer.autoRenderToScreen = true;
+  /**
+   * Кто рисует на экран, решаем сами: последним стоит кинескоп, и когда он
+   * выключен, библиотека дорисовывала бы кадр на экран лишним проходом
+   * копирования. Дешевле переставить флаг на основной проход.
+   */
+  composer.autoRenderToScreen = false;
 
   const overlay = new OverlayPass();
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(overlay);
-  composer.addPass(
-    new EffectPass(
-      camera,
-      new BloomEffect({ mipmapBlur: true, ...BLOOM }),
-      new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }),
-      new HueSaturationEffect({ saturation: SATURATION }),
-      new BrightnessContrastEffect({ contrast: CONTRAST }),
-      new VignetteEffect(VIGNETTE),
-    ),
+  const grading = new EffectPass(
+    camera,
+    new BloomEffect({ mipmapBlur: true, ...BLOOM }),
+    new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }),
+    new HueSaturationEffect({ saturation: SATURATION }),
+    new BrightnessContrastEffect({ contrast: CONTRAST }),
+    new VignetteEffect(VIGNETTE),
   );
+  composer.addPass(grading);
+
+  /**
+   * Кинескоп — отдельным проходом и строго последним: он сам делает свой
+   * тонмаппинг и ждёт готовую картинку. Поставить его до ACES значило бы
+   * сжечь цвета дважды.
+   */
+  const crt = new EffectPass(camera, new CrtEffect());
+  composer.addPass(crt);
 
   let enabled = true;
   /**
@@ -128,11 +143,15 @@ export function createPost(
   const drawing = new THREE.Vector2();
 
   return {
-    configure({ effects, antialias }) {
+    configure({ effects, antialias, crt: tube }) {
       enabled = effects === 'on';
       // Сглаживание рендерера до буфера не доходит — у буфера оно своё,
       // и его, в отличие от рендерера, можно менять на ходу.
       composer.multisampling = antialias ? SAMPLES : 0;
+      // На экран рисует тот, кто стоит последним из включённых.
+      crt.enabled = tube === 'on';
+      crt.renderToScreen = crt.enabled;
+      grading.renderToScreen = !crt.enabled;
     },
 
     render(draw) {
